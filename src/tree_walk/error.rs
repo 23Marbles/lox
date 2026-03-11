@@ -4,7 +4,8 @@ use std::{error::Error, fmt::Display};
 pub enum LoxErrorKind {
     UnexpectedCharacter(char),
     UnterminatedString,
-    InvalidNumber,
+    #[cfg(feature = "challenges")]
+    UnterminatedComment,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -41,8 +42,13 @@ impl Display for LoxTreeError {
                     self.line, self.column
                 )?;
             }
-            LoxErrorKind::InvalidNumber => {
-                write!(f, "[line {}:{}] Invalid number", self.line, self.column)?;
+            #[cfg(feature = "challenges")]
+            LoxErrorKind::UnterminatedComment => {
+                write!(
+                    f,
+                    "[line {}:{}] Unterminated comment",
+                    self.line, self.column
+                )?;
             }
         }
         Ok(())

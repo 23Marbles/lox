@@ -193,6 +193,27 @@ impl<'a> Iterator for Scanner<'a> {
                             self.advance();
                         }
                         return self.next();
+                    } else {
+                        break self.make_token(current_token_type);
+                    }
+                    #[cfg(feature = "challenges")]
+                    {
+                        if self.advance_if_next('*') {
+                            loop {
+                                if !self.is_at_end() {
+                                    let c = self.advance();
+                                    if c == '*' {
+                                        if self.advance_if_next('/') {
+                                            return self.next();
+                                        }
+                                    } else if c == '\n' {
+                                        self.new_line();
+                                    }
+                                } else {
+                                    return Some(Err(self.error(LoxErrorKind::UnterminatedComment)));
+                                }
+                            }
+                        }
                     }
                 }
                 TokenKind::Equal => {
