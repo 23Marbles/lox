@@ -1,10 +1,13 @@
-use crate::tree_walk::error::{LoxErrorKind, LoxTreeError};
+use std::fmt::Display;
+
+use crate::tree_walk::error::{LoxErrorKind, LoxScanError};
 
 pub struct Scanner<'a> {
     source: &'a str,
     start: usize,
     current: usize,
     line: usize,
+    eof: bool,
 }
 
 impl<'a> Scanner<'a> {
@@ -14,6 +17,7 @@ impl<'a> Scanner<'a> {
             start: 0,
             current: 0,
             line: 1,
+            eof: false,
         }
     }
 
@@ -38,8 +42,8 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn error(&self, kind: LoxErrorKind) -> LoxTreeError {
-        LoxTreeError {
+    fn error(&self, kind: LoxErrorKind) -> LoxScanError {
+        LoxScanError {
             line: self.line,
             column: self.column(self.start),
             kind,
@@ -105,12 +109,14 @@ impl<'a> Scanner<'a> {
 }
 
 impl<'a> Iterator for Scanner<'a> {
-    type Item = Result<Token<'a>, LoxTreeError>;
+    type Item = Result<Token<'a>, LoxScanError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.is_at_end() {
-            self.make_token(TokenKind::Eof);
+        if self.eof {
             return None;
+        } else if self.is_at_end() {
+            self.eof = true;
+            return Some(Ok(self.make_token(TokenKind::Eof)));
         }
 
         self.start = self.current;
@@ -210,7 +216,9 @@ impl<'a> Iterator for Scanner<'a> {
                                         self.new_line();
                                     }
                                 } else {
-                                    return Some(Err(self.error(LoxErrorKind::UnterminatedComment)));
+                                    return Some(
+                                        Err(self.error(LoxErrorKind::UnterminatedComment)),
+                                    );
                                 }
                             }
                         }
@@ -237,6 +245,16 @@ pub struct Token<'a> {
     pub lexeme: &'a str,
     pub line: usize,
     pub column: usize,
+}
+
+impl<'a> Display for Token<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.kind {
+            TokenKind::String => write!(f, "\"{}\"", self.lexeme),
+            TokenKind::Eof => write!(f, "eof"),
+            _ => write!(f, "{}", self.lexeme),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

@@ -1,6 +1,5 @@
 use std::{
     env,
-    error::Error,
     fs::File,
     io::{Read, Write, stdin, stdout},
     path::Path,
@@ -8,10 +7,13 @@ use std::{
 };
 
 use crate::tree_walk::{
-    error::{LoxTreeError, RunError},
+    error::{LoxScanError, RunError},
+    parser::Parser,
     token::Scanner,
 };
+mod ast;
 mod error;
+mod parser;
 mod token;
 
 pub fn main() -> Result<(), RunError> {
@@ -58,16 +60,32 @@ fn run_prompt() -> Result<(), RunError> {
 fn run(source: &str) -> Result<(), RunError> {
     let scanner = Scanner::new(source);
 
-    let mut errors = Vec::new();
+    let mut errors: Vec<LoxScanError> = Vec::new();
 
-    for token in scanner {
-        match token {
-            Ok(t) => println!("{t:?}"),
-            Err(e) => errors.push(e),
-        }
-    }
+    let tokens: Vec<token::Token<'_>> = scanner
+        .filter_map(|v| match v {
+            Ok(t) => Some(t),
+            Err(e) => {
+                errors.push(e);
+                None
+            }
+        })
+        .collect();
 
     if errors.is_empty() {
+        
+        #[cfg(debug_assertions)]
+        {println!("tokens:");
+        for t in tokens.iter().cloned() {
+            println!("{t:?}")
+        };}
+
+        let mut parser = Parser::new(tokens);
+        let parsed = parser.parse()?;
+
+        #[cfg(debug_assertions)]
+        println!("parsed:\n{parsed}");
+
         Ok(())
     } else {
         Err(errors.into())

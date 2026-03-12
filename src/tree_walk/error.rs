@@ -1,5 +1,7 @@
 use std::{error::Error, fmt::Display};
 
+use crate::tree_walk::token::TokenKind;
+
 #[derive(Debug, Clone, Copy)]
 pub enum LoxErrorKind {
     UnexpectedCharacter(char),
@@ -9,13 +11,13 @@ pub enum LoxErrorKind {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct LoxTreeError {
+pub struct LoxScanError {
     pub line: usize,
     pub column: usize,
     pub kind: LoxErrorKind,
 }
 
-impl LoxTreeError {
+impl LoxScanError {
     fn new(line: usize, kind: LoxErrorKind) -> Self {
         Self {
             line,
@@ -25,7 +27,7 @@ impl LoxTreeError {
     }
 }
 
-impl Display for LoxTreeError {
+impl Display for LoxScanError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.kind {
             LoxErrorKind::UnexpectedCharacter(c) => {
@@ -55,12 +57,13 @@ impl Display for LoxTreeError {
     }
 }
 
-impl Error for LoxTreeError {}
+impl Error for LoxScanError {}
 
 #[derive(Debug)]
 enum RunErrorKind {
     IoError(std::io::Error),
-    TreeErrors(Vec<LoxTreeError>),
+    ScanErrors(Vec<LoxScanError>),
+    ParseErrors(Vec<ParseError>)
 }
 
 #[derive(Debug)]
@@ -71,14 +74,21 @@ pub struct RunError {
 impl Display for RunError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.kind {
-            RunErrorKind::IoError(err) => write!(f, "{err}"),
-            RunErrorKind::TreeErrors(errs) => {
+            RunErrorKind::IoError(err) => write!(f, "Io error:\n{err}")?,
+            RunErrorKind::ScanErrors(errs) => {
+                writeln!(f, "Scan errors: ")?;
                 for e in errs {
                     writeln!(f, "{e}")?
                 }
-                Ok(())
+            }
+            RunErrorKind::ParseErrors(errs) => {
+                writeln!(f, "Parse errors: ")?;
+                for e in errs {
+                    writeln!(f, "{e}")?
+                }
             }
         }
+        Ok(())
     }
 }
 
@@ -92,10 +102,48 @@ impl From<std::io::Error> for RunError {
     }
 }
 
-impl From<Vec<LoxTreeError>> for RunError {
-    fn from(value: Vec<LoxTreeError>) -> Self {
+impl From<Vec<LoxScanError>> for RunError {
+    fn from(value: Vec<LoxScanError>) -> Self {
         Self {
-            kind: RunErrorKind::TreeErrors(value),
+            kind: RunErrorKind::ScanErrors(value),
         }
     }
+}
+
+impl From<Vec<ParseError>> for RunError {
+    fn from(value: Vec<ParseError>) -> Self {
+        Self { kind: RunErrorKind::ParseErrors(value) }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ParseError {
+    pub kind: ParseErrorKind,
+    pub line: usize,
+    pub column: usize,
+}
+
+impl Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.kind {
+            ParseErrorKind::UnexpectedTokenKind(token_kind) => write!(
+                f,
+                "[line {}:{}] Unexpected token kind: {:?}",
+                self.line, self.column, token_kind
+            ),
+            ParseErrorKind::UnterminatedGrouping => write!(
+                f,
+                "[line {}:{}] Expected closing \")\" after expression",
+                self.line, self.column
+            ),
+        }
+    }
+}
+
+impl Error for ParseError {}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ParseErrorKind {
+    UnexpectedTokenKind(TokenKind),
+    UnterminatedGrouping,
 }

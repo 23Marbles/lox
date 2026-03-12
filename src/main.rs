@@ -1,10 +1,7 @@
 mod tree_walk;
 
 fn main() {
-    match tree_walk::main() {
-        Err(err) => {
-            println!("{err}")
-        }
-        Ok(_) => {}
+    if let Err(err) = tree_walk::main() {
+        eprintln!("\x1b[1;31mErrored with errors:\x1b[0m\n{err}")
     }
 }
