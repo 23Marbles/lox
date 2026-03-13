@@ -1,6 +1,13 @@
-use std::fmt::{Display, write};
+use std::{
+    fmt::Display,
+    ops::{Add, Div, Mul, Sub},
+};
 
-use crate::tree_walk::token::Token;
+use crate::tree_walk::{
+    error::eval_err::{EvaluateError, EvaluateErrorKind, make_eval_error},
+    lox_var::LoxVar,
+    token::{Token, TokenKind},
+};
 
 #[derive(Debug)]
 pub enum Expr<'a> {
@@ -33,6 +40,109 @@ impl<'a> Expr<'a> {
         Self::Unary {
             operator,
             right: Box::new(right),
+        }
+    }
+
+    pub fn evaluate(&self) -> Result<LoxVar, EvaluateError> {
+        match self {
+            Expr::Literal(literal) => Ok(literal.into()),
+            Expr::Unary { operator, right } => {
+                let right_var = right.evaluate()?;
+                match operator.kind {
+                    TokenKind::Minus => {
+                        if let LoxVar::Number(n) = right_var {
+                            Ok(LoxVar::Number(-n))
+                        } else {
+                            Err(EvaluateError::new(
+                                EvaluateErrorKind::IncompatableUnaryOperator {
+                                    operator: TokenKind::Minus,
+                                    var_ty: right_var.into(),
+                                },
+                                operator.line,
+                                operator.column,
+                            ))
+                        }
+                    }
+                    TokenKind::Bang => Ok(LoxVar::Bool(!right_var.is_truthy())),
+                    _ => {
+                        unreachable!("only tokens with kind minus and bang can be unary operators")
+                    }
+                }
+            }
+            Expr::Binary {
+                left,
+                operator,
+                right,
+            } => {
+                let left_var = left.evaluate()?;
+                let right_var = right.evaluate()?;
+
+                use TokenKind::*;
+                use std::cmp::Ordering;
+
+                match operator.kind {
+                    Greater => {
+                        if let Some(ord) = left_var.partial_cmp(&right_var) {
+                            Ok(LoxVar::Bool(ord == Ordering::Greater))
+                        } else {
+                            Err(make_eval_error(operator, Greater, left_var, right_var))
+                        }
+                    }
+                    GreaterEqual => {
+                        if let Some(ord) = left_var.partial_cmp(&right_var) {
+                            Ok(LoxVar::Bool(ord != Ordering::Less))
+                        } else {
+                            Err(make_eval_error(operator, GreaterEqual, left_var, right_var))
+                        }
+                    }
+                    Less => {
+                        if let Some(ord) = left_var.partial_cmp(&right_var) {
+                            Ok(LoxVar::Bool(ord == Ordering::Less))
+                        } else {
+                            Err(make_eval_error(operator, Less, left_var, right_var))
+                        }
+                    }
+                    LessEqual => {
+                        if let Some(ord) = left_var.partial_cmp(&right_var) {
+                            Ok(LoxVar::Bool(ord != Ordering::Greater))
+                        } else {
+                            Err(make_eval_error(operator, LessEqual, left_var, right_var))
+                        }
+                    }
+                    EqualEqual => {
+                        if let Some(ord) = left_var.partial_cmp(&right_var) {
+                            Ok(LoxVar::Bool(ord == Ordering::Equal))
+                        } else {
+                            Err(make_eval_error(operator, EqualEqual, left_var, right_var))
+                        }
+                    }
+                    BangEqual => {
+                        if let Some(ord) = left_var.partial_cmp(&right_var) {
+                            Ok(LoxVar::Bool(ord != Ordering::Equal))
+                        } else {
+                            Err(make_eval_error(operator, BangEqual, left_var, right_var))
+                        }
+                    }
+                    Minus => left_var
+                        .sub(right_var)
+                        .map_err(|(l, r)| make_eval_error(operator, Minus, l, r)),
+                    Slash => left_var
+                        .div(right_var)
+                        .map_err(|(l, r)| make_eval_error(operator, Slash, l, r)),
+                    Star => left_var
+                        .mul(right_var)
+                        .map_err(|(l, r)| make_eval_error(operator, Star, l, r)),
+                    Plus => left_var
+                        .add(right_var)
+                        .map_err(|(l, r)| make_eval_error(operator, Plus, l, r)),
+                    _ => unreachable!(
+                        "only tokens with kind gt, ge, lt, le, ne, eq, minus, plus, slash and star can be binary operators"
+                    ),
+                }
+            }
+            Expr::Grouping(expr) => {
+                todo!()
+            }
         }
     }
 }

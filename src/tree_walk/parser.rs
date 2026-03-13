@@ -1,6 +1,6 @@
 use crate::tree_walk::{
     ast::Expr,
-    error::{ParseError, ParseErrorKind},
+    error::parse_err::{ParseError, ParseErrorKind},
     token::{Token, TokenKind},
 };
 

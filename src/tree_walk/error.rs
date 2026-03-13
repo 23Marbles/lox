@@ -1,149 +1,224 @@
-use std::{error::Error, fmt::Display};
+pub mod scan_err {
+    use std::{error::Error, fmt::Display};
+    #[derive(Debug, Clone, Copy)]
+    pub enum ScanErrorKind {
+        UnexpectedCharacter(char),
+        UnterminatedString,
+        #[cfg(feature = "challenges")]
+        UnterminatedComment,
+    }
 
-use crate::tree_walk::token::TokenKind;
+    #[derive(Debug, Clone, Copy)]
+    pub struct ScanError {
+        line: usize,
+        column: usize,
+        kind: ScanErrorKind,
+    }
 
-#[derive(Debug, Clone, Copy)]
-pub enum LoxErrorKind {
-    UnexpectedCharacter(char),
-    UnterminatedString,
-    #[cfg(feature = "challenges")]
-    UnterminatedComment,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct LoxScanError {
-    pub line: usize,
-    pub column: usize,
-    pub kind: LoxErrorKind,
-}
-
-impl LoxScanError {
-    fn new(line: usize, kind: LoxErrorKind) -> Self {
-        Self {
-            line,
-            column: 0,
-            kind,
+    impl ScanError {
+        pub fn new(line: usize, column: usize, kind: ScanErrorKind) -> Self {
+            Self { line, column, kind }
         }
     }
-}
 
-impl Display for LoxScanError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.kind {
-            LoxErrorKind::UnexpectedCharacter(c) => {
-                write!(
-                    f,
-                    "[line {}:{}] Unexpected character '{}'",
-                    self.line, self.column, c
-                )?;
-            }
-            LoxErrorKind::UnterminatedString => {
-                write!(
-                    f,
-                    "[line {}:{}] Unterminated string",
-                    self.line, self.column
-                )?;
-            }
-            #[cfg(feature = "challenges")]
-            LoxErrorKind::UnterminatedComment => {
-                write!(
-                    f,
-                    "[line {}:{}] Unterminated comment",
-                    self.line, self.column
-                )?;
-            }
-        }
-        Ok(())
-    }
-}
-
-impl Error for LoxScanError {}
-
-#[derive(Debug)]
-enum RunErrorKind {
-    IoError(std::io::Error),
-    ScanErrors(Vec<LoxScanError>),
-    ParseErrors(Vec<ParseError>)
-}
-
-#[derive(Debug)]
-pub struct RunError {
-    kind: RunErrorKind,
-}
-
-impl Display for RunError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.kind {
-            RunErrorKind::IoError(err) => write!(f, "Io error:\n{err}")?,
-            RunErrorKind::ScanErrors(errs) => {
-                writeln!(f, "Scan errors: ")?;
-                for e in errs {
-                    writeln!(f, "{e}")?
+    impl Display for ScanError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self.kind {
+                ScanErrorKind::UnexpectedCharacter(c) => {
+                    write!(
+                        f,
+                        "[line {}:{}] Unexpected character '{}'",
+                        self.line, self.column, c
+                    )?;
+                }
+                ScanErrorKind::UnterminatedString => {
+                    write!(
+                        f,
+                        "[line {}:{}] Unterminated string",
+                        self.line, self.column
+                    )?;
+                }
+                #[cfg(feature = "challenges")]
+                ScanErrorKind::UnterminatedComment => {
+                    write!(
+                        f,
+                        "[line {}:{}] Unterminated comment",
+                        self.line, self.column
+                    )?;
                 }
             }
-            RunErrorKind::ParseErrors(errs) => {
-                writeln!(f, "Parse errors: ")?;
-                for e in errs {
-                    writeln!(f, "{e}")?
+            Ok(())
+        }
+    }
+
+    impl Error for ScanError {}
+}
+
+pub mod run_err {
+    use std::{error::Error, fmt::Display};
+
+    use crate::tree_walk::error::{
+        eval_err::EvaluateError, parse_err::ParseError, scan_err::ScanError,
+    };
+    #[derive(Debug)]
+    enum RunErrorKind {
+        IoError(std::io::Error),
+        ScanErrors(Vec<ScanError>),
+        ParseErrors(Vec<ParseError>),
+        EvaluateError(EvaluateError),
+    }
+
+    #[derive(Debug)]
+    pub struct RunError {
+        kind: RunErrorKind,
+    }
+
+    impl Display for RunError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match &self.kind {
+                RunErrorKind::IoError(err) => write!(f, "Io error:\n{err}")?,
+                RunErrorKind::ScanErrors(errs) => {
+                    write!(f, "Scan errors: ")?;
+                    for e in errs {
+                        writeln!(f, "\n{e}")?
+                    }
+                }
+                RunErrorKind::ParseErrors(errs) => {
+                    write!(f, "Parse errors: ")?;
+                    for e in errs {
+                        writeln!(f, "\n{e}")?
+                    }
+                }
+                RunErrorKind::EvaluateError(err) => writeln!(f, "Evaluation error:\n{err}")?,
+            }
+            Ok(())
+        }
+    }
+
+    impl Error for RunError {}
+
+    macro_rules! run_from_err {
+        ($from:ty, $kind:path) => {
+            impl From<$from> for RunError {
+                fn from(value: $from) -> Self {
+                    Self { kind: $kind(value) }
                 }
             }
-        }
-        Ok(())
+        };
     }
+
+    run_from_err!(std::io::Error, RunErrorKind::IoError);
+    run_from_err!(Vec<ScanError>, RunErrorKind::ScanErrors);
+    run_from_err!(Vec<ParseError>, RunErrorKind::ParseErrors);
+    run_from_err!(EvaluateError, RunErrorKind::EvaluateError);
 }
 
-impl Error for RunError {}
+pub mod parse_err {
+    use std::{error::Error, fmt::Display};
 
-impl From<std::io::Error> for RunError {
-    fn from(value: std::io::Error) -> Self {
-        Self {
-            kind: RunErrorKind::IoError(value),
-        }
+    use crate::tree_walk::token::TokenKind;
+    #[derive(Debug, Clone, Copy)]
+    pub struct ParseError {
+        pub kind: ParseErrorKind,
+        pub line: usize,
+        pub column: usize,
     }
-}
 
-impl From<Vec<LoxScanError>> for RunError {
-    fn from(value: Vec<LoxScanError>) -> Self {
-        Self {
-            kind: RunErrorKind::ScanErrors(value),
-        }
-    }
-}
-
-impl From<Vec<ParseError>> for RunError {
-    fn from(value: Vec<ParseError>) -> Self {
-        Self { kind: RunErrorKind::ParseErrors(value) }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct ParseError {
-    pub kind: ParseErrorKind,
-    pub line: usize,
-    pub column: usize,
-}
-
-impl Display for ParseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.kind {
-            ParseErrorKind::UnexpectedTokenKind(token_kind) => write!(
-                f,
-                "[line {}:{}] Unexpected token kind: {:?}",
-                self.line, self.column, token_kind
-            ),
-            ParseErrorKind::UnterminatedGrouping => write!(
-                f,
-                "[line {}:{}] Expected closing \")\" after expression",
-                self.line, self.column
-            ),
+    impl Display for ParseError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self.kind {
+                ParseErrorKind::UnexpectedTokenKind(token_kind) => write!(
+                    f,
+                    "[line {}:{}] Unexpected token kind: {:?}",
+                    self.line, self.column, token_kind
+                ),
+                ParseErrorKind::UnterminatedGrouping => write!(
+                    f,
+                    "[line {}:{}] Expected closing \")\" after expression",
+                    self.line, self.column
+                ),
+            }
         }
     }
+
+    impl Error for ParseError {}
+
+    #[derive(Debug, Clone, Copy)]
+    pub enum ParseErrorKind {
+        UnexpectedTokenKind(TokenKind),
+        UnterminatedGrouping,
+    }
 }
 
-impl Error for ParseError {}
+pub mod eval_err {
+    use std::fmt::Display;
 
-#[derive(Debug, Clone, Copy)]
-pub enum ParseErrorKind {
-    UnexpectedTokenKind(TokenKind),
-    UnterminatedGrouping,
+    use crate::tree_walk::{
+        lox_var::{LoxVar, LoxVarKinds},
+        token::{Token, TokenKind},
+    };
+
+    #[derive(Debug, Clone, Copy)]
+    pub struct EvaluateError {
+        kind: EvaluateErrorKind,
+        line: usize,
+        column: usize,
+    }
+
+    impl EvaluateError {
+        pub fn new(kind: EvaluateErrorKind, line: usize, column: usize) -> Self {
+            Self { kind, line, column }
+        }
+    }
+
+    impl Display for EvaluateError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self.kind {
+                EvaluateErrorKind::IncompatableUnaryOperator { operator, var_ty } => write!(
+                    f,
+                    "[Line {}:{}] Cannot use unary operator [{operator:?}] on type [{var_ty:?}]",
+                    self.line, self.column
+                ),
+                EvaluateErrorKind::IncompatableBinaryOperator {
+                    operator,
+                    left_ty,
+                    right_ty,
+                } => write!(
+                    f,
+                    "[Line {}:{}] Cannot use binary operator [{operator:?}] on types [{left_ty:?}, {right_ty:?}]",
+                    self.line, self.column
+                ),
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    pub enum EvaluateErrorKind {
+        IncompatableUnaryOperator {
+            operator: TokenKind,
+            var_ty: LoxVarKinds,
+        },
+        IncompatableBinaryOperator {
+            operator: TokenKind,
+            left_ty: LoxVarKinds,
+            right_ty: LoxVarKinds,
+        },
+    }
+
+    pub fn make_eval_error(
+        operator: &Token,
+        kind: TokenKind,
+        left_var: LoxVar,
+        right_var: LoxVar,
+    ) -> EvaluateError {
+        EvaluateError::new(
+            EvaluateErrorKind::IncompatableBinaryOperator {
+                operator: kind,
+                left_ty: left_var.into(),
+                right_ty: right_var.into(),
+            },
+            operator.line,
+            operator.column,
+        )
+    }
 }

@@ -7,12 +7,12 @@ use std::{
 };
 
 use crate::tree_walk::{
-    error::{LoxScanError, RunError},
-    parser::Parser,
-    token::Scanner,
+    error::run_err::RunError, interpreter::Interpreter, parser::Parser, token::Scanner,
 };
 mod ast;
 mod error;
+mod interpreter;
+mod lox_var;
 mod parser;
 mod token;
 
@@ -60,7 +60,7 @@ fn run_prompt() -> Result<(), RunError> {
 fn run(source: &str) -> Result<(), RunError> {
     let scanner = Scanner::new(source);
 
-    let mut errors: Vec<LoxScanError> = Vec::new();
+    let mut errors: Vec<error::scan_err::ScanError> = Vec::new();
 
     let tokens: Vec<token::Token<'_>> = scanner
         .filter_map(|v| match v {
@@ -73,18 +73,22 @@ fn run(source: &str) -> Result<(), RunError> {
         .collect();
 
     if errors.is_empty() {
-        
         #[cfg(debug_assertions)]
-        {println!("tokens:");
-        for t in tokens.iter().cloned() {
-            println!("{t:?}")
-        };}
+        {
+            println!("tokens:");
+            for t in tokens.iter().cloned() {
+                println!("{t:?}")
+            }
+        }
 
         let mut parser = Parser::new(tokens);
         let parsed = parser.parse()?;
 
         #[cfg(debug_assertions)]
         println!("parsed:\n{parsed}");
+
+        let interpreter = Interpreter::new(parsed);
+        println!("{}", interpreter.interpret()?);
 
         Ok(())
     } else {

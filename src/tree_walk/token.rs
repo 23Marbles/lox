@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::tree_walk::error::{LoxErrorKind, LoxScanError};
+use crate::tree_walk::error::scan_err::{ScanError, ScanErrorKind};
 
 pub struct Scanner<'a> {
     source: &'a str,
@@ -21,10 +21,6 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn lexeme(&self) -> &'a str {
-        &self.source[self.start..self.current]
-    }
-
     fn lexeme_with_bounds(&self, start: usize, end: usize) -> &'a str {
         &self.source[start..end]
     }
@@ -42,12 +38,8 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn error(&self, kind: LoxErrorKind) -> LoxScanError {
-        LoxScanError {
-            line: self.line,
-            column: self.column(self.start),
-            kind,
-        }
+    fn error(&self, kind: ScanErrorKind) -> ScanError {
+        ScanError::new(self.line, self.column(self.start), kind)
     }
 
     fn advance(&mut self) -> char {
@@ -109,7 +101,7 @@ impl<'a> Scanner<'a> {
 }
 
 impl<'a> Iterator for Scanner<'a> {
-    type Item = Result<Token<'a>, LoxScanError>;
+    type Item = Result<Token<'a>, ScanError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.eof {
@@ -135,6 +127,9 @@ impl<'a> Iterator for Scanner<'a> {
                 '+' => break self.make_token(TokenKind::Plus),
                 ';' => break self.make_token(TokenKind::Semicolon),
                 '*' => break self.make_token(TokenKind::Star),
+                '!' => break self.make_token(TokenKind::Bang),
+                '>' => TokenKind::Greater,
+                '<' => TokenKind::Less,
                 '=' => TokenKind::Equal,
                 '/' => TokenKind::Slash,
                 ' ' | '\t' | '\r' => return self.next(), // Ignore whitespace
@@ -170,7 +165,7 @@ impl<'a> Iterator for Scanner<'a> {
 
                     break self.make_token(TokenKind::Number);
                 }
-                x => return Some(Err(self.error(LoxErrorKind::UnexpectedCharacter(x)))),
+                x => return Some(Err(self.error(ScanErrorKind::UnexpectedCharacter(x)))),
             };
 
             match current_token_type {
@@ -182,7 +177,7 @@ impl<'a> Iterator for Scanner<'a> {
                         self.advance();
                     }
                     if self.is_at_end() {
-                        return Some(Err(self.error(LoxErrorKind::UnterminatedString)));
+                        return Some(Err(self.error(ScanErrorKind::UnterminatedString)));
                     }
                     self.advance();
 
@@ -200,29 +195,37 @@ impl<'a> Iterator for Scanner<'a> {
                         }
                         return self.next();
                     } else {
-                        break self.make_token(current_token_type);
-                    }
-                    #[cfg(feature = "challenges")]
-                    {
-                        if self.advance_if_next('*') {
-                            loop {
-                                if !self.is_at_end() {
-                                    let c = self.advance();
-                                    if c == '*' {
-                                        if self.advance_if_next('/') {
-                                            return self.next();
+                        {
+                            #[cfg(feature = "challenges")]
+                            {
+                                if self.advance_if_next('*') {
+                                    loop {
+                                        if !self.is_at_end() {
+                                            let c = self.advance();
+                                            if c == '*' {
+                                                if self.advance_if_next('/') {
+                                                    return self.next();
+                                                }
+                                            } else if c == '\n' {
+                                                self.new_line();
+                                            }
+                                        } else {
+                                            return Some(Err(
+                                                self.error(ScanErrorKind::UnterminatedComment)
+                                            ));
                                         }
-                                    } else if c == '\n' {
-                                        self.new_line();
                                     }
                                 } else {
-                                    return Some(
-                                        Err(self.error(LoxErrorKind::UnterminatedComment)),
-                                    );
+                                    break self.make_token(current_token_type);
                                 }
                             }
+                            #[cfg(not(feature = "challenges"))]
+                            break self.make_token(current_token_type);
                         }
                     }
+                }
+                TokenKind::Bang => {
+                    break self.make_token_if('=', TokenKind::BangEqual, current_token_type);
                 }
                 TokenKind::Equal => {
                     break self.make_token_if('=', TokenKind::EqualEqual, current_token_type);
@@ -308,30 +311,54 @@ pub enum TokenKind {
     Eof,
 }
 
-impl TokenKind {
-    fn keyword_str(&self) -> Option<&'static str> {
+impl Display for TokenKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use TokenKind::*;
         match self {
-            And => Some("and"),
-            Class => Some("class"),
-            Else => Some("else"),
-            False => Some("false"),
-            Fun => Some("fun"),
-            For => Some("for"),
-            If => Some("if"),
-            Nil => Some("nil"),
-            Or => Some("or"),
-            Print => Some("print"),
-            Return => Some("return"),
-            Super => Some("super"),
-            This => Some("this"),
-            True => Some("true"),
-            Var => Some("var"),
-            While => Some("while"),
-            _ => None,
+            And => write!(f, "and"),
+            Class => write!(f, "class"),
+            Else => write!(f, "else"),
+            False => write!(f, "false"),
+            Fun => write!(f, "fun"),
+            For => write!(f, "for"),
+            If => write!(f, "if"),
+            Nil => write!(f, "nil"),
+            Or => write!(f, "or"),
+            Print => write!(f, "print"),
+            Return => write!(f, "return"),
+            Super => write!(f, "super"),
+            This => write!(f, "this"),
+            True => write!(f, "true"),
+            Var => write!(f, "var"),
+            While => write!(f, "while"),
+            LeftParen => write!(f, "("),
+            RightParen => write!(f, ")"),
+            LeftBrace => write!(f, "{{"),
+            RightBrace => write!(f, "}}"),
+            Comma => write!(f, ","),
+            Dot => write!(f, "."),
+            Minus => write!(f, "-"),
+            Plus => write!(f, "+"),
+            Semicolon => write!(f, ";"),
+            Slash => write!(f, "/"),
+            Star => write!(f, "*"),
+            Bang => write!(f, "!"),
+            BangEqual => write!(f, "!="),
+            Equal => write!(f, "="),
+            EqualEqual => write!(f, "=="),
+            Greater => write!(f, ">"),
+            GreaterEqual => write!(f, ">="),
+            Less => write!(f, "<"),
+            LessEqual => write!(f, "<="),
+            Identifier => write!(f, "ident"),
+            String => write!(f, "\"string\""),
+            Number => write!(f, "num"),
+            Eof => write!(f, "\0"),
         }
     }
+}
 
+impl TokenKind {
     fn search_keyword_str(string: &str) -> Option<Self> {
         use TokenKind::*;
         match string {
