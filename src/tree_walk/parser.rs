@@ -312,8 +312,17 @@ impl<'a> Parser<'a> {
                 return;
             }
 
-            if self.peek().kind == TokenKind::Return {
-                return;
+            use TokenKind::*;
+            match self.peek().kind {
+                Class |
+                Fun |
+                Var |
+                For |
+                If |
+                While |
+                Print |
+                Return => return,
+                _ => ()
             }
 
             self.advance();
