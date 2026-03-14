@@ -26,6 +26,10 @@ pub enum Stmt<'a> {
         then_branch: Box<Stmt<'a>>,
         else_branch: Option<Box<Stmt<'a>>>,
     },
+    While {
+        condition: Expr<'a>,
+        body: Box<Stmt<'a>>,
+    },
 }
 
 impl<'a> Stmt<'a> {
@@ -66,6 +70,12 @@ impl<'a> Stmt<'a> {
                 }
                 Ok(None)
             }
+            Stmt::While { condition, body } => {
+                while condition.evaluate(env)?.is_truthy() {
+                    body.run(env)?;
+                }
+                Ok(None)
+            }
         }
     }
 }
@@ -95,6 +105,7 @@ impl Display for Stmt<'_> {
                     write!(f, "(if {condition} then {then_branch})")
                 }
             }
+            Stmt::While { condition, body } => write!(f, "(while {condition} do {body})"),
         }
     }
 }
@@ -121,6 +132,12 @@ pub enum Expr<'a> {
     Assign {
         name: &'a str,
         value: Box<Expr<'a>>,
+    },
+
+    Logical {
+        left: Box<Expr<'a>>,
+        operator: Token<'a>,
+        right: Box<Expr<'a>>,
     },
 }
 
@@ -152,6 +169,11 @@ impl<'a> Expr<'a> {
             Expr::Grouping(expr) => "(".to_string() + &expr.string() + ")",
             Expr::Variable(name) => name.to_string(),
             Expr::Assign { name, value } => name.to_string() + " = " + &value.string(),
+            Expr::Logical {
+                left,
+                operator,
+                right,
+            } => left.string() + " " + operator.lexeme + " " + &right.string(),
         }
     }
 
@@ -287,6 +309,30 @@ impl<'a> Expr<'a> {
                     Ok(value)
                 }
             }
+            Expr::Logical {
+                left,
+                operator,
+                right,
+            } => {
+                let left = left.evaluate(env)?;
+                match operator.kind {
+                    TokenKind::And => {
+                        if !left.is_truthy() {
+                            Ok(left)
+                        } else {
+                            right.evaluate(env)
+                        }
+                    }
+                    TokenKind::Or => {
+                        if left.is_truthy() {
+                            Ok(left)
+                        } else {
+                            right.evaluate(env)
+                        }
+                    }
+                    _ => unreachable!("Logical expr can only have operators Or or And"),
+                }
+            }
         }
     }
 }
@@ -304,6 +350,11 @@ impl Display for Expr<'_> {
             Expr::Grouping(expr) => write!(f, "(group {expr})"),
             Expr::Variable(name) => write!(f, "(variable {name})"),
             Expr::Assign { name, value } => write!(f, "(assign {name} {value})"),
+            Expr::Logical {
+                left,
+                operator,
+                right,
+            } => write!(f, "({operator} {left} {right})"),
         }
     }
 }

@@ -138,10 +138,10 @@ impl<'a> Iterator for Scanner<'a> {
                     return self.next();
                 } // Ignore newlines but increment the line counter
                 '"' => TokenKind::String,
-                x if x.is_alphabetic() => {
+                x if (x.is_alphabetic() || x  == '_') => {
                     let mut string = String::new();
                     string.push(x);
-                    while self.peek().is_alphanumeric() {
+                    while self.peek().is_alphanumeric() || self.peek() == '_' {
                         string.push(self.advance());
                     }
                     if let Some(key) = TokenKind::search_keyword_str(&string) {

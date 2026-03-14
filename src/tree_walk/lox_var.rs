@@ -209,7 +209,7 @@ impl PartialOrd for LoxVar {
                     _ls.try_convert(LoxVarKinds::Number)?
                         .partial_cmp(&_rs.try_convert(LoxVarKinds::Number)?)
                 }
-                #[cfg(not(feature = "implicit_semicolons"))]
+                #[cfg(not(feature = "implicit_converions"))]
                 {
                     None
                 }

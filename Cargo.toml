@@ -4,10 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = ["ast", "implicit_helpers"]
-challenges = ["implicit_helpers", "repl_expr_print", "inline_comments"]
+default = ["ast", "nicer_repl"]
 ast = []
 bytecode = []
+challenges = ["implicit_helpers", "repl_expr_print", "inline_comments"]
+nicer_repl = ["implicit_semicolons", "repl_expr_print"]
 repl_expr_print = []
 implicit_helpers = ["implicit_converions", "implicit_semicolons"]
 implicit_converions = []

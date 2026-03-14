@@ -135,9 +135,23 @@ impl<'a> Parser<'a> {
             self.if_statement()
         } else if self.match_any([LeftBrace]) {
             Ok(Stmt::Block(self.block()?))
+        } else if self.match_any([While]) {
+            self.while_statement()
         } else {
             self.expression_statement()
         }
+    }
+
+    fn while_statement(&mut self) -> Result<Stmt<'a>, ParseError> {
+        self.consume(TokenKind::LeftParen)
+            .ok_or(self.error(ParseErrorKind::ExpectedTokenKind(TokenKind::LeftParen)))?;
+        let condition = self.expression()?;
+        self.consume(TokenKind::RightParen)
+            .ok_or(self.error(ParseErrorKind::ExpectedTokenKind(TokenKind::RightParen)))?;
+        Ok(Stmt::While {
+            condition,
+            body: Box::new(self.statement()?),
+        })
     }
 
     fn if_statement(&mut self) -> Result<Stmt<'a>, ParseError> {
@@ -198,7 +212,7 @@ impl<'a> Parser<'a> {
     }
 
     fn assignment(&mut self) -> Result<Expr<'a>, ParseError> {
-        let expr = self.equality()?;
+        let expr = self.logic_or()?;
 
         if self.match_any([TokenKind::Equal]) {
             let equals = self.previous();
@@ -221,15 +235,41 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn logic_or(&mut self) -> Result<Expr<'a>, ParseError> {
+        let mut expr = self.logic_and()?;
+
+        while self.match_any([TokenKind::Or]) {
+            expr = Expr::Logical {
+                left: Box::new(expr),
+                operator: self.previous(),
+                right: Box::new(self.logic_and()?),
+            };
+        }
+
+        Ok(expr)
+    }
+
+    fn logic_and(&mut self) -> Result<Expr<'a>, ParseError> {
+        let mut expr = self.equality()?;
+
+        while self.match_any([TokenKind::And]) {
+            expr = Expr::Logical {
+                left: Box::new(expr),
+                operator: self.previous(),
+                right: Box::new(self.equality()?),
+            };
+        }
+
+        Ok(expr)
+    }
+
     fn equality(&mut self) -> Result<Expr<'a>, ParseError> {
         let mut expr = self.comparison()?;
 
         use TokenKind::*;
         while self.match_any([BangEqual, EqualEqual]) {
-            let operator: Token<'a> = self.previous();
-            let right = self.comparison()?;
             // Append each series of operators to the expr recursivley
-            expr = Expr::binary(expr, operator, right)
+            expr = Expr::binary(expr, self.previous(), self.comparison()?)
         }
 
         Ok(expr)
@@ -240,9 +280,7 @@ impl<'a> Parser<'a> {
 
         use TokenKind::*;
         while self.match_any([Greater, GreaterEqual, Less, LessEqual]) {
-            let operator = self.previous();
-            let right = self.term()?;
-            expr = Expr::binary(expr, operator, right)
+            expr = Expr::binary(expr, self.previous(), self.term()?)
         }
 
         Ok(expr)
@@ -253,9 +291,7 @@ impl<'a> Parser<'a> {
 
         use TokenKind::*;
         while self.match_any([Minus, Plus]) {
-            let operator = self.previous();
-            let right = self.factor()?;
-            expr = Expr::binary(expr, operator, right)
+            expr = Expr::binary(expr, self.previous(), self.factor()?)
         }
 
         Ok(expr)
@@ -266,9 +302,7 @@ impl<'a> Parser<'a> {
 
         use TokenKind::*;
         while self.match_any([Slash, Star]) {
-            let operator = self.previous();
-            let right = self.unary()?;
-            expr = Expr::binary(expr, operator, right)
+            expr = Expr::binary(expr, self.previous(), self.unary()?)
         }
 
         Ok(expr)
@@ -277,9 +311,7 @@ impl<'a> Parser<'a> {
     fn unary(&mut self) -> Result<Expr<'a>, ParseError> {
         use TokenKind::*;
         if self.match_any([Bang, Minus]) {
-            let operator = self.previous();
-            let right = self.unary()?;
-            Ok(Expr::unary(operator, right))
+            Ok(Expr::unary(self.previous(), self.unary()?))
         } else {
             self.primary()
         }

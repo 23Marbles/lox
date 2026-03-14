@@ -60,7 +60,9 @@ fn run_prompt() -> Result<(), RunError> {
         }
 
         #[cfg(feature = "implicit_semicolons")]
-        line_buf.insert(line_buf.len() - 2, ';');
+        if line_buf.len() > 2 {
+            line_buf.insert(line_buf.len() - 2, ';');
+        }
 
         let out = run(line_buf.trim_end(), &mut env);
 
