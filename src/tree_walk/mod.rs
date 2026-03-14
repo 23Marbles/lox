@@ -16,7 +16,7 @@ mod lox_var;
 mod parser;
 mod token;
 
-pub fn main() -> Result<(), RunError> {
+pub fn main<'a>() -> Result<(), RunError<'a>> {
     let args: Vec<String> = env::args().collect();
 
     if args.len() > 2 {
@@ -40,7 +40,7 @@ fn run_file(file_path: &Path) -> Result<(), RunError> {
     run(&contents)
 }
 
-fn run_prompt() -> Result<(), RunError> {
+fn run_prompt<'a>() -> Result<(), RunError<'a>> {
     let mut line_buf = String::new();
 
     loop {
@@ -57,7 +57,7 @@ fn run_prompt() -> Result<(), RunError> {
     }
 }
 
-fn run(source: &str) -> Result<(), RunError> {
+fn run<'a>(source: &'a str) -> Result<(), RunError<'a>> {
     let scanner = Scanner::new(source);
 
     let mut errors: Vec<error::scan_err::ScanError> = Vec::new();
@@ -85,10 +85,18 @@ fn run(source: &str) -> Result<(), RunError> {
         let parsed = parser.parse()?;
 
         #[cfg(debug_assertions)]
-        println!("parsed:\n{parsed}");
+        {
+            println!("parsed:");
+            for t in parsed.iter().cloned() {
+                println!("{t}")
+            }
+        }
 
-        let interpreter = Interpreter::new(parsed);
-        println!("{}", interpreter.interpret()?);
+        let mut interpreter: Interpreter<'a> = Interpreter::new(parsed);
+
+        if let Some(out) = interpreter.interpret()? {
+            println!("{out}")
+        }
 
         Ok(())
     } else {

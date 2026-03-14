@@ -1,6 +1,27 @@
-use std::{fmt::Display, ops::*};
+use std::{collections::HashMap, fmt::Display, ops::*};
 
 use crate::tree_walk::ast::Literal;
+
+#[derive(Debug, Clone)]
+pub struct Environment {
+    values: HashMap<String, LoxVar>,
+}
+
+impl Environment {
+    pub fn new() -> Self {
+        Self {
+            values: HashMap::new(),
+        }
+    }
+
+    pub fn define(&mut self, name: String, value: LoxVar) {
+        self.values.insert(name, value);
+    }
+
+    pub fn get(&self, name: String) -> Option<&LoxVar> {
+        self.values.get(&name)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum LoxVar {
@@ -18,8 +39,8 @@ pub enum LoxVarKinds {
     String,
 }
 
-impl From<LoxVar> for LoxVarKinds {
-    fn from(value: LoxVar) -> Self {
+impl From<&LoxVar> for LoxVarKinds {
+    fn from(value: &LoxVar) -> Self {
         match value {
             LoxVar::Nil => Self::Nil,
             LoxVar::Bool(_) => Self::Bool,
@@ -97,27 +118,27 @@ impl PartialEq for LoxVar {
 
 macro_rules! bin_num_op_impl {
     ($trait:ident, $fn:ident) => {
-        impl $trait for LoxVar {
-            type Output = Result<Self, (Self, Self)>;
+        impl $trait for &LoxVar {
+            type Output = Result<LoxVar, (Self, Self)>;
 
             fn $fn(self, rhs: Self) -> Self::Output {
-                let ln = self.expect_number().ok_or((self.clone(), rhs.clone()))?;
+                let ln = self.expect_number().ok_or((self, rhs))?;
                 let rn = rhs
                     .expect_number()
-                    .ok_or((LoxVar::Number(ln), rhs.clone()))?;
+                    .ok_or((self, rhs))?;
                 Ok(LoxVar::Number(ln.$fn(rn)))
             }
         }
     };
 }
 
-impl Add for LoxVar {
-    type Output = Result<Self, (Self, Self)>;
+impl Add for &LoxVar {
+    type Output = Result<LoxVar, (Self, Self)>;
 
     fn add(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
             (LoxVar::Number(ln), LoxVar::Number(rn)) => Ok(LoxVar::Number(ln + rn)),
-            (LoxVar::String(ls), LoxVar::String(rs)) => Ok(LoxVar::String(ls + &rs)),
+            (LoxVar::String(ls), LoxVar::String(rs)) => Ok(LoxVar::String(ls.clone() + &rs)),
             #[cfg(feature = "challenges")]
             (LoxVar::String(s), other) => Ok(LoxVar::String(s + &other.to_string())),
             #[cfg(feature = "challenges")]

@@ -1,5 +1,5 @@
 use crate::tree_walk::{
-    ast::Expr,
+    ast::{Expr, Stmt},
     error::parse_err::{ParseError, ParseErrorKind},
     token::{Token, TokenKind},
 };
@@ -8,6 +8,24 @@ pub struct Parser<'a> {
     tokens: Vec<Token<'a>>,
     current: usize,
     errors: Vec<ParseError>,
+}
+
+impl<'a> Iterator for Parser<'a> {
+    type Item = Result<Stmt<'a>, ParseError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.is_at_end() {
+            None
+        } else {
+            match self.declaration() {
+                Ok(s) => Some(Ok(s)),
+                Err(e) => {
+                    self.synchronize();
+                    Some(Err(e))
+                }
+            }
+        }
+    }
 }
 
 impl<'a> Parser<'a> {
@@ -72,13 +90,75 @@ impl<'a> Parser<'a> {
         false
     }
 
-    pub fn parse(&mut self) -> Result<Expr<'a>, Vec<ParseError>> {
-        match self.expression() {
-            Ok(expr) => Ok(expr),
-            Err(err) => {
-                /*self.synchronize(); */
-                Err(vec![err])
-            }
+    pub fn parse(&mut self) -> Result<Vec<Stmt<'a>>, Vec<ParseError>> {
+        let (statements, errors) =
+            self.fold((Vec::new(), Vec::new()), |(mut stmts, mut errs), res| {
+                match res {
+                    Ok(s) => stmts.push(s),
+                    Err(e) => errs.push(e),
+                }
+                (stmts, errs)
+            });
+
+        if errors.is_empty() {
+            Ok(statements)
+        } else {
+            Err(errors)
+        }
+    }
+
+    fn declaration(&mut self) -> Result<Stmt<'a>, ParseError> {
+        if self.match_any([TokenKind::Var]) {
+            self.var_declaration()
+        } else {
+            self.statement()
+        }
+    }
+
+    fn var_declaration(&mut self) -> Result<Stmt<'a>, ParseError> {
+        let name = self
+            .consume(TokenKind::Identifier)
+            .ok_or(self.error(ParseErrorKind::ExpectedTokenKind(TokenKind::Identifier)))?;
+
+        let initializer;
+
+        if self.match_any([TokenKind::Equal]) {
+            initializer = Some(self.expression()?);
+        } else {
+            initializer = None
+        }
+
+        self.consume(TokenKind::Semicolon)
+            .ok_or(self.error(ParseErrorKind::ExpectedSemicolon))?;
+
+        Ok(Stmt::Var { name, initializer })
+    }
+
+    fn statement(&mut self) -> Result<Stmt<'a>, ParseError> {
+        use TokenKind::*;
+
+        if self.match_any([Print]) {
+            self.print_statement()
+        } else {
+            self.expression_statement()
+        }
+    }
+
+    fn print_statement(&mut self) -> Result<Stmt<'a>, ParseError> {
+        let value = self.expression()?;
+        if self.consume(TokenKind::Semicolon).is_none() {
+            Err(self.error(ParseErrorKind::ExpectedSemicolon))
+        } else {
+            Ok(Stmt::Print(value))
+        }
+    }
+
+    fn expression_statement(&mut self) -> Result<Stmt<'a>, ParseError> {
+        let value = self.expression()?;
+        if self.consume(TokenKind::Semicolon).is_none() {
+            Err(self.error(ParseErrorKind::ExpectedSemicolon))
+        } else {
+            Ok(Stmt::Expression(value))
         }
     }
 
@@ -184,6 +264,7 @@ impl<'a> Parser<'a> {
                     None => Err(self.error(ParseErrorKind::UnterminatedGrouping)),
                 }
             }
+            Identifier => Ok(Expr::Variable(self.advance().lexeme)),
             k => Err(self.error(ParseErrorKind::UnexpectedTokenKind(k))),
         }
     }

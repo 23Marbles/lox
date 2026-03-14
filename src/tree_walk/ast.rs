@@ -4,12 +4,56 @@ use std::{
 };
 
 use crate::tree_walk::{
-    error::eval_err::{EvaluateError, EvaluateErrorKind, make_eval_error},
-    lox_var::LoxVar,
+    error::{
+        eval_err::{EvaluateError, EvaluateErrorKind, make_bin_eval_error},
+        runtime_err::RuntimeError,
+    },
+    lox_var::{Environment, LoxVar},
     token::{Token, TokenKind},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+pub enum Stmt<'a> {
+    Expression(Expr<'a>),
+    Print(Expr<'a>),
+    Var {
+        name: Token<'a>,
+        initializer: Option<Expr<'a>>,
+    },
+}
+
+impl<'a> Stmt<'a> {
+    pub fn run(&self, env: &mut Environment) -> Result<Option<LoxVar>, RuntimeError> {
+        match self {
+            Stmt::Expression(expr) => Ok(Some(expr.evaluate(env)?)),
+            Stmt::Print(expr) => {
+                let value = expr.evaluate(env)?;
+                println!("{value}");
+                Ok(None)
+            }
+            Stmt::Var { name, initializer } => {
+                let value = match initializer {
+                    Some(value) => value.evaluate(env)?,
+                    None => LoxVar::Nil,
+                };
+                env.define(name.lexeme.to_string(), value.clone());
+                Ok(None)
+            }
+        }
+    }
+}
+
+impl Display for Stmt<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Stmt::Expression(expr) => write!(f, "{expr}"),
+            Stmt::Print(expr) => write!(f, "(print {expr})"),
+            Stmt::Var { name, initializer } => write!(f, "(var {} = {initializer:?})", name.lexeme),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum Expr<'a> {
     Literal(Literal<'a>),
 
@@ -25,6 +69,8 @@ pub enum Expr<'a> {
     },
 
     Grouping(Box<Expr<'a>>),
+
+    Variable(&'a str),
 }
 
 impl<'a> Expr<'a> {
@@ -43,11 +89,11 @@ impl<'a> Expr<'a> {
         }
     }
 
-    pub fn evaluate(&self) -> Result<LoxVar, EvaluateError> {
+    pub fn evaluate(&self, env: &Environment) -> Result<LoxVar, EvaluateError> {
         match self {
             Expr::Literal(literal) => Ok(literal.into()),
             Expr::Unary { operator, right } => {
-                let right_var = right.evaluate()?;
+                let right_var = right.evaluate(env)?;
                 match operator.kind {
                     TokenKind::Minus => {
                         if let LoxVar::Number(n) = right_var {
@@ -56,10 +102,10 @@ impl<'a> Expr<'a> {
                             Err(EvaluateError::new(
                                 EvaluateErrorKind::IncompatableUnaryOperator {
                                     operator: TokenKind::Minus,
-                                    var_ty: right_var.into(),
+                                    var_ty: (&right_var).into(),
                                 },
-                                operator.line,
-                                operator.column,
+                                Some(operator.line),
+                                Some(operator.column),
                             ))
                         }
                     }
@@ -74,8 +120,8 @@ impl<'a> Expr<'a> {
                 operator,
                 right,
             } => {
-                let left_var = left.evaluate()?;
-                let right_var = right.evaluate()?;
+                let left_var = left.evaluate(env)?;
+                let right_var = right.evaluate(env)?;
 
                 use TokenKind::*;
                 use std::cmp::Ordering;
@@ -85,64 +131,67 @@ impl<'a> Expr<'a> {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord == Ordering::Greater))
                         } else {
-                            Err(make_eval_error(operator, Greater, left_var, right_var))
+                            Err(make_bin_eval_error(operator, Greater, &left_var, &right_var))
                         }
                     }
                     GreaterEqual => {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord != Ordering::Less))
                         } else {
-                            Err(make_eval_error(operator, GreaterEqual, left_var, right_var))
+                            Err(make_bin_eval_error(operator, GreaterEqual, &left_var, &right_var))
                         }
                     }
                     Less => {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord == Ordering::Less))
                         } else {
-                            Err(make_eval_error(operator, Less, left_var, right_var))
+                            Err(make_bin_eval_error(operator, Less, &left_var, &right_var))
                         }
                     }
                     LessEqual => {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord != Ordering::Greater))
                         } else {
-                            Err(make_eval_error(operator, LessEqual, left_var, right_var))
+                            Err(make_bin_eval_error(operator, LessEqual, &left_var, &right_var))
                         }
                     }
                     EqualEqual => {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord == Ordering::Equal))
                         } else {
-                            Err(make_eval_error(operator, EqualEqual, left_var, right_var))
+                            Err(make_bin_eval_error(operator, EqualEqual, &left_var, &right_var))
                         }
                     }
                     BangEqual => {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord != Ordering::Equal))
                         } else {
-                            Err(make_eval_error(operator, BangEqual, left_var, right_var))
+                            Err(make_bin_eval_error(operator, BangEqual, &left_var, &right_var))
                         }
                     }
                     Minus => left_var
-                        .sub(right_var)
-                        .map_err(|(l, r)| make_eval_error(operator, Minus, l, r)),
+                        .sub(&right_var)
+                        .map_err(|(l, r)| make_bin_eval_error(operator, Minus, &l, &r)),
                     Slash => left_var
-                        .div(right_var)
-                        .map_err(|(l, r)| make_eval_error(operator, Slash, l, r)),
+                        .div(&right_var)
+                        .map_err(|(l, r)| make_bin_eval_error(operator, Slash, &l, &r)),
                     Star => left_var
-                        .mul(right_var)
-                        .map_err(|(l, r)| make_eval_error(operator, Star, l, r)),
+                        .mul(&right_var)
+                        .map_err(|(l, r)| make_bin_eval_error(operator, Star, &l, &r)),
                     Plus => left_var
-                        .add(right_var)
-                        .map_err(|(l, r)| make_eval_error(operator, Plus, l, r)),
+                        .add(&right_var)
+                        .map_err(|(l, r)| make_bin_eval_error(operator, Plus, &l, &r)),
                     _ => unreachable!(
                         "only tokens with kind gt, ge, lt, le, ne, eq, minus, plus, slash and star can be binary operators"
                     ),
                 }
             }
-            Expr::Grouping(expr) => {
-                todo!()
-            }
+            Expr::Grouping(expr) => expr.evaluate(env),
+            Expr::Variable(name) => env
+                .get(name.to_string())
+                .ok_or(EvaluateError::new(
+                    EvaluateErrorKind::UndeclaredVariable { name }, None, None
+                )).cloned(),
         }
     }
 }
@@ -158,11 +207,12 @@ impl Display for Expr<'_> {
                 right,
             } => write!(f, "({operator} {left} {right})"),
             Expr::Grouping(expr) => write!(f, "(group {expr})"),
+            Expr::Variable(name) => write!(f, "(variable {name})"),
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Literal<'a> {
     Number(f64),
     String(&'a str),
