@@ -114,13 +114,11 @@ impl<'a> Parser<'a> {
             .consume(TokenKind::Identifier)
             .ok_or(self.error(ParseErrorKind::ExpectedTokenKind(TokenKind::Identifier)))?;
 
-        let initializer;
-
-        if self.match_any([TokenKind::Equal]) {
-            initializer = Some(self.expression()?);
+        let initializer = if self.match_any([TokenKind::Equal]) {
+            Some(self.expression()?)
         } else {
-            initializer = None
-        }
+            None
+        };
 
         self.consume(TokenKind::Semicolon)
             .ok_or(self.error(ParseErrorKind::ExpectedTokenKind(TokenKind::Semicolon)))?;

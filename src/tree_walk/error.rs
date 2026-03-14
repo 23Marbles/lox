@@ -231,7 +231,7 @@ pub mod runtime_err {
         EvaluateError(EvaluateError),
     }
 
-    impl<'a> From<EvaluateError> for RuntimeError {
+    impl From<EvaluateError> for RuntimeError {
         fn from(value: EvaluateError) -> Self {
             Self {
                 kind: RuntimeErrorKind::EvaluateError(value),

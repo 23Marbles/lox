@@ -113,21 +113,21 @@ impl<'a> Iterator for Scanner<'a> {
 
         self.start = self.current;
 
-        Some(Ok(loop {
+        Some(Ok('scan: {
             let c = self.advance();
 
             let current_token_type = match c {
-                '(' => break self.make_token(TokenKind::LeftParen),
-                ')' => break self.make_token(TokenKind::RightParen),
-                '{' => break self.make_token(TokenKind::LeftBrace),
-                '}' => break self.make_token(TokenKind::RightBrace),
-                ',' => break self.make_token(TokenKind::Comma),
-                '.' => break self.make_token(TokenKind::Dot),
-                '-' => break self.make_token(TokenKind::Minus),
-                '+' => break self.make_token(TokenKind::Plus),
-                ';' => break self.make_token(TokenKind::Semicolon),
-                '*' => break self.make_token(TokenKind::Star),
-                '!' => break self.make_token(TokenKind::Bang),
+                '(' => break 'scan self.make_token(TokenKind::LeftParen),
+                ')' => break 'scan self.make_token(TokenKind::RightParen),
+                '{' => break 'scan self.make_token(TokenKind::LeftBrace),
+                '}' => break 'scan self.make_token(TokenKind::RightBrace),
+                ',' => break 'scan self.make_token(TokenKind::Comma),
+                '.' => break 'scan self.make_token(TokenKind::Dot),
+                '-' => break 'scan self.make_token(TokenKind::Minus),
+                '+' => break 'scan self.make_token(TokenKind::Plus),
+                ';' => break 'scan self.make_token(TokenKind::Semicolon),
+                '*' => break 'scan self.make_token(TokenKind::Star),
+                '!' => break 'scan self.make_token(TokenKind::Bang),
                 '>' => TokenKind::Greater,
                 '<' => TokenKind::Less,
                 '=' => TokenKind::Equal,
@@ -145,9 +145,9 @@ impl<'a> Iterator for Scanner<'a> {
                         string.push(self.advance());
                     }
                     if let Some(key) = TokenKind::search_keyword_str(&string) {
-                        break self.make_token(key);
+                        break 'scan self.make_token(key);
                     } else {
-                        break self.make_token(TokenKind::Identifier);
+                        break 'scan self.make_token(TokenKind::Identifier);
                     }
                 }
                 x if x.is_ascii_digit() => {
@@ -163,7 +163,7 @@ impl<'a> Iterator for Scanner<'a> {
                         }
                     }
 
-                    break self.make_token(TokenKind::Number);
+                    break 'scan self.make_token(TokenKind::Number);
                 }
                 x => return Some(Err(self.error(ScanErrorKind::UnexpectedCharacter(x)))),
             };
@@ -182,7 +182,7 @@ impl<'a> Iterator for Scanner<'a> {
                     self.advance();
 
                     // Do not include "" in the lexme
-                    break self.make_token_with_slice(
+                    break 'scan self.make_token_with_slice(
                         TokenKind::String,
                         self.start + 1,
                         self.current - 1,
@@ -216,25 +216,29 @@ impl<'a> Iterator for Scanner<'a> {
                                         }
                                     }
                                 } else {
-                                    break self.make_token(current_token_type);
+                                    break 'scan self.make_token(current_token_type);
                                 }
                             }
                             #[cfg(not(feature = "challenges"))]
-                            break self.make_token(current_token_type);
+                            break 'scan self.make_token(current_token_type);
                         }
                     }
                 }
                 TokenKind::Bang => {
-                    break self.make_token_if('=', TokenKind::BangEqual, current_token_type);
+                    break 'scan self.make_token_if('=', TokenKind::BangEqual, current_token_type);
                 }
                 TokenKind::Equal => {
-                    break self.make_token_if('=', TokenKind::EqualEqual, current_token_type);
+                    break 'scan self.make_token_if('=', TokenKind::EqualEqual, current_token_type);
                 }
                 TokenKind::Greater => {
-                    break self.make_token_if('=', TokenKind::GreaterEqual, current_token_type);
+                    break 'scan self.make_token_if(
+                        '=',
+                        TokenKind::GreaterEqual,
+                        current_token_type,
+                    );
                 }
                 TokenKind::Less => {
-                    break self.make_token_if('=', TokenKind::LessEqual, current_token_type);
+                    break 'scan self.make_token_if('=', TokenKind::LessEqual, current_token_type);
                 }
                 _ => unreachable!(),
             }
