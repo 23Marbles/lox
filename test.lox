@@ -2,4 +2,5 @@ var Hello = 4.6;
 print (Hello == 34); // This should be false
 // Ignore me
 var language = "lox";
+print language;
 //helpimbeingcutofffff

@@ -190,7 +190,7 @@ impl<'a> Expr<'a> {
             Expr::Variable(name) => env
                 .get(name.to_string())
                 .ok_or(EvaluateError::new(
-                    EvaluateErrorKind::UndeclaredVariable { name }, None, None
+                    EvaluateErrorKind::UndeclaredVariable { name: name.to_string() }, None, None
                 )).cloned(),
         }
     }

@@ -24,20 +24,20 @@ pub mod run_err {
         scan_err::ScanError,
     };
     #[derive(Debug)]
-    enum RunErrorKind<'a> {
+    enum RunErrorKind {
         IoError(std::io::Error),
         ScanErrors(Vec<ScanError>),
         ParseErrors(Vec<ParseError>),
-        EvaluateError(EvaluateError<'a>),
-        RuntimeError(RuntimeError<'a>),
+        EvaluateError(EvaluateError),
+        RuntimeError(RuntimeError),
     }
 
     #[derive(Debug)]
-    pub struct RunError<'a> {
-        kind: RunErrorKind<'a>,
+    pub struct RunError {
+        kind: RunErrorKind,
     }
 
-    impl Display for RunError<'_> {
+    impl Display for RunError {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match &self.kind {
                 RunErrorKind::IoError(err) => write!(f, "Io error:\n{err}")?,
@@ -60,13 +60,13 @@ pub mod run_err {
         }
     }
 
-    impl Error for RunError<'_> {}
+    impl Error for RunError {}
 
-    translate_err_impl!('a, std::io::Error, RunError<'a>, RunErrorKind::IoError);
-    translate_err_impl!('a, Vec<ScanError>, RunError<'a>, RunErrorKind::ScanErrors);
-    translate_err_impl!('a, Vec<ParseError>, RunError<'a>, RunErrorKind::ParseErrors);
-    translate_err_impl!('a, EvaluateError<'a>, RunError<'a>, RunErrorKind::EvaluateError);
-    translate_err_impl!('a, RuntimeError<'a>, RunError<'a>, RunErrorKind::RuntimeError);
+    translate_err_impl!('a, std::io::Error, RunError, RunErrorKind::IoError);
+    translate_err_impl!('a, Vec<ScanError>, RunError, RunErrorKind::ScanErrors);
+    translate_err_impl!('a, Vec<ParseError>, RunError, RunErrorKind::ParseErrors);
+    translate_err_impl!('a, EvaluateError, RunError, RunErrorKind::EvaluateError);
+    translate_err_impl!('a, RuntimeError, RunError, RunErrorKind::RuntimeError);
 }
 
 pub mod scan_err {
@@ -130,27 +130,27 @@ pub mod runtime_err {
 
     use crate::tree_walk::error::eval_err::EvaluateError;
 
-    #[derive(Debug, Clone, Copy)]
-    pub struct RuntimeError<'a> {
-        pub kind: RuntimeErrorKind<'a>,
+    #[derive(Debug, Clone)]
+    pub struct RuntimeError {
+        pub kind: RuntimeErrorKind,
     }
 
-    impl Display for RuntimeError<'_> {
+    impl Display for RuntimeError {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            match self.kind {
+            match &self.kind {
                 RuntimeErrorKind::EvaluateError(err) => write!(f, "{err}"),
             }
         }
     }
 
-    impl Error for RuntimeError<'_> {}
+    impl Error for RuntimeError {}
 
-    #[derive(Debug, Clone, Copy)]
-    pub enum RuntimeErrorKind<'a> {
-        EvaluateError(EvaluateError<'a>),
+    #[derive(Debug, Clone)]
+    pub enum RuntimeErrorKind {
+        EvaluateError(EvaluateError),
     }
 
-    translate_err_impl!('a, EvaluateError<'a>, RuntimeError<'a>, RuntimeErrorKind::EvaluateError);
+    translate_err_impl!('a, EvaluateError, RuntimeError, RuntimeErrorKind::EvaluateError);
 }
 
 pub mod parse_err {
@@ -210,16 +210,16 @@ pub mod eval_err {
         token::{Token, TokenKind},
     };
 
-    #[derive(Debug, Clone, Copy)]
-    pub struct EvaluateError<'a> {
-        kind: EvaluateErrorKind<'a>,
+    #[derive(Debug, Clone)]
+    pub struct EvaluateError {
+        kind: EvaluateErrorKind,
         line: Option<usize>,
         column: Option<usize>,
     }
 
-    impl<'a> EvaluateError<'a> {
+    impl EvaluateError {
         pub fn new(
-            kind: EvaluateErrorKind<'a>,
+            kind: EvaluateErrorKind,
             line: Option<usize>,
             column: Option<usize>,
         ) -> Self {
@@ -227,7 +227,7 @@ pub mod eval_err {
         }
     }
 
-    impl Display for EvaluateError<'_> {
+    impl Display for EvaluateError {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             let position = if self.column.is_some() || self.line.is_some() {
                 format!(
@@ -242,7 +242,7 @@ pub mod eval_err {
             } else {
                 "".to_string()
             };
-            match self.kind {
+            match &self.kind {
                 EvaluateErrorKind::IncompatableUnaryOperator { operator, var_ty } => write!(
                     f,
                     "{}Cannot use unary operator [{operator:?}] on type [{var_ty:?}]",
@@ -266,8 +266,8 @@ pub mod eval_err {
         }
     }
 
-    #[derive(Debug, Clone, Copy)]
-    pub enum EvaluateErrorKind<'a> {
+    #[derive(Debug, Clone)]
+    pub enum EvaluateErrorKind {
         IncompatableUnaryOperator {
             operator: TokenKind,
             var_ty: LoxVarKinds,
@@ -278,16 +278,16 @@ pub mod eval_err {
             right_ty: LoxVarKinds,
         },
         UndeclaredVariable {
-            name: &'a str,
+            name: String,
         },
     }
 
-    pub fn make_bin_eval_error<'a>(
+    pub fn make_bin_eval_error(
         operator: &Token,
         kind: TokenKind,
         left_var: &LoxVar,
         right_var: &LoxVar,
-    ) -> EvaluateError<'a> {
+    ) -> EvaluateError {
         EvaluateError::new(
             EvaluateErrorKind::IncompatableBinaryOperator {
                 operator: kind,

@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::tree_walk::{
-    error::run_err::RunError, interpreter::Interpreter, parser::Parser, token::Scanner,
+    error::run_err::RunError, interpreter::Interpreter, lox_var::Environment, parser::Parser, token::Scanner
 };
 mod ast;
 mod error;
@@ -16,7 +16,7 @@ mod lox_var;
 mod parser;
 mod token;
 
-pub fn main<'a>() -> Result<(), RunError<'a>> {
+pub fn main() -> Result<(), RunError> {
     let args: Vec<String> = env::args().collect();
 
     if args.len() > 2 {
@@ -37,11 +37,13 @@ fn run_file(file_path: &Path) -> Result<(), RunError> {
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
 
-    run(&contents)
+    let mut env = Environment::new();
+    run(&contents, &mut env)
 }
 
-fn run_prompt<'a>() -> Result<(), RunError<'a>> {
+fn run_prompt() -> Result<(), RunError> {
     let mut line_buf = String::new();
+    let mut env = Environment::new();
 
     loop {
         print!("> ");
@@ -49,7 +51,11 @@ fn run_prompt<'a>() -> Result<(), RunError<'a>> {
         if stdin().read_line(&mut line_buf)? == 0 {
             break Ok(());
         }
-        let err = run(&line_buf);
+
+        let source = line_buf.clone();
+
+        let err = run(&source, &mut env);
+        
         if let Err(e) = err {
             println!("{e}");
         }
@@ -57,7 +63,7 @@ fn run_prompt<'a>() -> Result<(), RunError<'a>> {
     }
 }
 
-fn run<'a>(source: &'a str) -> Result<(), RunError<'a>> {
+fn run<'a>(source: &'a str, env: &mut Environment) -> Result<(), RunError> {
     let scanner = Scanner::new(source);
 
     let mut errors: Vec<error::scan_err::ScanError> = Vec::new();
@@ -92,7 +98,7 @@ fn run<'a>(source: &'a str) -> Result<(), RunError<'a>> {
             }
         }
 
-        let mut interpreter: Interpreter<'a> = Interpreter::new(parsed);
+        let mut interpreter = Interpreter::new(parsed, env);
 
         if let Some(out) = interpreter.interpret()? {
             println!("{out}")
