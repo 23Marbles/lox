@@ -29,10 +29,7 @@ impl<'a> Iterator for Parser<'a> {
 
 impl<'a> Parser<'a> {
     pub fn new(tokens: Vec<Token<'a>>) -> Self {
-        Self {
-            tokens,
-            current: 0,
-        }
+        Self { tokens, current: 0 }
     }
 
     fn error(&mut self, kind: ParseErrorKind) -> ParseError {
@@ -45,8 +42,8 @@ impl<'a> Parser<'a> {
                 errorred_token.column + errorred_token.lexeme.len()
             }
         };
-        let err = ParseError::new(kind, errorred_token.line, column);
-        err
+
+        ParseError::new(kind, errorred_token.line, column)
     }
 
     fn is_at_end(&self) -> bool {
@@ -317,9 +314,8 @@ impl<'a> Parser<'a> {
                 return;
             }
 
-            match self.peek().kind {
-                TokenKind::Return => return,
-                _ => (),
+            if self.peek().kind == TokenKind::Return {
+                return;
             }
 
             self.advance();

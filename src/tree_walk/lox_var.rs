@@ -2,8 +2,11 @@ use std::{cell::RefCell, collections::HashMap, fmt::Display, ops::*, rc::Rc};
 
 use crate::tree_walk::ast::Literal;
 
-pub trait EnvironmentImpl {
-    fn new(enclosing: Option<Env>) -> Env;
+pub trait EnvironmentImpl
+where
+    Self: Sized,
+{
+    fn new(enclosing: Option<Self>) -> Self;
     fn descend(&mut self);
     #[must_use = "Make sure you are not ascending above global level"]
     fn ascend(&mut self) -> Option<()>;
@@ -52,8 +55,7 @@ impl Environment {
         self.values.get(&name).cloned().or_else(|| {
             self.enclosing
                 .as_ref()
-                .map(|parent| parent.borrow().get(name))
-                .flatten()
+                .and_then(|parent| parent.borrow().get(name))
         })
     }
 
@@ -184,7 +186,7 @@ impl Add for &LoxVar {
     fn add(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
             (LoxVar::Number(ln), LoxVar::Number(rn)) => Ok(LoxVar::Number(ln + rn)),
-            (LoxVar::String(ls), LoxVar::String(rs)) => Ok(LoxVar::String(ls.to_owned() + &rs)),
+            (LoxVar::String(ls), LoxVar::String(rs)) => Ok(LoxVar::String(ls.to_owned() + rs)),
             #[cfg(feature = "challenges")]
             (LoxVar::String(s), other) => Ok(LoxVar::String(s.to_owned() + &other.to_string())),
             #[cfg(feature = "challenges")]

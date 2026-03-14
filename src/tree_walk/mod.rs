@@ -42,7 +42,10 @@ fn run_file(file_path: &Path) -> Result<(), RunError> {
     file.read_to_string(&mut contents)?;
 
     let mut env = <Env as EnvironmentImpl>::new(None);
-    run(&contents, &mut env).map(|_| ()).map_err(|mut err| {err.set_source(contents); err})
+    run(&contents, &mut env).map(|_| ()).map_err(|mut err| {
+        err.set_source(contents);
+        err
+    })
 }
 
 fn run_prompt() -> Result<(), RunError> {
@@ -61,8 +64,7 @@ fn run_prompt() -> Result<(), RunError> {
         if let Err(mut err) = out {
             err.set_source(line_buf.clone());
             println!("{err}");
-        } 
-        else if let Some(_var) = out.expect("already checked for err variants") {
+        } else if let Some(_var) = out.expect("already checked for err variants") {
             #[cfg(feature = "challenges")]
             println!("{_var}")
         }
@@ -71,7 +73,7 @@ fn run_prompt() -> Result<(), RunError> {
     }
 }
 
-fn run<'a>(source: &'a str, env: &mut Env) -> Result<Option<LoxVar>, RunError> {
+fn run(source: &str, env: &mut Env) -> Result<Option<LoxVar>, RunError> {
     let scanner = Scanner::new(source);
 
     let mut errors: Vec<error::scan_err::ScanError> = Vec::new();
@@ -90,7 +92,7 @@ fn run<'a>(source: &'a str, env: &mut Env) -> Result<Option<LoxVar>, RunError> {
         #[cfg(debug_assertions)]
         {
             println!("tokens:");
-            for t in tokens.iter().cloned() {
+            for t in tokens.iter() {
                 println!("{t:?}")
             }
         }
@@ -101,7 +103,7 @@ fn run<'a>(source: &'a str, env: &mut Env) -> Result<Option<LoxVar>, RunError> {
         #[cfg(debug_assertions)]
         {
             println!("parsed:");
-            for t in parsed.iter().cloned() {
+            for t in parsed.iter() {
                 println!("{t}")
             }
         }

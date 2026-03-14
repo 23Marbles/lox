@@ -324,10 +324,10 @@ pub mod eval_err {
                 format!(
                     "[{}{}] ",
                     self.line
-                        .and_then(|v| Some(format!("Line {}", v)))
+                        .map(|v| format!("Line {}", v))
                         .unwrap_or("Column".to_string()),
                     self.column
-                        .and_then(|v| Some(format!(":{}", v)))
+                        .map(|v| format!(":{}", v))
                         .unwrap_or("".to_string())
                 )
             } else {

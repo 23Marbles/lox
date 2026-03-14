@@ -222,16 +222,16 @@ impl<'a> Expr<'a> {
                     }
                     Minus => left_var
                         .sub(&right_var)
-                        .map_err(|(l, r)| make_bin_eval_error(operator, Minus, &l, &r)),
+                        .map_err(|(l, r)| make_bin_eval_error(operator, Minus, l, r)),
                     Slash => left_var
                         .div(&right_var)
-                        .map_err(|(l, r)| make_bin_eval_error(operator, Slash, &l, &r)),
+                        .map_err(|(l, r)| make_bin_eval_error(operator, Slash, l, r)),
                     Star => left_var
                         .mul(&right_var)
-                        .map_err(|(l, r)| make_bin_eval_error(operator, Star, &l, &r)),
+                        .map_err(|(l, r)| make_bin_eval_error(operator, Star, l, r)),
                     Plus => left_var
                         .add(&right_var)
-                        .map_err(|(l, r)| make_bin_eval_error(operator, Plus, &l, &r)),
+                        .map_err(|(l, r)| make_bin_eval_error(operator, Plus, l, r)),
                     _ => unreachable!(
                         "only tokens with kind gt, ge, lt, le, ne, eq, minus, plus, slash and star can be binary operators"
                     ),

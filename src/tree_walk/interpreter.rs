@@ -18,7 +18,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
         let mut last = None;
 
         for s in &self.statements {
-            last = s.run(&mut self.env)?;
+            last = s.run(self.env)?;
 
             #[cfg(debug_assertions)]
             if let Some(v) = &last {

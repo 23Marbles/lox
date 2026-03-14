@@ -113,7 +113,7 @@ impl<'a> Iterator for Scanner<'a> {
 
         self.start = self.current;
 
-        return Some(Ok(loop {
+        Some(Ok(loop {
             let c = self.advance();
 
             let current_token_type = match c {
@@ -238,7 +238,7 @@ impl<'a> Iterator for Scanner<'a> {
                 }
                 _ => unreachable!(),
             }
-        }));
+        }))
     }
 }
 
