@@ -314,15 +314,8 @@ impl<'a> Parser<'a> {
 
             use TokenKind::*;
             match self.peek().kind {
-                Class |
-                Fun |
-                Var |
-                For |
-                If |
-                While |
-                Print |
-                Return => return,
-                _ => ()
+                Class | Fun | Var | For | If | While | Print | Return => return,
+                _ => (),
             }
 
             self.advance();
