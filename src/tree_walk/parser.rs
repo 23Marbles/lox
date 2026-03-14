@@ -7,7 +7,6 @@ use crate::tree_walk::{
 pub struct Parser<'a> {
     tokens: Vec<Token<'a>>,
     current: usize,
-    errors: Vec<ParseError>,
 }
 
 impl<'a> Iterator for Parser<'a> {
@@ -33,22 +32,20 @@ impl<'a> Parser<'a> {
         Self {
             tokens,
             current: 0,
-            errors: Vec::new(),
         }
     }
 
     fn error(&mut self, kind: ParseErrorKind) -> ParseError {
         let errorred_token = self.peek();
-        let err = ParseError {
-            kind,
-            line: errorred_token.line,
-            column: errorred_token.column,
+        let column = match kind {
+            ParseErrorKind::UnexpectedTokenKind(_) | ParseErrorKind::InvalidAssignTarget(_) => {
+                errorred_token.column
+            }
+            ParseErrorKind::ExpectedTokenKind(_) => {
+                errorred_token.column + errorred_token.lexeme.len()
+            }
         };
-        self.errors.push(ParseError {
-            kind,
-            line: errorred_token.line,
-            column: errorred_token.column,
-        });
+        let err = ParseError::new(kind, errorred_token.line, column);
         err
     }
 
@@ -129,7 +126,7 @@ impl<'a> Parser<'a> {
         }
 
         self.consume(TokenKind::Semicolon)
-            .ok_or(self.error(ParseErrorKind::ExpectedSemicolon))?;
+            .ok_or(self.error(ParseErrorKind::ExpectedTokenKind(TokenKind::Semicolon)))?;
 
         Ok(Stmt::Var { name, initializer })
     }
@@ -139,15 +136,31 @@ impl<'a> Parser<'a> {
 
         if self.match_any([Print]) {
             self.print_statement()
+        } else if self.match_any([LeftBrace]) {
+            Ok(Stmt::Block(self.block()?))
         } else {
             self.expression_statement()
+        }
+    }
+
+    fn block(&mut self) -> Result<Vec<Stmt<'a>>, ParseError> {
+        let mut statements = Vec::new();
+
+        while !self.check(TokenKind::RightBrace) && !self.is_at_end() {
+            statements.push(self.declaration()?);
+        }
+
+        if self.advance().kind == TokenKind::RightBrace {
+            Ok(statements)
+        } else {
+            Err(self.error(ParseErrorKind::ExpectedTokenKind(TokenKind::RightBrace)))
         }
     }
 
     fn print_statement(&mut self) -> Result<Stmt<'a>, ParseError> {
         let value = self.expression()?;
         if self.consume(TokenKind::Semicolon).is_none() {
-            Err(self.error(ParseErrorKind::ExpectedSemicolon))
+            Err(self.error(ParseErrorKind::ExpectedTokenKind(TokenKind::Semicolon)))
         } else {
             Ok(Stmt::Print(value))
         }
@@ -156,14 +169,38 @@ impl<'a> Parser<'a> {
     fn expression_statement(&mut self) -> Result<Stmt<'a>, ParseError> {
         let value = self.expression()?;
         if self.consume(TokenKind::Semicolon).is_none() {
-            Err(self.error(ParseErrorKind::ExpectedSemicolon))
+            Err(self.error(ParseErrorKind::ExpectedTokenKind(TokenKind::Semicolon)))
         } else {
             Ok(Stmt::Expression(value))
         }
     }
 
     fn expression(&mut self) -> Result<Expr<'a>, ParseError> {
-        self.equality()
+        self.assignment()
+    }
+
+    fn assignment(&mut self) -> Result<Expr<'a>, ParseError> {
+        let expr = self.equality()?;
+
+        if self.match_any([TokenKind::Equal]) {
+            let equals = self.previous();
+            let value = self.assignment()?;
+
+            if let Expr::Variable(name) = expr {
+                Ok(Expr::Assign {
+                    name,
+                    value: Box::new(value),
+                })
+            } else {
+                Err(ParseError::new(
+                    ParseErrorKind::InvalidAssignTarget(expr.string()),
+                    equals.line,
+                    equals.column,
+                ))
+            }
+        } else {
+            Ok(expr)
+        }
     }
 
     fn equality(&mut self) -> Result<Expr<'a>, ParseError> {
@@ -261,7 +298,9 @@ impl<'a> Parser<'a> {
                 let expr = self.expression()?;
                 match self.consume(RightParen) {
                     Some(_) => Ok(Expr::Grouping(Box::new(expr))),
-                    None => Err(self.error(ParseErrorKind::UnterminatedGrouping)),
+                    None => {
+                        Err(self.error(ParseErrorKind::ExpectedTokenKind(TokenKind::RightParen)))
+                    }
                 }
             }
             Identifier => Ok(Expr::Variable(self.advance().lexeme)),

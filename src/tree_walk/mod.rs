@@ -7,7 +7,11 @@ use std::{
 };
 
 use crate::tree_walk::{
-    error::run_err::RunError, interpreter::Interpreter, lox_var::Environment, parser::Parser, token::Scanner
+    error::run_err::RunError,
+    interpreter::Interpreter,
+    lox_var::{Env, EnvironmentImpl, LoxVar},
+    parser::Parser,
+    token::Scanner,
 };
 mod ast;
 mod error;
@@ -37,13 +41,13 @@ fn run_file(file_path: &Path) -> Result<(), RunError> {
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
 
-    let mut env = Environment::new();
-    run(&contents, &mut env)
+    let mut env = <Env as EnvironmentImpl>::new(None);
+    run(&contents, &mut env).map(|_| ()).map_err(|mut err| {err.set_source(contents); err})
 }
 
 fn run_prompt() -> Result<(), RunError> {
     let mut line_buf = String::new();
-    let mut env = Environment::new();
+    let mut env = <Env as EnvironmentImpl>::new(None);
 
     loop {
         print!("> ");
@@ -52,18 +56,22 @@ fn run_prompt() -> Result<(), RunError> {
             break Ok(());
         }
 
-        let source = line_buf.clone();
+        let out = run(line_buf.trim_end(), &mut env);
 
-        let err = run(&source, &mut env);
-        
-        if let Err(e) = err {
-            println!("{e}");
+        if let Err(mut err) = out {
+            err.set_source(line_buf.clone());
+            println!("{err}");
+        } 
+        else if let Some(_var) = out.expect("already checked for err variants") {
+            #[cfg(feature = "challenges")]
+            println!("{_var}")
         }
+
         line_buf.clear();
     }
 }
 
-fn run<'a>(source: &'a str, env: &mut Environment) -> Result<(), RunError> {
+fn run<'a>(source: &'a str, env: &mut Env) -> Result<Option<LoxVar>, RunError> {
     let scanner = Scanner::new(source);
 
     let mut errors: Vec<error::scan_err::ScanError> = Vec::new();
@@ -100,11 +108,7 @@ fn run<'a>(source: &'a str, env: &mut Environment) -> Result<(), RunError> {
 
         let mut interpreter = Interpreter::new(parsed, env);
 
-        if let Some(out) = interpreter.interpret()? {
-            println!("{out}")
-        }
-
-        Ok(())
+        Ok(interpreter.interpret()?)
     } else {
         Err(errors.into())
     }

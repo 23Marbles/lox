@@ -1,24 +1,17 @@
 use crate::tree_walk::{
     ast::Stmt,
     error::runtime_err::RuntimeError,
-    lox_var::{Environment, LoxVar},
+    lox_var::{Env, LoxVar},
 };
 
 pub struct Interpreter<'a, 'b> {
     statements: Vec<Stmt<'a>>,
-    env: &'b mut Environment,
+    env: &'b mut Env,
 }
 
 impl<'a, 'b> Interpreter<'a, 'b> {
-    pub fn new(statements: Vec<Stmt<'a>>, env: &'b mut Environment) -> Self {
-        Self {
-            statements,
-            env,
-        }
-    }
-
-    pub fn with_env(&mut self, env: &'b mut Environment) {
-        self.env = env
+    pub fn new(statements: Vec<Stmt<'a>>, env: &'b mut Env) -> Self {
+        Self { statements, env }
     }
 
     pub fn interpret(&mut self) -> Result<Option<LoxVar>, RuntimeError> {

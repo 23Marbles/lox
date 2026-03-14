@@ -1,16 +1,46 @@
-use std::{collections::HashMap, fmt::Display, ops::*};
+use std::{cell::RefCell, collections::HashMap, fmt::Display, ops::*, rc::Rc};
 
 use crate::tree_walk::ast::Literal;
 
+pub trait EnvironmentImpl {
+    fn new(enclosing: Option<Env>) -> Env;
+    fn descend(&mut self);
+    #[must_use = "Make sure you are not ascending above global level"]
+    fn ascend(&mut self) -> Option<()>;
+}
+
+pub type Env = Rc<RefCell<Environment>>;
+
+impl EnvironmentImpl for Env {
+    fn new(enclosing: Option<Env>) -> Env {
+        Rc::new(RefCell::new(Environment::new(enclosing)))
+    }
+
+    fn descend(&mut self) {
+        *self = <Env as EnvironmentImpl>::new(Some(self.clone()))
+    }
+
+    fn ascend(&mut self) -> Option<()> {
+        let parent = self.borrow().enclosing.clone()?;
+        *self = Env::new(RefCell::new(Environment {
+            enclosing: parent.borrow().enclosing.clone(),
+            values: parent.borrow().values.clone(),
+        }));
+        Some(())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Environment {
+    enclosing: Option<Env>,
     values: HashMap<String, LoxVar>,
 }
 
 impl Environment {
-    pub fn new() -> Self {
+    pub fn new(enclosing: Option<Env>) -> Self {
         Self {
             values: HashMap::new(),
+            enclosing,
         }
     }
 
@@ -18,8 +48,26 @@ impl Environment {
         self.values.insert(name, value);
     }
 
-    pub fn get(&self, name: String) -> Option<&LoxVar> {
-        self.values.get(&name)
+    pub fn get(&self, name: String) -> Option<LoxVar> {
+        self.values.get(&name).cloned().or_else(|| {
+            self.enclosing
+                .as_ref()
+                .map(|parent| parent.borrow().get(name))
+                .flatten()
+        })
+    }
+
+    /// # Panics
+    /// Panics if the enclosing variable is assigned and
+    pub fn assign(&mut self, name: &str, value: LoxVar) -> bool {
+        if self.values.contains_key(name) {
+            self.values.insert(name.to_string(), value);
+            return true;
+        } else if let Some(ref parent) = self.enclosing {
+            return parent.borrow_mut().assign(name, value);
+        }
+
+        false
     }
 }
 
@@ -123,9 +171,7 @@ macro_rules! bin_num_op_impl {
 
             fn $fn(self, rhs: Self) -> Self::Output {
                 let ln = self.expect_number().ok_or((self, rhs))?;
-                let rn = rhs
-                    .expect_number()
-                    .ok_or((self, rhs))?;
+                let rn = rhs.expect_number().ok_or((self, rhs))?;
                 Ok(LoxVar::Number(ln.$fn(rn)))
             }
         }
@@ -138,9 +184,9 @@ impl Add for &LoxVar {
     fn add(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
             (LoxVar::Number(ln), LoxVar::Number(rn)) => Ok(LoxVar::Number(ln + rn)),
-            (LoxVar::String(ls), LoxVar::String(rs)) => Ok(LoxVar::String(ls.clone() + &rs)),
+            (LoxVar::String(ls), LoxVar::String(rs)) => Ok(LoxVar::String(ls.to_owned() + &rs)),
             #[cfg(feature = "challenges")]
-            (LoxVar::String(s), other) => Ok(LoxVar::String(s + &other.to_string())),
+            (LoxVar::String(s), other) => Ok(LoxVar::String(s.to_owned() + &other.to_string())),
             #[cfg(feature = "challenges")]
             (other, LoxVar::String(s)) => Ok(LoxVar::String(other.to_string() + &s)),
             (l, r) => Err((l, r)),
