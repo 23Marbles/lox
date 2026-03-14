@@ -59,13 +59,16 @@ fn run_prompt() -> Result<(), RunError> {
             break Ok(());
         }
 
+        #[cfg(feature = "implicit_semicolons")]
+        line_buf.insert(line_buf.len() - 2, ';');
+
         let out = run(line_buf.trim_end(), &mut env);
 
         if let Err(mut err) = out {
             err.set_source(line_buf.clone());
             println!("{err}");
         } else if let Some(_var) = out.expect("already checked for err variants") {
-            #[cfg(feature = "challenges")]
+            #[cfg(feature = "repl_expr_print")]
             println!("{_var}")
         }
 

@@ -36,7 +36,7 @@ impl<'a> Parser<'a> {
         let errorred_token = self.peek();
         let column = match kind {
             ParseErrorKind::UnexpectedTokenKind(_) | ParseErrorKind::InvalidAssignTarget(_) => {
-                errorred_token.column
+                errorred_token.column + 1
             }
             ParseErrorKind::ExpectedTokenKind(_) => {
                 errorred_token.column + errorred_token.lexeme.len()
@@ -131,11 +131,34 @@ impl<'a> Parser<'a> {
 
         if self.match_any([Print]) {
             self.print_statement()
+        } else if self.match_any([If]) {
+            self.if_statement()
         } else if self.match_any([LeftBrace]) {
             Ok(Stmt::Block(self.block()?))
         } else {
             self.expression_statement()
         }
+    }
+
+    fn if_statement(&mut self) -> Result<Stmt<'a>, ParseError> {
+        self.consume(TokenKind::LeftParen)
+            .ok_or(self.error(ParseErrorKind::ExpectedTokenKind(TokenKind::LeftParen)))?;
+        let condition = self.expression()?;
+        self.consume(TokenKind::RightParen)
+            .ok_or(self.error(ParseErrorKind::ExpectedTokenKind(TokenKind::RightParen)))?;
+
+        let then_branch = self.statement()?;
+        let else_branch = if self.match_any([TokenKind::Else]) {
+            Some(Box::new(self.statement()?))
+        } else {
+            None
+        };
+
+        Ok(Stmt::If {
+            condition,
+            then_branch: Box::new(then_branch),
+            else_branch,
+        })
     }
 
     fn block(&mut self) -> Result<Vec<Stmt<'a>>, ParseError> {

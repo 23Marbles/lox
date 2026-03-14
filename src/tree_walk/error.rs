@@ -144,7 +144,7 @@ pub mod scan_err {
     pub enum ScanErrorKind {
         UnexpectedCharacter(char),
         UnterminatedString,
-        #[cfg(feature = "challenges")]
+        #[cfg(feature = "inline_comments")]
         UnterminatedComment,
     }
 
@@ -182,7 +182,7 @@ pub mod scan_err {
                         self.line, self.column
                     )?;
                 }
-                #[cfg(feature = "challenges")]
+                #[cfg(feature = "inline_comments")]
                 ScanErrorKind::UnterminatedComment => {
                     write!(
                         f,

@@ -196,7 +196,7 @@ impl<'a> Iterator for Scanner<'a> {
                         return self.next();
                     } else {
                         {
-                            #[cfg(feature = "challenges")]
+                            #[cfg(feature = "inline_comments")]
                             {
                                 if self.advance_if_next('*') {
                                     loop {
@@ -219,7 +219,7 @@ impl<'a> Iterator for Scanner<'a> {
                                     break 'scan self.make_token(current_token_type);
                                 }
                             }
-                            #[cfg(not(feature = "challenges"))]
+                            #[cfg(not(feature = "inline_comments"))]
                             break 'scan self.make_token(current_token_type);
                         }
                     }

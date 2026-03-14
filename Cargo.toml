@@ -4,8 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = ["ast"]
-challenges = []
+default = ["ast", "implicit_helpers"]
+challenges = ["implicit_helpers", "repl_expr_print", "inline_comments"]
 ast = []
+bytecode = []
+repl_expr_print = []
+implicit_helpers = ["implicit_converions", "implicit_semicolons"]
+implicit_converions = []
+implicit_semicolons = []
+inline_comments = []
 
 [dependencies]

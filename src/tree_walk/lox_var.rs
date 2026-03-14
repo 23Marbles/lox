@@ -116,7 +116,7 @@ impl LoxVar {
         }
     }
 
-    #[cfg(feature = "challenges")]
+    #[cfg(feature = "implicit_converions")]
     pub fn try_convert(&self, to: LoxVarKinds) -> Option<LoxVar> {
         match to {
             LoxVarKinds::Nil => Some(LoxVar::Nil),
@@ -187,9 +187,9 @@ impl Add for &LoxVar {
         match (self, rhs) {
             (LoxVar::Number(ln), LoxVar::Number(rn)) => Ok(LoxVar::Number(ln + rn)),
             (LoxVar::String(ls), LoxVar::String(rs)) => Ok(LoxVar::String(ls.to_owned() + rs)),
-            #[cfg(feature = "challenges")]
+            #[cfg(feature = "implicit_converions")]
             (LoxVar::String(s), other) => Ok(LoxVar::String(s.to_owned() + &other.to_string())),
-            #[cfg(feature = "challenges")]
+            #[cfg(feature = "implicit_converions")]
             (other, LoxVar::String(s)) => Ok(LoxVar::String(other.to_string() + &s)),
             (l, r) => Err((l, r)),
         }
@@ -204,12 +204,12 @@ impl PartialOrd for LoxVar {
         match (self, other) {
             (LoxVar::Number(l), LoxVar::Number(r)) => l.partial_cmp(r),
             (_ls, _rs) => {
-                #[cfg(feature = "challenges")]
+                #[cfg(feature = "implicit_converions")]
                 {
                     _ls.try_convert(LoxVarKinds::Number)?
                         .partial_cmp(&_rs.try_convert(LoxVarKinds::Number)?)
                 }
-                #[cfg(not(feature = "challenges"))]
+                #[cfg(not(feature = "implicit_semicolons"))]
                 {
                     None
                 }

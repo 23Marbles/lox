@@ -21,6 +21,11 @@ pub enum Stmt<'a> {
         initializer: Option<Expr<'a>>,
     },
     Block(Vec<Stmt<'a>>),
+    If {
+        condition: Expr<'a>,
+        then_branch: Box<Stmt<'a>>,
+        else_branch: Option<Box<Stmt<'a>>>,
+    },
 }
 
 impl<'a> Stmt<'a> {
@@ -39,7 +44,7 @@ impl<'a> Stmt<'a> {
                 };
                 env.borrow_mut()
                     .define(name.lexeme.to_string(), value.clone());
-                Ok(Some(value))
+                Ok(None)
             }
             Stmt::Block(stmts) => {
                 env.descend();
@@ -47,6 +52,18 @@ impl<'a> Stmt<'a> {
                     stmt.run(env)?;
                 }
                 env.ascend().expect("Has descended");
+                Ok(None)
+            }
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                if condition.evaluate(env)?.is_truthy() {
+                    then_branch.run(env)?;
+                } else if let Some(branch) = else_branch {
+                    branch.run(env)?;
+                }
                 Ok(None)
             }
         }
@@ -67,6 +84,17 @@ impl Display for Stmt<'_> {
                     .map(|stmt| stmt.to_string())
                     .collect::<String>()
             ),
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                if let Some(else_branch) = else_branch {
+                    write!(f, "(if {condition} then {then_branch} else {else_branch})")
+                } else {
+                    write!(f, "(if {condition} then {then_branch})")
+                }
+            }
         }
     }
 }
