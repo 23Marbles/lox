@@ -311,6 +311,8 @@ pub enum TokenKind {
     True,
     Var,
     While,
+    #[cfg(feature = "break")]
+    Break,
 
     Eof,
 }
@@ -358,6 +360,8 @@ impl Display for TokenKind {
             String => write!(f, "\"string\""),
             Number => write!(f, "num"),
             Eof => write!(f, "\0"),
+            #[cfg(feature = "break")]
+            Break => write!(f, "break"),
         }
     }
 }
@@ -382,6 +386,8 @@ impl TokenKind {
             "true" => Some(True),
             "var" => Some(Var),
             "while" => Some(While),
+            #[cfg(feature = "break")]
+            "break" => Some(Break),
             _ => None,
         }
     }
