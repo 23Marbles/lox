@@ -1,5 +1,5 @@
 use crate::tree_walk::{
-    ast::{Expr, Stmt},
+    ast::{Expr, Literal, Stmt},
     error::parse_err::{ParseError, ParseErrorKind},
     token::{Token, TokenKind},
 };
@@ -137,9 +137,53 @@ impl<'a> Parser<'a> {
             Ok(Stmt::Block(self.block()?))
         } else if self.match_any([While]) {
             self.while_statement()
+        } else if self.match_any([For]) {
+            self.for_statement()
         } else {
             self.expression_statement()
         }
+    }
+
+    fn for_statement(&mut self) -> Result<Stmt<'a>, ParseError> {
+        self.consume(TokenKind::LeftParen).ok_or(self.error(ParseErrorKind::ExpectedTokenKind(TokenKind::LeftParen)))?;
+
+        let initializer = if self.match_any([TokenKind::Semicolon]) {
+            None
+        } else if self.match_any([TokenKind::Var]) {
+            Some(self.var_declaration()?)
+        } else {
+            Some(self.expression_statement()?)
+        };
+
+        let condition = if !self.check(TokenKind::Semicolon) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+
+        self.consume(TokenKind::Semicolon).ok_or(self.error(ParseErrorKind::ExpectedTokenKind(TokenKind::Semicolon)))?;
+
+        let increment = if !self.check(TokenKind::RightParen) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+
+        self.consume(TokenKind::RightParen).ok_or(self.error(ParseErrorKind::ExpectedTokenKind(TokenKind::RightParen)))?;
+
+        let mut body = self.statement()?;
+
+        if let Some(inc) = increment {
+            body = Stmt::Block(vec![body, Stmt::Expression(inc)])
+        }
+
+        body = Stmt::While { condition: condition.unwrap_or(Expr::Literal(Literal::True)), body: Box::new(body)};
+
+        if let Some(init) = initializer {
+            body = Stmt::Block(vec![init, body])
+        }
+
+        Ok(body)
     }
 
     fn while_statement(&mut self) -> Result<Stmt<'a>, ParseError> {

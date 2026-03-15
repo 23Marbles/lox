@@ -1,13 +1,8 @@
-var one = 0;
-var two = 1;
+var a = 0;
+var temp;
 
-var i = 0;
-
-while (i <= 3) {
-  var tmp_one = one;
-  one = two;
-  two = tmp_one + one;
-  i = i + 1;
+for (var b = 1; a < 10000; b = temp + b) {
+  print a;
+  temp = a;
+  a = b;
 }
-
-print two;
