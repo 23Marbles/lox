@@ -5,6 +5,7 @@ use std::{
 
 use crate::tree_walk::{
     error::{
+        ErrorPos,
         eval_err::{EvaluateError, EvaluateErrorKind, make_bin_eval_error},
         runtime_err::RuntimeError,
     },
@@ -127,10 +128,14 @@ pub enum Expr<'a> {
 
     Grouping(Box<Expr<'a>>),
 
-    Variable(&'a str),
+    Variable {
+        name: &'a str,
+        position: ErrorPos,
+    },
 
     Assign {
         name: &'a str,
+        position: ErrorPos,
         value: Box<Expr<'a>>,
     },
 
@@ -138,6 +143,12 @@ pub enum Expr<'a> {
         left: Box<Expr<'a>>,
         operator: Token<'a>,
         right: Box<Expr<'a>>,
+    },
+
+    Call {
+        callee: Box<Expr<'a>>,
+        args: Vec<Expr<'a>>,
+        position: ErrorPos,
     },
 }
 
@@ -167,13 +178,25 @@ impl<'a> Expr<'a> {
                 right,
             } => left.string() + " " + &operator.to_string() + " " + &right.string(),
             Expr::Grouping(expr) => "(".to_string() + &expr.string() + ")",
-            Expr::Variable(name) => name.to_string(),
-            Expr::Assign { name, value } => name.to_string() + " = " + &value.string(),
+            Expr::Variable { name, .. } => name.to_string(),
+            Expr::Assign { name, value, .. } => name.to_string() + " = " + &value.string(),
             Expr::Logical {
                 left,
                 operator,
                 right,
             } => left.string() + " " + operator.lexeme + " " + &right.string(),
+            Expr::Call { callee, args, .. } => {
+                let mut base_string = callee.string() + "(";
+
+                for arg in args {
+                    base_string.push_str(&arg.string());
+                    base_string.push_str(", ");
+                }
+
+                base_string.push(')');
+
+                base_string
+            }
         }
     }
 
@@ -192,8 +215,7 @@ impl<'a> Expr<'a> {
                                     operator: TokenKind::Minus,
                                     var_ty: (&right_var).into(),
                                 },
-                                Some(operator.line),
-                                Some(operator.column),
+                                operator.into(),
                             ))
                         }
                     }
@@ -288,22 +310,26 @@ impl<'a> Expr<'a> {
                 }
             }
             Expr::Grouping(expr) => expr.evaluate(env),
-            Expr::Variable(name) => env.borrow().get(name.to_string()).ok_or(EvaluateError::new(
-                EvaluateErrorKind::UndeclaredVariable {
-                    name: name.to_string(),
-                },
-                None,
-                None,
-            )),
-            Expr::Assign { name, value } => {
+            Expr::Variable { name, position } => {
+                env.borrow().get(name.to_string()).ok_or(EvaluateError::new(
+                    EvaluateErrorKind::UndeclaredVariable {
+                        name: name.to_string(),
+                    },
+                    *position,
+                ))
+            }
+            Expr::Assign {
+                name,
+                position,
+                value,
+            } => {
                 let value = value.evaluate(env)?;
                 if !env.borrow_mut().assign(name, value.clone()) {
                     Err(EvaluateError::new(
                         EvaluateErrorKind::UndeclaredVariable {
                             name: name.to_string(),
                         },
-                        None,
-                        None,
+                        *position,
                     ))
                 } else {
                     Ok(value)
@@ -333,6 +359,7 @@ impl<'a> Expr<'a> {
                     _ => unreachable!("Logical expr can only have operators Or or And"),
                 }
             }
+            Expr::Call { .. } => todo!("Undefind Expr: Call [{}]", self),
         }
     }
 }
@@ -348,13 +375,25 @@ impl Display for Expr<'_> {
                 right,
             } => write!(f, "({operator} {left} {right})"),
             Expr::Grouping(expr) => write!(f, "(group {expr})"),
-            Expr::Variable(name) => write!(f, "(variable {name})"),
-            Expr::Assign { name, value } => write!(f, "(assign {name} {value})"),
+            Expr::Variable { name, .. } => write!(f, "(variable {name})"),
+            Expr::Assign { name, value, .. } => write!(f, "(assign {name} {value})"),
             Expr::Logical {
                 left,
                 operator,
                 right,
             } => write!(f, "({operator} {left} {right})"),
+            Expr::Call { callee, args, .. } => {
+                write!(f, "(fun {callee} (")?;
+                if !args.is_empty() {
+                    write!(f, "{}", args[0])?;
+                    for arg in args.iter().skip(1) {
+                        write!(f, ", {arg}")?;
+                    }
+                }
+
+                write!(f, "))")?;
+                Ok(())
+            }
         }
     }
 }

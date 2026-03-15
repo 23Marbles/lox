@@ -3,12 +3,12 @@ mod tree_walk;
 
 fn main() {
     #[cfg(feature = "break")]
-    println!("\x1b[1;31m[Warning!]\x1b[0m Break feature not stabilized");
+    eprintln!("\x1b[1;31m[Warning!]\x1b[0m Break feature not stabilized");
     #[cfg(feature = "ast")]
     if let Err(err) = tree_walk::main() {
         eprintln!("\x1b[1;31mErrored with errors:\x1b[0m\n{err}")
     }
     #[cfg(not(feature = "bytecode"))]
     #[cfg(not(feature = "ast"))]
-    println!("Compile with either ast or bytecode enabled")
+    eprintln!("Compile with either ast or bytecode enabled")
 }

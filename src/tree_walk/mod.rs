@@ -60,7 +60,14 @@ fn run_prompt() -> Result<(), RunError> {
         }
 
         #[cfg(feature = "implicit_semicolons")]
-        if line_buf.len() > 2 {
+        if line_buf.len() > 2
+            && line_buf
+                .char_indices()
+                .nth_back(2)
+                .expect("Already checked len is long enough")
+                .1
+                != ';'
+        {
             line_buf.insert(line_buf.len() - 2, ';');
         }
 

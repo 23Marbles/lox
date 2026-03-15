@@ -1,6 +1,9 @@
 use std::fmt::Display;
 
-use crate::tree_walk::error::scan_err::{ScanError, ScanErrorKind};
+use crate::tree_walk::error::{
+    ErrorPos,
+    scan_err::{ScanError, ScanErrorKind},
+};
 
 pub struct Scanner<'a> {
     source: &'a str,
@@ -39,7 +42,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn error(&self, kind: ScanErrorKind) -> ScanError {
-        ScanError::new(self.line, self.column(self.start), kind)
+        ScanError::new(kind, ErrorPos::new(self.line, self.column(self.current), 1))
     }
 
     fn advance(&mut self) -> char {
@@ -108,7 +111,12 @@ impl<'a> Iterator for Scanner<'a> {
             return None;
         } else if self.is_at_end() {
             self.eof = true;
-            return Some(Ok(self.make_token(TokenKind::Eof)));
+            return Some(Ok(Token {
+                kind: TokenKind::Eof,
+                lexeme: "\0",
+                line: self.line,
+                column: self.column(self.source.len() - 1) + 1,
+            }));
         }
 
         self.start = self.current;
@@ -138,7 +146,7 @@ impl<'a> Iterator for Scanner<'a> {
                     return self.next();
                 } // Ignore newlines but increment the line counter
                 '"' => TokenKind::String,
-                x if (x.is_alphabetic() || x  == '_') => {
+                x if (x.is_alphabetic() || x == '_') => {
                     let mut string = String::new();
                     string.push(x);
                     while self.peek().is_alphanumeric() || self.peek() == '_' {

@@ -1,8 +1,12 @@
+use std::fmt::Display;
+
+use crate::tree_walk::token::Token;
+
 pub mod run_err {
     use std::{error::Error, fmt::Display};
 
     use crate::tree_walk::error::{
-        eval_err::EvaluateError, parse_err::ParseError, runtime_err::RuntimeError,
+        ErrorPos, eval_err::EvaluateError, parse_err::ParseError, runtime_err::RuntimeError,
         scan_err::ScanError,
     };
 
@@ -22,13 +26,13 @@ pub mod run_err {
     }
 
     impl RunError {
-        pub fn position(&self, index: Option<usize>) -> Option<(usize, usize)> {
+        pub fn position(&self, index: Option<usize>) -> Option<ErrorPos> {
             match &self.kind {
                 RunErrorKind::IoError(_) => None,
-                RunErrorKind::ScanErrors(scan_errors) => scan_errors.get(index?)?.pos(),
-                RunErrorKind::ParseErrors(parse_errors) => parse_errors.get(index?)?.pos(),
-                RunErrorKind::EvaluateError(evaluate_error) => evaluate_error.pos(),
-                RunErrorKind::RuntimeError(runtime_error) => runtime_error.pos(),
+                RunErrorKind::ScanErrors(scan_errors) => Some(scan_errors.get(index?)?.pos()),
+                RunErrorKind::ParseErrors(parse_errors) => Some(parse_errors.get(index?)?.pos()),
+                RunErrorKind::EvaluateError(evaluate_error) => Some(evaluate_error.pos()),
+                RunErrorKind::RuntimeError(runtime_error) => Some(runtime_error.pos()),
             }
         }
 
@@ -46,13 +50,22 @@ pub mod run_err {
                         write!(f, "Scan errors: ")?;
                         for (i, e) in errs.iter().enumerate() {
                             write!(f, "\n{e}")?;
-                            if let Some((line, column)) = self.position(Some(i)) {
+                            if let Some(pos) = self.position(Some(i)) {
                                 write!(
                                     f,
                                     "\n|   {}",
-                                    source.lines().collect::<Vec<&str>>().get(line - 1).unwrap()
+                                    source
+                                        .lines()
+                                        .collect::<Vec<&str>>()
+                                        .get(pos.line - 1)
+                                        .unwrap()
                                 )?;
-                                write!(f, "\n\\  {}^", " ".repeat(column))?;
+                                write!(
+                                    f,
+                                    "\n\\  {}{}",
+                                    " ".repeat(pos.column),
+                                    "^".repeat(pos.len)
+                                )?;
                             }
                         }
                     }
@@ -60,36 +73,54 @@ pub mod run_err {
                         write!(f, "Parse errors: ")?;
                         for (i, e) in errs.iter().enumerate() {
                             write!(f, "\n{e}")?;
-                            if let Some((line, column)) = self.position(Some(i)) {
+
+                            if let Some(pos) = self.position(Some(i)) {
                                 write!(
                                     f,
                                     "\n|   {}",
-                                    source.lines().collect::<Vec<&str>>().get(line - 1).unwrap()
+                                    source
+                                        .lines()
+                                        .collect::<Vec<&str>>()
+                                        .get(pos.line - 1)
+                                        .unwrap()
                                 )?;
-                                write!(f, "\n\\ {}^", " ".repeat(column))?;
+                                write!(
+                                    f,
+                                    "\n\\  {}{}",
+                                    " ".repeat(pos.column),
+                                    "^".repeat(pos.len)
+                                )?;
                             }
                         }
                     }
                     RunErrorKind::EvaluateError(err) => {
                         write!(f, "Evaluation error:\n{err}")?;
-                        if let Some((line, column)) = self.position(None) {
+                        if let Some(pos) = self.position(None) {
                             write!(
                                 f,
                                 "\n|   {}",
-                                source.lines().collect::<Vec<&str>>().get(line - 1).unwrap()
+                                source
+                                    .lines()
+                                    .collect::<Vec<&str>>()
+                                    .get(pos.line - 1)
+                                    .unwrap()
                             )?;
-                            write!(f, "\n\\  {}^", " ".repeat(column))?;
+                            write!(f, "\n\\  {}{}", " ".repeat(pos.column), "^".repeat(pos.len))?;
                         }
                     }
                     RunErrorKind::RuntimeError(err) => {
                         write!(f, "Evaluation error:\n{err}")?;
-                        if let Some((line, column)) = self.position(None) {
+                        if let Some(pos) = self.position(None) {
                             write!(
                                 f,
                                 "\n|   {}",
-                                source.lines().collect::<Vec<&str>>().get(line - 1).unwrap()
+                                source
+                                    .lines()
+                                    .collect::<Vec<&str>>()
+                                    .get(pos.line - 1)
+                                    .unwrap()
                             )?;
-                            write!(f, "\n\\  {}^", " ".repeat(column))?;
+                            write!(f, "\n\\  {}{}", " ".repeat(pos.column), "^".repeat(pos.len))?;
                         }
                     }
                 }
@@ -140,6 +171,8 @@ pub mod run_err {
 
 pub mod scan_err {
     use std::{error::Error, fmt::Display};
+
+    use crate::tree_walk::error::ErrorPos;
     #[derive(Debug, Clone, Copy)]
     pub enum ScanErrorKind {
         UnexpectedCharacter(char),
@@ -150,18 +183,17 @@ pub mod scan_err {
 
     #[derive(Debug, Clone, Copy)]
     pub struct ScanError {
-        line: usize,
-        column: usize,
         kind: ScanErrorKind,
+        pos: ErrorPos,
     }
 
     impl ScanError {
-        pub fn new(line: usize, column: usize, kind: ScanErrorKind) -> Self {
-            Self { line, column, kind }
+        pub fn new(kind: ScanErrorKind, pos: ErrorPos) -> Self {
+            Self { kind, pos }
         }
 
-        pub fn pos(&self) -> Option<(usize, usize)> {
-            Some((self.line, self.column))
+        pub fn pos(&self) -> ErrorPos {
+            self.pos
         }
     }
 
@@ -169,26 +201,14 @@ pub mod scan_err {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self.kind {
                 ScanErrorKind::UnexpectedCharacter(c) => {
-                    write!(
-                        f,
-                        "[line {}:{}] Unexpected character '{}'",
-                        self.line, self.column, c
-                    )?;
+                    write!(f, "{} Unexpected character '{}'", self.pos, c)?;
                 }
                 ScanErrorKind::UnterminatedString => {
-                    write!(
-                        f,
-                        "[line {}:{}] Unterminated string",
-                        self.line, self.column
-                    )?;
+                    write!(f, "{} Unterminated string", self.pos)?;
                 }
                 #[cfg(feature = "inline_comments")]
                 ScanErrorKind::UnterminatedComment => {
-                    write!(
-                        f,
-                        "[line {}:{}] Unterminated comment",
-                        self.line, self.column
-                    )?;
+                    write!(f, "{} Unterminated comment", self.pos)?;
                 }
             }
             Ok(())
@@ -201,7 +221,7 @@ pub mod scan_err {
 pub mod runtime_err {
     use std::{error::Error, fmt::Display};
 
-    use crate::tree_walk::error::eval_err::EvaluateError;
+    use crate::tree_walk::error::{ErrorPos, eval_err::EvaluateError};
 
     #[derive(Debug, Clone)]
     pub struct RuntimeError {
@@ -209,7 +229,7 @@ pub mod runtime_err {
     }
 
     impl RuntimeError {
-        pub fn pos(&self) -> Option<(usize, usize)> {
+        pub fn pos(&self) -> ErrorPos {
             match &self.kind {
                 RuntimeErrorKind::EvaluateError(evaluate_error) => evaluate_error.pos(),
             }
@@ -243,42 +263,38 @@ pub mod runtime_err {
 pub mod parse_err {
     use std::{error::Error, fmt::Display};
 
-    use crate::tree_walk::token::TokenKind;
+    use crate::tree_walk::{error::ErrorPos, token::TokenKind};
     #[derive(Debug, Clone)]
     pub struct ParseError {
         pub kind: ParseErrorKind,
-        line: usize,
-        column: usize,
+        pos: ErrorPos,
     }
 
     impl ParseError {
-        pub fn new(kind: ParseErrorKind, line: usize, column: usize) -> Self {
-            Self { kind, line, column }
+        pub fn new(kind: ParseErrorKind, pos: ErrorPos) -> Self {
+            Self { kind, pos }
         }
 
-        pub fn pos(&self) -> Option<(usize, usize)> {
-            Some((self.line, self.column))
+        pub fn pos(&self) -> ErrorPos {
+            self.pos
         }
     }
 
     impl Display for ParseError {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match &self.kind {
-                ParseErrorKind::UnexpectedTokenKind(token_kind) => write!(
-                    f,
-                    "[line {}:{}] Unexpected token kind: [{:?}]",
-                    self.line, self.column, token_kind
-                ),
-                ParseErrorKind::ExpectedTokenKind(token_kind) => write!(
-                    f,
-                    "[line {}:{}] Expected token kind: [{:?}]",
-                    self.line, self.column, token_kind
-                ),
-                ParseErrorKind::InvalidAssignTarget(s) => write!(
-                    f,
-                    "[line {}:{}] Invalid assignment target [{s}]",
-                    self.line, self.column
-                ),
+                ParseErrorKind::UnexpectedTokenKind(token_kind) => {
+                    write!(f, "{} Unexpected token kind: [{:?}]", self.pos, token_kind)
+                }
+                ParseErrorKind::ExpectedTokenKind(token_kind) => {
+                    write!(f, "{} Expected token kind: [{:?}]", self.pos, token_kind)
+                }
+                ParseErrorKind::InvalidAssignTarget(s) => {
+                    write!(f, "{} Invalid assignment target [{s}]", self.pos)
+                }
+                ParseErrorKind::TooManyArguments => {
+                    write!(f, "{} Can't have over 255 arguments", self.pos)
+                }
             }
         }
     }
@@ -290,6 +306,7 @@ pub mod parse_err {
         UnexpectedTokenKind(TokenKind),
         ExpectedTokenKind(TokenKind),
         InvalidAssignTarget(String),
+        TooManyArguments,
     }
 }
 
@@ -297,6 +314,7 @@ pub mod eval_err {
     use std::fmt::Display;
 
     use crate::tree_walk::{
+        error::ErrorPos,
         lox_var::{LoxVar, LoxVarKinds},
         token::{Token, TokenKind},
     };
@@ -304,40 +322,26 @@ pub mod eval_err {
     #[derive(Debug, Clone)]
     pub struct EvaluateError {
         kind: EvaluateErrorKind,
-        line: Option<usize>,
-        column: Option<usize>,
+        pos: ErrorPos,
     }
 
     impl EvaluateError {
-        pub fn new(kind: EvaluateErrorKind, line: Option<usize>, column: Option<usize>) -> Self {
-            Self { kind, line, column }
+        pub fn new(kind: EvaluateErrorKind, pos: ErrorPos) -> Self {
+            Self { kind, pos }
         }
 
-        pub fn pos(&self) -> Option<(usize, usize)> {
-            Some((self.line?, self.column?))
+        pub fn pos(&self) -> ErrorPos {
+            self.pos
         }
     }
 
     impl Display for EvaluateError {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            let position = if self.column.is_some() || self.line.is_some() {
-                format!(
-                    "[{}{}] ",
-                    self.line
-                        .map(|v| format!("Line {}", v))
-                        .unwrap_or("Column".to_string()),
-                    self.column
-                        .map(|v| format!(":{}", v))
-                        .unwrap_or("".to_string())
-                )
-            } else {
-                "".to_string()
-            };
             match &self.kind {
                 EvaluateErrorKind::IncompatableUnaryOperator { operator, var_ty } => write!(
                     f,
-                    "{}Cannot use unary operator [{operator:?}] on type [{var_ty:?}]",
-                    position
+                    "{} Cannot use unary operator [{operator:?}] on type [{var_ty:?}]",
+                    self.pos
                 ),
                 EvaluateErrorKind::IncompatableBinaryOperator {
                     operator,
@@ -345,13 +349,13 @@ pub mod eval_err {
                     right_ty,
                 } => write!(
                     f,
-                    "{}Cannot use binary operator [{operator:?}] on types [{left_ty:?}, {right_ty:?}]",
-                    position
+                    "{} Cannot use binary operator [{operator:?}] on types [{left_ty:?}, {right_ty:?}]",
+                    self.pos
                 ),
                 EvaluateErrorKind::UndeclaredVariable { name } => write!(
                     f,
-                    "{}Tried to access undeclared variable with name {name}",
-                    position
+                    "{} Tried to access undeclared variable with name {name}",
+                    self.pos
                 ),
             }
         }
@@ -385,8 +389,60 @@ pub mod eval_err {
                 left_ty: left_var.into(),
                 right_ty: right_var.into(),
             },
-            Some(operator.line),
-            Some(operator.column),
+            operator.into(),
         )
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ErrorPos {
+    line: usize,
+    column: usize,
+    len: usize,
+}
+
+impl ErrorPos {
+    pub fn new(line: usize, column: usize, len: usize) -> Self {
+        Self { line, column, len }
+    }
+
+    pub fn end(&self) -> Self {
+        Self {
+            line: self.line,
+            column: self.column + self.len,
+            len: 1,
+        }
+    }
+}
+
+impl Display for ErrorPos {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[Line {}:{}]", self.line, self.column)
+    }
+}
+
+impl From<&Token<'_>> for ErrorPos {
+    fn from(value: &Token<'_>) -> Self {
+        use super::token::TokenKind::*;
+        Self {
+            line: value.line,
+            column: if value.kind == String {
+                value.column - 1
+            } else {
+                value.column
+            },
+            len: match value.kind {
+                BangEqual | EqualEqual | GreaterEqual | LessEqual => 2,
+                Or | If => 2,
+                And | Var | Fun | For | Nil => 3,
+                Else | This | True => 4,
+                Class | False | Print | Super | While => 5,
+                Return => 6,
+                Identifier => value.lexeme.len(),
+                String => value.lexeme.len() + 2,
+                Number => value.lexeme.len(),
+                _ => 1,
+            },
+        }
     }
 }

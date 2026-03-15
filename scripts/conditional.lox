@@ -1,5 +1,6 @@
 var y;
 
-if (6==6) y = 6+7;else y = 5;
+if (6==6) y = 6+7;
+else y = 5;
 
 print y;

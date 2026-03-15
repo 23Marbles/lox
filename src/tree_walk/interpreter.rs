@@ -19,11 +19,6 @@ impl<'a, 'b> Interpreter<'a, 'b> {
 
         for s in &self.statements {
             last = s.run(self.env)?;
-
-            #[cfg(debug_assertions)]
-            if let Some(v) = &last {
-                println!("Statemnt: {s} evaluates to {v}");
-            }
         }
 
         Ok(last)
