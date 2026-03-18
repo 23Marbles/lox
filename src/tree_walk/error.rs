@@ -491,8 +491,8 @@ pub mod fn_err {
 
     #[derive(Debug, Clone)]
     pub struct FunctionError {
-        pub call_pos: Option<ErrorPos>,
-        pub sub_pos: Option<ErrorPos>,
+        pub call_pos: Option<Box<ErrorPos>>,
+        pub sub_pos: Option<Box<ErrorPos>>,
         pub input_args: Vec<LoxVar>,
         kind: FunctionErrorKind,
     }
@@ -510,15 +510,15 @@ pub mod fn_err {
 
     impl LoxPos for FunctionError {
         fn pos(&self) -> ErrorPos {
-            self.call_pos
+            *self.call_pos.clone()
                 .expect("Call pos needs to be set for function error")
         }
     }
 
     impl LoxError for FunctionError {
         fn display_err(&self, source: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            let call_pos = self
-                .call_pos
+            let call_pos = *self
+                .call_pos.clone()
                 .expect("Call pos needs to be inserted to produce errors");
 
             write!(f, "{call_pos} {self}\n")?;
@@ -537,7 +537,7 @@ pub mod fn_err {
             )?;
             call_pos.display_err(source, f)?;
 
-            if let Some(sub_pos) = self.sub_pos {
+            if let Some(sub_pos) = self.sub_pos.as_ref() {
                 write!(f, "{sub_pos} Actual error occured here")?;
                 sub_pos.display_err(source, f)?;
             }
@@ -574,7 +574,7 @@ pub mod fn_err {
         fn from(value: RuntimeError) -> Self {
             Self {
                 call_pos: None,
-                sub_pos: Some(value.pos()),
+                sub_pos: Some(Box::new(value.pos())),
                 input_args: Vec::new(),
                 kind: FunctionErrorKind::SubError(Box::new(value.kind)),
             }

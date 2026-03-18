@@ -445,7 +445,7 @@ impl Expr {
                         .collect::<Result<_, _>>()?;
 
                     Ok(func.call(env, arguments.clone()).map_err(|mut err| {
-                        err.call_pos = Some(*position);
+                        err.call_pos = Some(Box::new(*position));
                         err.input_args = arguments;
 
                         err
