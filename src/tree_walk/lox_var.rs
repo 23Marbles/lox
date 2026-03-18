@@ -8,11 +8,7 @@ use std::{
 
 use crate::tree_walk::{
     ast::{Literal, Stmt},
-    error::{
-        eval_err::EvaluateErrorKind,
-        fn_err::{FunctionError, FunctionErrorKind},
-        runtime_err::RuntimeErrorKind,
-    },
+    error::fn_err::{FunctionError, FunctionErrorKind},
 };
 
 pub trait EnvironmentImpl
@@ -101,14 +97,14 @@ pub trait LoxCallable: Debug {
 }
 
 #[derive(Debug)]
-pub struct LoxFunc<'a> {
+pub struct LoxFunc {
     arity: usize,
-    body: Vec<Stmt<'a>>,
-    parameters: Vec<&'a str>,
+    body: Vec<Stmt>,
+    parameters: Vec<String>,
 }
 
-impl<'a> LoxFunc<'a> {
-    pub fn new(arity: usize, body: Vec<Stmt<'a>>, parameters: Vec<&'a str>) -> Self {
+impl LoxFunc {
+    pub fn new(arity: usize, body: Vec<Stmt>, parameters: Vec<String>) -> Self {
         Self {
             arity,
             body,
@@ -117,7 +113,7 @@ impl<'a> LoxFunc<'a> {
     }
 }
 
-impl LoxCallable for LoxFunc<'_> {
+impl LoxCallable for LoxFunc {
     fn call(&self, env: &mut Env, arguments: Vec<LoxVar>) -> Result<LoxVar, FunctionError> {
         if arguments.len() != self.arity {
             Err(FunctionError::new(FunctionErrorKind::IncorrectArity {
@@ -137,7 +133,7 @@ impl LoxCallable for LoxFunc<'_> {
                         return Ok(value.evaluate(env)?);
                     }
                     other => {
-                        other.clone().run(env)?;
+                        other.run(env)?;
                     }
                 }
             }
@@ -167,6 +163,18 @@ pub enum LoxVarKind {
     Number,
     String,
     Callable,
+}
+
+impl From<LoxVar> for LoxVarKind {
+    fn from(value: LoxVar) -> Self {
+        match value {
+            LoxVar::Nil => Self::Nil,
+            LoxVar::Bool(..) => Self::Bool,
+            LoxVar::Number(..) => Self::Number,
+            LoxVar::String(..) => Self::String,
+            LoxVar::Callable(..) => Self::Callable,
+        }
+    }
 }
 
 impl From<&LoxVar> for LoxVarKind {
@@ -217,7 +225,7 @@ impl LoxVar {
     }
 }
 
-impl From<&Literal<'_>> for LoxVar {
+impl From<&Literal> for LoxVar {
     fn from(value: &Literal) -> Self {
         match value {
             Literal::Number(n) => Self::Number(*n),

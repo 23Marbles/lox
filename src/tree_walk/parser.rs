@@ -14,7 +14,7 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Iterator for Parser<'a> {
-    type Item = Result<Stmt<'a>, ParseError>;
+    type Item = Result<Stmt, ParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.is_at_end() {
@@ -45,12 +45,12 @@ impl<'a> Parser<'a> {
         let errored_pos: ErrorPos = match kind {
             ParseErrorKind::UnexpectedTokenKind(_) | ParseErrorKind::InvalidAssignTarget(_) => {
                 // The current tokens full position
-                (&self.peek()).into()
+                self.peek().into()
             }
-            ParseErrorKind::TooManyArguments => (&self.tokens[self.current - 1]).into(), // The last token's full position
+            ParseErrorKind::TooManyArguments => self.tokens[self.current - 1].into(), // The last token's full position
             ParseErrorKind::ExpectedTokenKind(_) | ParseErrorKind::ExpectedName(_) => {
                 // The first charcter after the current tokens position
-                let prev_pos: ErrorPos = (&self.tokens[self.current - 1]).into();
+                let prev_pos: ErrorPos = self.tokens[self.current - 1].into();
 
                 prev_pos.end()
             }
@@ -101,7 +101,7 @@ impl<'a> Parser<'a> {
         false
     }
 
-    pub fn parse(&mut self) -> Result<Vec<Stmt<'a>>, Vec<ParseError>> {
+    pub fn parse(&mut self) -> Result<Vec<Stmt>, Vec<ParseError>> {
         let statements = self.filter_map(|res| res.ok()).collect();
 
         if self.errors.is_empty() {
@@ -111,7 +111,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn declaration(&mut self) -> Result<Stmt<'a>, ParseError> {
+    fn declaration(&mut self) -> Result<Stmt, ParseError> {
         if self.match_any([TokenKind::Var]) {
             self.var_declaration()
         } else if self.match_any([TokenKind::Fun]) {
@@ -121,7 +121,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn fun_declaration(&mut self) -> Result<Stmt<'a>, ParseError> {
+    fn fun_declaration(&mut self) -> Result<Stmt, ParseError> {
         let name = self
             .consume(
                 TokenKind::Identifier,
@@ -158,13 +158,13 @@ impl<'a> Parser<'a> {
         let body = self.block()?;
 
         Ok(Stmt::Function {
-            name,
-            parameters,
+            name: name.to_string(),
+            parameters: parameters.iter().map(|param| param.to_string()).collect(),
             body,
         })
     }
 
-    fn var_declaration(&mut self) -> Result<Stmt<'a>, ParseError> {
+    fn var_declaration(&mut self) -> Result<Stmt, ParseError> {
         let name = self.expect(TokenKind::Identifier)?.lexeme;
 
         let initializer = if self.match_any([TokenKind::Equal]) {
@@ -175,10 +175,13 @@ impl<'a> Parser<'a> {
 
         self.expect(TokenKind::Semicolon)?;
 
-        Ok(Stmt::Var { name, initializer })
+        Ok(Stmt::Var {
+            name: name.to_string(),
+            initializer,
+        })
     }
 
-    fn statement(&mut self) -> Result<Stmt<'a>, ParseError> {
+    fn statement(&mut self) -> Result<Stmt, ParseError> {
         use TokenKind::*;
 
         if self.match_any([Print]) {
@@ -196,7 +199,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn for_statement(&mut self) -> Result<Stmt<'a>, ParseError> {
+    fn for_statement(&mut self) -> Result<Stmt, ParseError> {
         self.expect(TokenKind::LeftParen)?;
 
         let initializer = if self.match_any([TokenKind::Semicolon]) {
@@ -241,7 +244,7 @@ impl<'a> Parser<'a> {
         Ok(body)
     }
 
-    fn while_statement(&mut self) -> Result<Stmt<'a>, ParseError> {
+    fn while_statement(&mut self) -> Result<Stmt, ParseError> {
         self.expect(TokenKind::LeftParen)?;
         let condition = self.expression()?;
         self.expect(TokenKind::RightParen)?;
@@ -251,7 +254,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn if_statement(&mut self) -> Result<Stmt<'a>, ParseError> {
+    fn if_statement(&mut self) -> Result<Stmt, ParseError> {
         self.expect(TokenKind::LeftParen)?;
         let condition = self.expression()?;
         self.expect(TokenKind::RightParen)?;
@@ -270,7 +273,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn block(&mut self) -> Result<Vec<Stmt<'a>>, ParseError> {
+    fn block(&mut self) -> Result<Vec<Stmt>, ParseError> {
         let mut statements = Vec::new();
 
         while !self.check(TokenKind::RightBrace) && !self.is_at_end() {
@@ -284,25 +287,25 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn print_statement(&mut self) -> Result<Stmt<'a>, ParseError> {
+    fn print_statement(&mut self) -> Result<Stmt, ParseError> {
         let value = self.expression()?;
         self.expect(TokenKind::Semicolon)?;
 
         Ok(Stmt::Print(value))
     }
 
-    fn expression_statement(&mut self) -> Result<Stmt<'a>, ParseError> {
+    fn expression_statement(&mut self) -> Result<Stmt, ParseError> {
         let value = self.expression()?;
         self.expect(TokenKind::Semicolon)?;
 
         Ok(Stmt::Expression(value))
     }
 
-    fn expression(&mut self) -> Result<Expr<'a>, ParseError> {
+    fn expression(&mut self) -> Result<Expr, ParseError> {
         self.assignment()
     }
 
-    fn assignment(&mut self) -> Result<Expr<'a>, ParseError> {
+    fn assignment(&mut self) -> Result<Expr, ParseError> {
         let expr = self.logic_or()?;
 
         if self.match_any([TokenKind::Equal]) {
@@ -312,13 +315,13 @@ impl<'a> Parser<'a> {
             if let Expr::Variable { name, .. } = expr {
                 Ok(Expr::Assign {
                     name,
-                    position: (&equals).into(),
+                    position: equals.into(),
                     value: Box::new(value),
                 })
             } else {
                 let err = ParseError::new(
                     ParseErrorKind::InvalidAssignTarget(expr.string()),
-                    (&equals).into(),
+                    equals.into(),
                 );
 
                 self.errors.push(err.clone());
@@ -330,7 +333,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn logic_or(&mut self) -> Result<Expr<'a>, ParseError> {
+    fn logic_or(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.logic_and()?;
 
         while self.match_any([TokenKind::Or]) {
@@ -338,14 +341,14 @@ impl<'a> Parser<'a> {
                 left: Box::new(expr),
                 operator: self.previous().kind,
                 right: Box::new(self.logic_and()?),
-                _position: (&self.previous()).into(),
+                _position: self.previous().into(),
             };
         }
 
         Ok(expr)
     }
 
-    fn logic_and(&mut self) -> Result<Expr<'a>, ParseError> {
+    fn logic_and(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.equality()?;
 
         while self.match_any([TokenKind::And]) {
@@ -353,14 +356,14 @@ impl<'a> Parser<'a> {
                 left: Box::new(expr),
                 operator: self.previous().kind,
                 right: Box::new(self.equality()?),
-                _position: (&self.previous()).into(),
+                _position: self.previous().into(),
             };
         }
 
         Ok(expr)
     }
 
-    fn equality(&mut self) -> Result<Expr<'a>, ParseError> {
+    fn equality(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.comparison()?;
 
         use TokenKind::*;
@@ -372,7 +375,7 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    fn comparison(&mut self) -> Result<Expr<'a>, ParseError> {
+    fn comparison(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.term()?;
 
         use TokenKind::*;
@@ -383,7 +386,7 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    fn term(&mut self) -> Result<Expr<'a>, ParseError> {
+    fn term(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.factor()?;
 
         use TokenKind::*;
@@ -394,7 +397,7 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    fn factor(&mut self) -> Result<Expr<'a>, ParseError> {
+    fn factor(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.unary()?;
 
         use TokenKind::*;
@@ -405,7 +408,7 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    fn unary(&mut self) -> Result<Expr<'a>, ParseError> {
+    fn unary(&mut self) -> Result<Expr, ParseError> {
         use TokenKind::*;
         if self.match_any([Bang, Minus]) {
             Ok(Expr::unary(self.previous(), self.unary()?))
@@ -414,19 +417,26 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn call(&mut self) -> Result<Expr<'a>, ParseError> {
+    fn call(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.primary()?;
 
         loop {
             if self.match_any([TokenKind::LeftParen]) {
-                expr = self.finish_call(expr)?;
+                expr = self.finish_call(
+                    expr,
+                    match self.tokens[self.current - 2] {
+                        // No paniking (Just trust me bro)
+                        ident if ident.kind == TokenKind::Identifier => ident.into(),
+                        _ => self.previous().into(),
+                    },
+                )?;
             } else {
                 break Ok(expr);
             }
         }
     }
 
-    fn finish_call(&mut self, calee: Expr<'a>) -> Result<Expr<'a>, ParseError> {
+    fn finish_call(&mut self, calee: Expr, start_pos: ErrorPos) -> Result<Expr, ParseError> {
         let mut args = Vec::new();
 
         if !self.check(TokenKind::RightParen) {
@@ -442,7 +452,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let position: ErrorPos = (&self.expect(TokenKind::RightParen)?).into();
+        let position = start_pos.span_to((&self.expect(TokenKind::RightParen)?).into());
 
         Ok(Expr::Call {
             callee: Box::new(calee),
@@ -451,7 +461,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn primary(&mut self) -> Result<Expr<'a>, ParseError> {
+    fn primary(&mut self) -> Result<Expr, ParseError> {
         use crate::tree_walk::ast::Literal;
         use TokenKind::*;
         match self.peek().kind {
@@ -475,7 +485,9 @@ impl<'a> Parser<'a> {
             }
             String => {
                 self.advance();
-                Ok(Expr::Literal(Literal::String(self.previous().lexeme)))
+                Ok(Expr::Literal(Literal::String(
+                    self.previous().lexeme.to_string(),
+                )))
             }
             LeftParen => {
                 self.advance();
@@ -486,8 +498,8 @@ impl<'a> Parser<'a> {
             Identifier => {
                 let token = self.advance();
                 Ok(Expr::Variable {
-                    name: token.lexeme,
-                    position: (&token).into(),
+                    name: token.lexeme.to_string(),
+                    position: token.into(),
                 })
             }
             k => Err(self.error(ParseErrorKind::UnexpectedTokenKind(k))),

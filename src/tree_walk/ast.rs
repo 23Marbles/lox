@@ -7,43 +7,43 @@ use std::{
 use crate::tree_walk::{
     error::{
         ErrorPos,
-        eval_err::{EvaluateError, EvaluateErrorKind, make_bin_eval_error},
-        runtime_err::{RuntimeError, RuntimeErrorKind},
+        eval_err::{EvaluateError, EvaluateErrorKind},
+        runtime_err::RuntimeError,
     },
-    lox_var::{Env, EnvironmentImpl, LoxFunc, LoxVar, LoxVarKind},
+    lox_var::{Env, EnvironmentImpl, LoxFunc, LoxVar},
     token::{Token, TokenKind},
 };
 
 #[derive(Debug, Clone)]
-pub enum Stmt<'a> {
-    Expression(Expr<'a>),
-    Print(Expr<'a>),
+pub enum Stmt {
+    Expression(Expr),
+    Print(Expr),
     Var {
-        name: &'a str,
-        initializer: Option<Expr<'a>>,
+        name: String,
+        initializer: Option<Expr>,
     },
-    Block(Vec<Stmt<'a>>),
+    Block(Vec<Stmt>),
     If {
-        condition: Expr<'a>,
-        then_branch: Box<Stmt<'a>>,
-        else_branch: Option<Box<Stmt<'a>>>,
+        condition: Expr,
+        then_branch: Box<Stmt>,
+        else_branch: Option<Box<Stmt>>,
     },
     While {
-        condition: Expr<'a>,
-        body: Box<Stmt<'a>>,
+        condition: Expr,
+        body: Box<Stmt>,
     },
     Function {
-        name: &'a str,
-        parameters: Vec<&'a str>,
-        body: Vec<Stmt<'a>>,
+        name: String,
+        parameters: Vec<String>,
+        body: Vec<Stmt>,
     },
     Return {
-        value: Expr<'a>,
+        value: Expr,
     },
 }
 
-impl<'a> Stmt<'a> {
-    pub fn run(self, env: &mut Env) -> Result<Option<LoxVar>, RuntimeError> {
+impl Stmt {
+    pub fn run(&self, env: &mut Env) -> Result<Option<LoxVar>, RuntimeError> {
         match self {
             Stmt::Expression(expr) => Ok(Some(expr.evaluate(env)?)),
             Stmt::Print(expr) => {
@@ -89,12 +89,16 @@ impl<'a> Stmt<'a> {
                 name,
                 parameters,
                 body,
+                ..
             } => {
-                env.borrow_mut().define(name.to_string(), LoxVar::Callable(
-                    Rc::new(
-                        LoxFunc::new(parameters.len(), body, parameters)
-                    )
-                ));
+                env.borrow_mut().define(
+                    name.to_string(),
+                    LoxVar::Callable(Rc::new(LoxFunc::new(
+                        parameters.len(),
+                        body.clone(),
+                        parameters.clone(),
+                    ))),
+                );
                 Ok(None)
             }
             Stmt::Return { value } => Ok(Some(value.evaluate(env)?)),
@@ -102,7 +106,7 @@ impl<'a> Stmt<'a> {
     }
 }
 
-impl Display for Stmt<'_> {
+impl Display for Stmt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Stmt::Expression(expr) => write!(f, "{expr}"),
@@ -156,64 +160,64 @@ impl Display for Stmt<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub enum Expr<'a> {
-    Literal(Literal<'a>),
+pub enum Expr {
+    Literal(Literal),
 
     Unary {
         operator: TokenKind,
         position: ErrorPos,
-        right: Box<Expr<'a>>,
+        right: Box<Expr>,
     },
 
     Binary {
-        left: Box<Expr<'a>>,
+        left: Box<Expr>,
         operator: TokenKind,
-        right: Box<Expr<'a>>,
+        right: Box<Expr>,
         position: ErrorPos,
     },
 
-    Grouping(Box<Expr<'a>>),
+    Grouping(Box<Expr>),
 
     Variable {
-        name: &'a str,
+        name: String,
         position: ErrorPos,
     },
 
     Assign {
-        name: &'a str,
+        name: String,
         position: ErrorPos,
-        value: Box<Expr<'a>>,
+        value: Box<Expr>,
     },
 
     Logical {
-        left: Box<Expr<'a>>,
+        left: Box<Expr>,
         operator: TokenKind,
-        right: Box<Expr<'a>>,
+        right: Box<Expr>,
         _position: ErrorPos,
     },
 
     Call {
-        callee: Box<Expr<'a>>,
-        args: Vec<Expr<'a>>,
+        callee: Box<Expr>,
+        args: Vec<Expr>,
         position: ErrorPos,
     },
 }
 
-impl<'a> Expr<'a> {
-    pub fn binary(left: Expr<'a>, operator: Token<'a>, right: Expr<'a>) -> Self {
+impl Expr {
+    pub fn binary(left: Expr, operator: Token<'_>, right: Expr) -> Self {
         Self::Binary {
             left: Box::new(left),
             operator: operator.kind,
             right: Box::new(right),
-            position: (&operator).into(),
+            position: operator.into(),
         }
     }
 
-    pub fn unary(operator: Token<'a>, right: Expr<'a>) -> Self {
+    pub fn unary(operator: Token<'_>, right: Expr) -> Self {
         Self::Unary {
             operator: operator.kind,
             right: Box::new(right),
-            position: (&operator).into(),
+            position: operator.into(),
         }
     }
 
@@ -270,7 +274,7 @@ impl<'a> Expr<'a> {
                             Err(EvaluateError::new(
                                 EvaluateErrorKind::IncompatableUnaryOperator {
                                     operator: TokenKind::Minus,
-                                    var_ty: (&right_var).into(),
+                                    var_ty: right_var.into(),
                                 },
                                 *position,
                             )
@@ -300,71 +304,77 @@ impl<'a> Expr<'a> {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord == Ordering::Greater))
                         } else {
-                            Err(
-                                make_bin_eval_error(*position, Greater, &left_var, &right_var)
-                                    .into(),
+                            Err(EvaluateError::bin_eval_error(
+                                *position, Greater, &left_var, &right_var,
                             )
+                            .into())
                         }
                     }
                     GreaterEqual => {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord != Ordering::Less))
                         } else {
-                            Err(
-                                make_bin_eval_error(*position, GreaterEqual, &left_var, &right_var)
-                                    .into(),
+                            Err(EvaluateError::bin_eval_error(
+                                *position,
+                                GreaterEqual,
+                                &left_var,
+                                &right_var,
                             )
+                            .into())
                         }
                     }
                     Less => {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord == Ordering::Less))
                         } else {
-                            Err(make_bin_eval_error(*position, Less, &left_var, &right_var).into())
+                            Err(EvaluateError::bin_eval_error(
+                                *position, Less, &left_var, &right_var,
+                            )
+                            .into())
                         }
                     }
                     LessEqual => {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord != Ordering::Greater))
                         } else {
-                            Err(
-                                make_bin_eval_error(*position, LessEqual, &left_var, &right_var)
-                                    .into(),
+                            Err(EvaluateError::bin_eval_error(
+                                *position, LessEqual, &left_var, &right_var,
                             )
+                            .into())
                         }
                     }
                     EqualEqual => {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord == Ordering::Equal))
                         } else {
-                            Err(
-                                make_bin_eval_error(*position, EqualEqual, &left_var, &right_var)
-                                    .into(),
+                            Err(EvaluateError::bin_eval_error(
+                                *position, EqualEqual, &left_var, &right_var,
                             )
+                            .into())
                         }
                     }
                     BangEqual => {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord != Ordering::Equal))
                         } else {
-                            Err(
-                                make_bin_eval_error(*position, BangEqual, &left_var, &right_var)
-                                    .into(),
+                            Err(EvaluateError::bin_eval_error(
+                                *position, BangEqual, &left_var, &right_var,
                             )
+                            .into())
                         }
                     }
-                    Minus => left_var
-                        .sub(&right_var)
-                        .map_err(|(l, r)| make_bin_eval_error(*position, Minus, l, r).into()),
-                    Slash => left_var
-                        .div(&right_var)
-                        .map_err(|(l, r)| make_bin_eval_error(*position, Slash, l, r).into()),
-                    Star => left_var
-                        .mul(&right_var)
-                        .map_err(|(l, r)| make_bin_eval_error(*position, Star, l, r).into()),
-                    Plus => left_var
-                        .add(&right_var)
-                        .map_err(|(l, r)| make_bin_eval_error(*position, Plus, l, r).into()),
+                    Minus => left_var.sub(&right_var).map_err(|(l, r)| {
+                        EvaluateError::bin_eval_error(*position, Minus, l, r).into()
+                    }),
+                    Slash => left_var.div(&right_var).map_err(|(l, r)| {
+                        EvaluateError::bin_eval_error(*position, Slash, l, r).into()
+                    }),
+                    Star => left_var.mul(&right_var).map_err(|(l, r)| {
+                        EvaluateError::bin_eval_error(*position, Star, l, r).into()
+                    }),
+                    Plus => left_var.add(&right_var).map_err(|(l, r)| {
+                        EvaluateError::bin_eval_error(*position, Plus, l, r).into()
+                    }),
                     _ => unreachable!(
                         "only tokens with kind gt, ge, lt, le, ne, eq, minus, plus, slash and star can be binary operators"
                     ),
@@ -429,10 +439,12 @@ impl<'a> Expr<'a> {
                 position,
             } => match callee.evaluate(env)? {
                 LoxVar::Callable(func) => {
-                    let arguments: Vec<LoxVar> =
-                        args.iter().map(|expr| expr.evaluate(env)).collect()?;
+                    let arguments: Vec<LoxVar> = args
+                        .iter()
+                        .map(|expr| expr.evaluate(env))
+                        .collect::<Result<_, _>>()?;
 
-                    Ok(func.call(env, arguments).map_err(|mut err| {
+                    Ok(func.call(env, arguments.clone()).map_err(|mut err| {
                         err.call_pos = Some(*position);
                         err.input_args = arguments;
 
@@ -451,7 +463,7 @@ impl<'a> Expr<'a> {
     }
 }
 
-impl Display for Expr<'_> {
+impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Expr::Literal(literal) => write!(f, "{literal}"),
@@ -490,15 +502,15 @@ impl Display for Expr<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub enum Literal<'a> {
+pub enum Literal {
     Number(f64),
-    String(&'a str),
+    String(String),
     True,
     False,
     Nil,
 }
 
-impl Display for Literal<'_> {
+impl Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Literal::Number(n) => write!(f, "{n}"),

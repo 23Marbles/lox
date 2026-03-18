@@ -481,7 +481,13 @@ pub mod eval_err {
 pub mod fn_err {
     use std::fmt::Display;
 
-    use crate::tree_walk::{error::{ErrorPos, LoxError, LoxPos, runtime_err::{RuntimeError, RuntimeErrorKind}}, lox_var::LoxVar};
+    use crate::tree_walk::{
+        error::{
+            ErrorPos, LoxError, LoxPos,
+            runtime_err::{RuntimeError, RuntimeErrorKind},
+        },
+        lox_var::LoxVar,
+    };
 
     #[derive(Debug, Clone)]
     pub struct FunctionError {
@@ -549,7 +555,7 @@ pub mod fn_err {
     #[derive(Debug, Clone)]
     pub enum FunctionErrorKind {
         IncorrectArity { expected: usize, got: usize },
-        SubError(Box<RuntimeErrorKind>)
+        SubError(Box<RuntimeErrorKind>),
     }
 
     impl Display for FunctionErrorKind {
@@ -566,7 +572,12 @@ pub mod fn_err {
 
     impl From<RuntimeError> for FunctionError {
         fn from(value: RuntimeError) -> Self {
-            Self { call_pos: None, sub_pos: Some(value.pos()), input_args: Vec::new(), kind: FunctionErrorKind::SubError(Box::new(value.kind)) }
+            Self {
+                call_pos: None,
+                sub_pos: Some(value.pos()),
+                input_args: Vec::new(),
+                kind: FunctionErrorKind::SubError(Box::new(value.kind)),
+            }
         }
     }
 }
@@ -682,6 +693,33 @@ impl LoxError for ErrorPos {
 
 impl From<&Token<'_>> for ErrorPos {
     fn from(value: &Token<'_>) -> Self {
+        use super::token::TokenKind::*;
+        Self {
+            line: value.line,
+            column: if value.kind == String {
+                value.column - 1
+            } else {
+                value.column
+            },
+            columns: match value.kind {
+                BangEqual | EqualEqual | GreaterEqual | LessEqual => 2,
+                Or | If => 2,
+                And | Var | Fun | For | Nil => 3,
+                Else | This | True => 4,
+                Class | False | Print | Super | While => 5,
+                Return => 6,
+                Identifier => value.lexeme.len(),
+                String => value.lexeme.len() + 2,
+                Number => value.lexeme.len(),
+                _ => 1,
+            },
+            lines: 1,
+        }
+    }
+}
+
+impl From<Token<'_>> for ErrorPos {
+    fn from(value: Token<'_>) -> Self {
         use super::token::TokenKind::*;
         Self {
             line: value.line,

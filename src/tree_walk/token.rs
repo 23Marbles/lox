@@ -42,7 +42,10 @@ impl<'a> Scanner<'a> {
     }
 
     fn error(&self, kind: ScanErrorKind) -> ScanError {
-        ScanError::new(kind, ErrorPos::new(self.line, self.column(self.current), 1))
+        ScanError::new(
+            kind,
+            ErrorPos::new(self.line, self.column(self.current), 1, 1),
+        )
     }
 
     fn advance(&mut self) -> char {

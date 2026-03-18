@@ -4,13 +4,13 @@ use crate::tree_walk::{
     lox_var::{Env, LoxVar},
 };
 
-pub struct Interpreter<'a, 'b> {
-    statements: Vec<Stmt<'a>>,
-    env: &'b mut Env,
+pub struct Interpreter<'a> {
+    statements: Vec<Stmt>,
+    env: &'a mut Env,
 }
 
-impl<'a, 'b> Interpreter<'a, 'b> {
-    pub fn new(statements: Vec<Stmt<'a>>, env: &'b mut Env) -> Self {
+impl<'a> Interpreter<'a> {
+    pub fn new(statements: Vec<Stmt>, env: &'a mut Env) -> Self {
         Self { statements, env }
     }
 

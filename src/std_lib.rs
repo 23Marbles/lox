@@ -4,10 +4,7 @@ use std::{
 };
 
 use crate::tree_walk::{
-    error::{
-        eval_err::EvaluateErrorKind,
-        fn_err::{FunctionError, FunctionErrorKind},
-    },
+    error::fn_err::{FunctionError, FunctionErrorKind},
     lox_var::{Env, LoxCallable, LoxVar},
 };
 
@@ -17,12 +14,10 @@ pub fn lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
         Rc::new(NativeFunc {
             func: |_, args| {
                 if args.len() != 0 {
-                    Err(FunctionError::new(FunctionErrorKind::EvaluateError(
-                        EvaluateErrorKind::IncorrectArity {
-                            expected: 0,
-                            got: args.len(),
-                        },
-                    )))
+                    Err(FunctionError::new(FunctionErrorKind::IncorrectArity {
+                        expected: 0,
+                        got: args.len(),
+                    }))
                 } else {
                     Ok(LoxVar::Number(
                         SystemTime::now()
