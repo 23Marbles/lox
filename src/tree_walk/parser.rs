@@ -2,7 +2,7 @@ use crate::tree_walk::{
     ast::{Expr, Literal, Stmt},
     error::{
         ErrorPos,
-        parse_err::{ParseError, ParseErrorKind},
+        parse_err::{Named, ParseError, ParseErrorKind},
     },
     token::{Token, TokenKind},
 };
@@ -43,9 +43,13 @@ impl<'a> Parser<'a> {
     #[must_use]
     fn error(&mut self, kind: ParseErrorKind) -> ParseError {
         let errored_pos: ErrorPos = match kind {
-            ParseErrorKind::UnexpectedTokenKind(_) | ParseErrorKind::InvalidAssignTarget(_) => (&self.peek()).into(),
-            ParseErrorKind::TooManyArguments => (&self.tokens[self.current - 1]).into(),
-            ParseErrorKind::ExpectedTokenKind(_) => {
+            ParseErrorKind::UnexpectedTokenKind(_) | ParseErrorKind::InvalidAssignTarget(_) => {
+                // The current tokens full position
+                (&self.peek()).into()
+            }
+            ParseErrorKind::TooManyArguments => (&self.tokens[self.current - 1]).into(), // The last token's full position
+            ParseErrorKind::ExpectedTokenKind(_) | ParseErrorKind::ExpectedName(_) => {
+                // The first charcter after the current tokens position
                 let prev_pos: ErrorPos = (&self.tokens[self.current - 1]).into();
 
                 prev_pos.end()
@@ -110,16 +114,58 @@ impl<'a> Parser<'a> {
     fn declaration(&mut self) -> Result<Stmt<'a>, ParseError> {
         if self.match_any([TokenKind::Var]) {
             self.var_declaration()
+        } else if self.match_any([TokenKind::Fun]) {
+            self.fun_declaration()
         } else {
             self.statement()
         }
     }
 
+    fn fun_declaration(&mut self) -> Result<Stmt<'a>, ParseError> {
+        let name = self
+            .consume(
+                TokenKind::Identifier,
+                ParseErrorKind::ExpectedName(Named::Function),
+            )?
+            .lexeme;
+        self.expect(TokenKind::LeftParen)?;
+
+        let mut parameters: Vec<&'a str> = Vec::new();
+
+        if !self.check(TokenKind::RightParen) {
+            'collect_arguments: loop {
+                if parameters.len() >= u8::MAX as usize {
+                    let _ = self.error(ParseErrorKind::TooManyArguments);
+                }
+
+                parameters.push(
+                    self.consume(
+                        TokenKind::Identifier,
+                        ParseErrorKind::ExpectedName(Named::Parameter),
+                    )?
+                    .lexeme,
+                );
+
+                if !self.match_any([TokenKind::Comma]) {
+                    break 'collect_arguments;
+                }
+            }
+        }
+
+        self.expect(TokenKind::RightParen)?;
+        self.expect(TokenKind::RightBrace)?;
+
+        let body = self.block()?;
+
+        Ok(Stmt::Function {
+            name,
+            parameters,
+            body,
+        })
+    }
+
     fn var_declaration(&mut self) -> Result<Stmt<'a>, ParseError> {
-        let name = self.consume(
-            TokenKind::Identifier,
-            ParseErrorKind::ExpectedTokenKind(TokenKind::Identifier),
-        )?;
+        let name = self.expect(TokenKind::Identifier)?.lexeme;
 
         let initializer = if self.match_any([TokenKind::Equal]) {
             Some(self.expression()?)
@@ -127,10 +173,7 @@ impl<'a> Parser<'a> {
             None
         };
 
-        self.consume(
-            TokenKind::Semicolon,
-            ParseErrorKind::ExpectedTokenKind(TokenKind::Semicolon),
-        )?;
+        self.expect(TokenKind::Semicolon)?;
 
         Ok(Stmt::Var { name, initializer })
     }
@@ -154,10 +197,7 @@ impl<'a> Parser<'a> {
     }
 
     fn for_statement(&mut self) -> Result<Stmt<'a>, ParseError> {
-        self.consume(
-            TokenKind::LeftParen,
-            ParseErrorKind::ExpectedTokenKind(TokenKind::LeftParen),
-        )?;
+        self.expect(TokenKind::LeftParen)?;
 
         let initializer = if self.match_any([TokenKind::Semicolon]) {
             None
@@ -173,10 +213,7 @@ impl<'a> Parser<'a> {
             None
         };
 
-        self.consume(
-            TokenKind::Semicolon,
-            ParseErrorKind::ExpectedTokenKind(TokenKind::Semicolon),
-        )?;
+        self.expect(TokenKind::Semicolon)?;
 
         let increment = if !self.check(TokenKind::RightParen) {
             Some(self.expression()?)
@@ -184,10 +221,7 @@ impl<'a> Parser<'a> {
             None
         };
 
-        self.consume(
-            TokenKind::RightParen,
-            ParseErrorKind::ExpectedTokenKind(TokenKind::RightParen),
-        )?;
+        self.expect(TokenKind::RightParen)?;
 
         let mut body = self.statement()?;
 
@@ -208,15 +242,9 @@ impl<'a> Parser<'a> {
     }
 
     fn while_statement(&mut self) -> Result<Stmt<'a>, ParseError> {
-        self.consume(
-            TokenKind::LeftParen,
-            ParseErrorKind::ExpectedTokenKind(TokenKind::LeftParen),
-        )?;
+        self.expect(TokenKind::LeftParen)?;
         let condition = self.expression()?;
-        self.consume(
-            TokenKind::RightParen,
-            ParseErrorKind::ExpectedTokenKind(TokenKind::RightParen),
-        )?;
+        self.expect(TokenKind::RightParen)?;
         Ok(Stmt::While {
             condition,
             body: Box::new(self.statement()?),
@@ -224,15 +252,9 @@ impl<'a> Parser<'a> {
     }
 
     fn if_statement(&mut self) -> Result<Stmt<'a>, ParseError> {
-        self.consume(
-            TokenKind::LeftParen,
-            ParseErrorKind::ExpectedTokenKind(TokenKind::LeftParen),
-        )?;
+        self.expect(TokenKind::LeftParen)?;
         let condition = self.expression()?;
-        self.consume(
-            TokenKind::RightParen,
-            ParseErrorKind::ExpectedTokenKind(TokenKind::RightParen),
-        )?;
+        self.expect(TokenKind::RightParen)?;
 
         let then_branch = self.statement()?;
         let else_branch = if self.match_any([TokenKind::Else]) {
@@ -264,20 +286,14 @@ impl<'a> Parser<'a> {
 
     fn print_statement(&mut self) -> Result<Stmt<'a>, ParseError> {
         let value = self.expression()?;
-        self.consume(
-            TokenKind::Semicolon,
-            ParseErrorKind::ExpectedTokenKind(TokenKind::Semicolon),
-        )?;
+        self.expect(TokenKind::Semicolon)?;
 
         Ok(Stmt::Print(value))
     }
 
     fn expression_statement(&mut self) -> Result<Stmt<'a>, ParseError> {
         let value = self.expression()?;
-        self.consume(
-            TokenKind::Semicolon,
-            ParseErrorKind::ExpectedTokenKind(TokenKind::Semicolon),
-        )?;
+        self.expect(TokenKind::Semicolon)?;
 
         Ok(Stmt::Expression(value))
     }
@@ -320,8 +336,9 @@ impl<'a> Parser<'a> {
         while self.match_any([TokenKind::Or]) {
             expr = Expr::Logical {
                 left: Box::new(expr),
-                operator: self.previous(),
+                operator: self.previous().kind,
                 right: Box::new(self.logic_and()?),
+                _position: (&self.previous()).into(),
             };
         }
 
@@ -334,8 +351,9 @@ impl<'a> Parser<'a> {
         while self.match_any([TokenKind::And]) {
             expr = Expr::Logical {
                 left: Box::new(expr),
-                operator: self.previous(),
+                operator: self.previous().kind,
                 right: Box::new(self.equality()?),
+                _position: (&self.previous()).into(),
             };
         }
 
@@ -413,23 +431,18 @@ impl<'a> Parser<'a> {
 
         if !self.check(TokenKind::RightParen) {
             loop {
+                if args.len() > u8::MAX as usize {
+                    let _ = self.error(ParseErrorKind::TooManyArguments);
+                }
                 args.push(self.expression()?);
 
                 if !self.match_any([TokenKind::Comma]) {
                     break;
                 }
             }
-
-            if args.len() > u8::MAX as usize {
-                let _ = self.error(ParseErrorKind::TooManyArguments);
-            }
         }
 
-        let position: ErrorPos = (&self.consume(
-            TokenKind::RightParen,
-            ParseErrorKind::ExpectedTokenKind(TokenKind::RightParen),
-        )?)
-            .into();
+        let position: ErrorPos = (&self.expect(TokenKind::RightParen)?).into();
 
         Ok(Expr::Call {
             callee: Box::new(calee),
@@ -467,10 +480,7 @@ impl<'a> Parser<'a> {
             LeftParen => {
                 self.advance();
                 let expr = self.expression()?;
-                self.consume(
-                    RightParen,
-                    ParseErrorKind::ExpectedTokenKind(TokenKind::RightParen),
-                )?;
+                self.expect(RightParen)?;
                 Ok(Expr::Grouping(Box::new(expr)))
             }
             Identifier => {
@@ -510,5 +520,9 @@ impl<'a> Parser<'a> {
         } else {
             Err(self.error(err))
         }
+    }
+
+    fn expect(&mut self, expected: TokenKind) -> Result<Token<'a>, ParseError> {
+        self.consume(expected, ParseErrorKind::ExpectedTokenKind(expected))
     }
 }

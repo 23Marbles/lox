@@ -4,36 +4,40 @@ use std::{
     io::{Read, Write, stdin, stdout},
     path::Path,
     process::exit,
+    rc::Rc,
 };
 
 use crate::tree_walk::{
     error::run_err::RunError,
     interpreter::Interpreter,
-    lox_var::{Env, EnvironmentImpl, LoxVar},
+    lox_var::{Env, EnvironmentImpl, LoxCallable, LoxVar},
     parser::Parser,
     token::Scanner,
 };
 mod ast;
-mod error;
+pub mod error;
 mod interpreter;
-mod lox_var;
+pub mod lox_var;
 mod parser;
 mod token;
 
-pub fn main() -> Result<(), RunError> {
+pub fn main(lib: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), RunError> {
     let args: Vec<String> = env::args().collect();
 
     if args.len() > 2 {
         println!("usage: rlox [script]");
         exit(64)
     } else if args.len() == 2 {
-        run_file(Path::new(&args[1]))
+        run_file(Path::new(&args[1]), lib)
     } else {
-        run_prompt()
+        run_prompt(lib)
     }
 }
 
-fn run_file(file_path: &Path) -> Result<(), RunError> {
+fn run_file(
+    file_path: &Path,
+    lib: Vec<(&'static str, Rc<dyn LoxCallable>)>,
+) -> Result<(), RunError> {
     #[cfg(debug_assertions)]
     println!("script opened at {:?}", file_path);
 
@@ -42,15 +46,28 @@ fn run_file(file_path: &Path) -> Result<(), RunError> {
     file.read_to_string(&mut contents)?;
 
     let mut env = <Env as EnvironmentImpl>::new(None);
+
+    env.register_globals(
+        lib.iter()
+            .map(|(name, func)| (name.to_string(), func.clone()))
+            .collect(),
+    );
+
     run(&contents, &mut env).map(|_| ()).map_err(|mut err| {
         err.set_source(contents);
         err
     })
 }
 
-fn run_prompt() -> Result<(), RunError> {
+fn run_prompt(lib: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), RunError> {
     let mut line_buf = String::new();
     let mut env = <Env as EnvironmentImpl>::new(None);
+
+    env.register_globals(
+        lib.iter()
+            .map(|(name, func)| (name.to_string(), func.clone()))
+            .collect(),
+    );
 
     loop {
         print!("> ");

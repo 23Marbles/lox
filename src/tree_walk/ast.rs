@@ -1,15 +1,16 @@
 use std::{
     fmt::Display,
     ops::{Add, Div, Mul, Sub},
+    rc::Rc,
 };
 
 use crate::tree_walk::{
     error::{
         ErrorPos,
         eval_err::{EvaluateError, EvaluateErrorKind, make_bin_eval_error},
-        runtime_err::RuntimeError,
+        runtime_err::{RuntimeError, RuntimeErrorKind},
     },
-    lox_var::{Env, EnvironmentImpl, LoxVar},
+    lox_var::{Env, EnvironmentImpl, LoxFunc, LoxVar, LoxVarKind},
     token::{Token, TokenKind},
 };
 
@@ -18,7 +19,7 @@ pub enum Stmt<'a> {
     Expression(Expr<'a>),
     Print(Expr<'a>),
     Var {
-        name: Token<'a>,
+        name: &'a str,
         initializer: Option<Expr<'a>>,
     },
     Block(Vec<Stmt<'a>>),
@@ -31,10 +32,18 @@ pub enum Stmt<'a> {
         condition: Expr<'a>,
         body: Box<Stmt<'a>>,
     },
+    Function {
+        name: &'a str,
+        parameters: Vec<&'a str>,
+        body: Vec<Stmt<'a>>,
+    },
+    Return {
+        value: Expr<'a>,
+    },
 }
 
 impl<'a> Stmt<'a> {
-    pub fn run(&self, env: &mut Env) -> Result<Option<LoxVar>, RuntimeError> {
+    pub fn run(self, env: &mut Env) -> Result<Option<LoxVar>, RuntimeError> {
         match self {
             Stmt::Expression(expr) => Ok(Some(expr.evaluate(env)?)),
             Stmt::Print(expr) => {
@@ -47,8 +56,7 @@ impl<'a> Stmt<'a> {
                     Some(value) => value.evaluate(env)?,
                     None => LoxVar::Nil,
                 };
-                env.borrow_mut()
-                    .define(name.lexeme.to_string(), value.clone());
+                env.borrow_mut().define(name.to_string(), value.clone());
                 Ok(None)
             }
             Stmt::Block(stmts) => {
@@ -73,10 +81,23 @@ impl<'a> Stmt<'a> {
             }
             Stmt::While { condition, body } => {
                 while condition.evaluate(env)?.is_truthy() {
-                    body.run(env)?;
+                    body.clone().run(env)?;
                 }
                 Ok(None)
             }
+            Stmt::Function {
+                name,
+                parameters,
+                body,
+            } => {
+                env.borrow_mut().define(name.to_string(), LoxVar::Callable(
+                    Rc::new(
+                        LoxFunc::new(parameters.len(), body, parameters)
+                    )
+                ));
+                Ok(None)
+            }
+            Stmt::Return { value } => Ok(Some(value.evaluate(env)?)),
         }
     }
 }
@@ -86,7 +107,7 @@ impl Display for Stmt<'_> {
         match self {
             Stmt::Expression(expr) => write!(f, "{expr}"),
             Stmt::Print(expr) => write!(f, "(print {expr})"),
-            Stmt::Var { name, initializer } => write!(f, "(var {} = {initializer:?})", name.lexeme),
+            Stmt::Var { name, initializer } => write!(f, "(var {} = {initializer:?})", name),
             Stmt::Block(stmts) => write!(
                 f,
                 "{{{}}}",
@@ -107,6 +128,29 @@ impl Display for Stmt<'_> {
                 }
             }
             Stmt::While { condition, body } => write!(f, "(while {condition} do {body})"),
+            Stmt::Function {
+                name,
+                parameters,
+                body,
+                ..
+            } => {
+                write!(f, "(fun {name}(")?;
+                if !parameters.is_empty() {
+                    write!(f, "{}", parameters[0])?;
+
+                    if parameters.len() >= 2 {
+                        for arg in parameters.iter().skip(1) {
+                            write!(f, ", {arg}")?;
+                        }
+                    }
+                }
+                write!(
+                    f,
+                    ") {{{}}})",
+                    body.iter().map(|stmt| stmt.to_string()).collect::<String>()
+                )
+            }
+            Stmt::Return { value } => write!(f, "(return {value})"),
         }
     }
 }
@@ -116,14 +160,16 @@ pub enum Expr<'a> {
     Literal(Literal<'a>),
 
     Unary {
-        operator: Token<'a>,
+        operator: TokenKind,
+        position: ErrorPos,
         right: Box<Expr<'a>>,
     },
 
     Binary {
         left: Box<Expr<'a>>,
-        operator: Token<'a>,
+        operator: TokenKind,
         right: Box<Expr<'a>>,
+        position: ErrorPos,
     },
 
     Grouping(Box<Expr<'a>>),
@@ -141,8 +187,9 @@ pub enum Expr<'a> {
 
     Logical {
         left: Box<Expr<'a>>,
-        operator: Token<'a>,
+        operator: TokenKind,
         right: Box<Expr<'a>>,
+        _position: ErrorPos,
     },
 
     Call {
@@ -156,26 +203,31 @@ impl<'a> Expr<'a> {
     pub fn binary(left: Expr<'a>, operator: Token<'a>, right: Expr<'a>) -> Self {
         Self::Binary {
             left: Box::new(left),
-            operator,
+            operator: operator.kind,
             right: Box::new(right),
+            position: (&operator).into(),
         }
     }
 
     pub fn unary(operator: Token<'a>, right: Expr<'a>) -> Self {
         Self::Unary {
-            operator,
+            operator: operator.kind,
             right: Box::new(right),
+            position: (&operator).into(),
         }
     }
 
     pub fn string(&self) -> String {
         match self {
             Expr::Literal(literal) => literal.to_string(),
-            Expr::Unary { operator, right } => operator.to_string() + &right.string(),
+            Expr::Unary {
+                operator, right, ..
+            } => operator.to_string() + &right.string(),
             Expr::Binary {
                 left,
                 operator,
                 right,
+                ..
             } => left.string() + " " + &operator.to_string() + " " + &right.string(),
             Expr::Grouping(expr) => "(".to_string() + &expr.string() + ")",
             Expr::Variable { name, .. } => name.to_string(),
@@ -184,7 +236,8 @@ impl<'a> Expr<'a> {
                 left,
                 operator,
                 right,
-            } => left.string() + " " + operator.lexeme + " " + &right.string(),
+                ..
+            } => left.string() + " " + &operator.to_string() + " " + &right.string(),
             Expr::Call { callee, args, .. } => {
                 let mut base_string = callee.string() + "(";
 
@@ -200,12 +253,16 @@ impl<'a> Expr<'a> {
         }
     }
 
-    pub fn evaluate(&self, env: &mut Env) -> Result<LoxVar, EvaluateError> {
+    pub fn evaluate(&self, env: &mut Env) -> Result<LoxVar, RuntimeError> {
         match self {
             Expr::Literal(literal) => Ok(literal.into()),
-            Expr::Unary { operator, right } => {
+            Expr::Unary {
+                operator,
+                right,
+                position,
+            } => {
                 let right_var = right.evaluate(env)?;
-                match operator.kind {
+                match operator {
                     TokenKind::Minus => {
                         if let LoxVar::Number(n) = right_var {
                             Ok(LoxVar::Number(-n))
@@ -215,8 +272,9 @@ impl<'a> Expr<'a> {
                                     operator: TokenKind::Minus,
                                     var_ty: (&right_var).into(),
                                 },
-                                operator.into(),
-                            ))
+                                *position,
+                            )
+                            .into())
                         }
                     }
                     TokenKind::Bang => Ok(LoxVar::Bool(!right_var.is_truthy())),
@@ -229,6 +287,7 @@ impl<'a> Expr<'a> {
                 left,
                 operator,
                 right,
+                position,
             } => {
                 let left_var = left.evaluate(env)?;
                 let right_var = right.evaluate(env)?;
@@ -236,88 +295,91 @@ impl<'a> Expr<'a> {
                 use TokenKind::*;
                 use std::cmp::Ordering;
 
-                match operator.kind {
+                match operator {
                     Greater => {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord == Ordering::Greater))
                         } else {
-                            Err(make_bin_eval_error(
-                                operator, Greater, &left_var, &right_var,
-                            ))
+                            Err(
+                                make_bin_eval_error(*position, Greater, &left_var, &right_var)
+                                    .into(),
+                            )
                         }
                     }
                     GreaterEqual => {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord != Ordering::Less))
                         } else {
-                            Err(make_bin_eval_error(
-                                operator,
-                                GreaterEqual,
-                                &left_var,
-                                &right_var,
-                            ))
+                            Err(
+                                make_bin_eval_error(*position, GreaterEqual, &left_var, &right_var)
+                                    .into(),
+                            )
                         }
                     }
                     Less => {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord == Ordering::Less))
                         } else {
-                            Err(make_bin_eval_error(operator, Less, &left_var, &right_var))
+                            Err(make_bin_eval_error(*position, Less, &left_var, &right_var).into())
                         }
                     }
                     LessEqual => {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord != Ordering::Greater))
                         } else {
-                            Err(make_bin_eval_error(
-                                operator, LessEqual, &left_var, &right_var,
-                            ))
+                            Err(
+                                make_bin_eval_error(*position, LessEqual, &left_var, &right_var)
+                                    .into(),
+                            )
                         }
                     }
                     EqualEqual => {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord == Ordering::Equal))
                         } else {
-                            Err(make_bin_eval_error(
-                                operator, EqualEqual, &left_var, &right_var,
-                            ))
+                            Err(
+                                make_bin_eval_error(*position, EqualEqual, &left_var, &right_var)
+                                    .into(),
+                            )
                         }
                     }
                     BangEqual => {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord != Ordering::Equal))
                         } else {
-                            Err(make_bin_eval_error(
-                                operator, BangEqual, &left_var, &right_var,
-                            ))
+                            Err(
+                                make_bin_eval_error(*position, BangEqual, &left_var, &right_var)
+                                    .into(),
+                            )
                         }
                     }
                     Minus => left_var
                         .sub(&right_var)
-                        .map_err(|(l, r)| make_bin_eval_error(operator, Minus, l, r)),
+                        .map_err(|(l, r)| make_bin_eval_error(*position, Minus, l, r).into()),
                     Slash => left_var
                         .div(&right_var)
-                        .map_err(|(l, r)| make_bin_eval_error(operator, Slash, l, r)),
+                        .map_err(|(l, r)| make_bin_eval_error(*position, Slash, l, r).into()),
                     Star => left_var
                         .mul(&right_var)
-                        .map_err(|(l, r)| make_bin_eval_error(operator, Star, l, r)),
+                        .map_err(|(l, r)| make_bin_eval_error(*position, Star, l, r).into()),
                     Plus => left_var
                         .add(&right_var)
-                        .map_err(|(l, r)| make_bin_eval_error(operator, Plus, l, r)),
+                        .map_err(|(l, r)| make_bin_eval_error(*position, Plus, l, r).into()),
                     _ => unreachable!(
                         "only tokens with kind gt, ge, lt, le, ne, eq, minus, plus, slash and star can be binary operators"
                     ),
                 }
             }
             Expr::Grouping(expr) => expr.evaluate(env),
-            Expr::Variable { name, position } => {
-                env.borrow().get(name.to_string()).ok_or(EvaluateError::new(
+            Expr::Variable { name, position } => env.borrow().get(name.to_string()).ok_or(
+                EvaluateError::new(
                     EvaluateErrorKind::UndeclaredVariable {
                         name: name.to_string(),
                     },
                     *position,
-                ))
-            }
+                )
+                .into(),
+            ),
             Expr::Assign {
                 name,
                 position,
@@ -330,7 +392,8 @@ impl<'a> Expr<'a> {
                             name: name.to_string(),
                         },
                         *position,
-                    ))
+                    )
+                    .into())
                 } else {
                     Ok(value)
                 }
@@ -339,9 +402,10 @@ impl<'a> Expr<'a> {
                 left,
                 operator,
                 right,
+                ..
             } => {
                 let left = left.evaluate(env)?;
-                match operator.kind {
+                match operator {
                     TokenKind::And => {
                         if !left.is_truthy() {
                             Ok(left)
@@ -359,7 +423,30 @@ impl<'a> Expr<'a> {
                     _ => unreachable!("Logical expr can only have operators Or or And"),
                 }
             }
-            Expr::Call { .. } => todo!("Undefind Expr: Call [{}]", self),
+            Expr::Call {
+                callee,
+                args,
+                position,
+            } => match callee.evaluate(env)? {
+                LoxVar::Callable(func) => {
+                    let arguments: Vec<LoxVar> =
+                        args.iter().map(|expr| expr.evaluate(env)).collect()?;
+
+                    Ok(func.call(env, arguments).map_err(|mut err| {
+                        err.call_pos = Some(*position);
+                        err.input_args = arguments;
+
+                        err
+                    })?)
+                }
+                other => Err(EvaluateError::new(
+                    EvaluateErrorKind::NonCallable {
+                        name: other.to_string(),
+                    },
+                    *position,
+                )
+                .into()),
+            },
         }
     }
 }
@@ -368,11 +455,14 @@ impl Display for Expr<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Expr::Literal(literal) => write!(f, "{literal}"),
-            Expr::Unary { operator, right } => write!(f, "({operator} {right})"),
+            Expr::Unary {
+                operator, right, ..
+            } => write!(f, "({operator} {right})"),
             Expr::Binary {
                 left,
                 operator,
                 right,
+                ..
             } => write!(f, "({operator} {left} {right})"),
             Expr::Grouping(expr) => write!(f, "(group {expr})"),
             Expr::Variable { name, .. } => write!(f, "(variable {name})"),
@@ -381,6 +471,7 @@ impl Display for Expr<'_> {
                 left,
                 operator,
                 right,
+                ..
             } => write!(f, "({operator} {left} {right})"),
             Expr::Call { callee, args, .. } => {
                 write!(f, "(fun {callee} (")?;
@@ -416,33 +507,5 @@ impl Display for Literal<'_> {
             Literal::False => write!(f, "false"),
             Literal::Nil => write!(f, "nil"),
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn expr_print() {
-        let expression = Expr::Binary {
-            left: Box::new(Expr::Literal(Literal::False)),
-            operator: Token {
-                kind: crate::tree_walk::token::TokenKind::EqualEqual,
-                lexeme: "==",
-                line: 2,
-                column: 1,
-            },
-            right: Box::new(Expr::Unary {
-                operator: Token {
-                    kind: crate::tree_walk::token::TokenKind::Bang,
-                    lexeme: "!",
-                    line: 4,
-                    column: 7,
-                },
-                right: Box::new(Expr::Literal(Literal::True)),
-            }),
-        };
-        assert_eq!(expression.to_string(), "(== false (! true))")
     }
 }

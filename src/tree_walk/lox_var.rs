@@ -1,11 +1,25 @@
-use std::{cell::RefCell, collections::HashMap, fmt::Display, ops::*, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    fmt::{Debug, Display},
+    ops::*,
+    rc::Rc,
+};
 
-use crate::tree_walk::ast::Literal;
+use crate::tree_walk::{
+    ast::{Literal, Stmt},
+    error::{
+        eval_err::EvaluateErrorKind,
+        fn_err::{FunctionError, FunctionErrorKind},
+        runtime_err::RuntimeErrorKind,
+    },
+};
 
 pub trait EnvironmentImpl
 where
     Self: Sized,
 {
+    fn register_globals(&mut self, lib: Vec<(String, Rc<dyn LoxCallable>)>);
     fn new(enclosing: Option<Self>) -> Self;
     fn descend(&mut self);
     #[must_use = "Make sure you are not ascending above global level"]
@@ -31,9 +45,16 @@ impl EnvironmentImpl for Env {
         }));
         Some(())
     }
+
+    fn register_globals(&mut self, lib: Vec<(String, Rc<dyn LoxCallable>)>) {
+        let mut self_mut = self.borrow_mut();
+        for (name, func) in lib {
+            self_mut.define(name, LoxVar::Callable(func));
+        }
+    }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct Environment {
     enclosing: Option<Env>,
     values: HashMap<String, LoxVar>,
@@ -73,34 +94,98 @@ impl Environment {
     }
 }
 
-#[derive(Debug, Clone)]
+pub trait LoxCallable: Debug {
+    fn call(&self, env: &mut Env, arguments: Vec<LoxVar>) -> Result<LoxVar, FunctionError>;
+
+    fn signature(&self) -> String;
+}
+
+#[derive(Debug)]
+pub struct LoxFunc<'a> {
+    arity: usize,
+    body: Vec<Stmt<'a>>,
+    parameters: Vec<&'a str>,
+}
+
+impl<'a> LoxFunc<'a> {
+    pub fn new(arity: usize, body: Vec<Stmt<'a>>, parameters: Vec<&'a str>) -> Self {
+        Self {
+            arity,
+            body,
+            parameters,
+        }
+    }
+}
+
+impl LoxCallable for LoxFunc<'_> {
+    fn call(&self, env: &mut Env, arguments: Vec<LoxVar>) -> Result<LoxVar, FunctionError> {
+        if arguments.len() != self.arity {
+            Err(FunctionError::new(FunctionErrorKind::IncorrectArity {
+                expected: self.arity,
+                got: arguments.len(),
+            }))
+        } else {
+            env.descend();
+            for (name, arg) in self.parameters.iter().zip(arguments) {
+                env.borrow_mut().define(name.to_string(), arg);
+            }
+
+            for stmt in &self.body {
+                match stmt {
+                    Stmt::Return { value } => {
+                        env.ascend();
+                        return Ok(value.evaluate(env)?);
+                    }
+                    other => {
+                        other.clone().run(env)?;
+                    }
+                }
+            }
+
+            Ok(LoxVar::Nil) // Default to this if nothing is returned
+        }
+    }
+
+    fn signature(&self) -> String {
+        todo!()
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum LoxVar {
     Nil,
     Bool(bool),
     Number(f64),
     String(String),
+    Callable(Rc<dyn LoxCallable>),
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum LoxVarKinds {
+pub enum LoxVarKind {
     Nil,
     Bool,
     Number,
     String,
+    Callable,
 }
 
-impl From<&LoxVar> for LoxVarKinds {
+impl From<&LoxVar> for LoxVarKind {
     fn from(value: &LoxVar) -> Self {
         match value {
             LoxVar::Nil => Self::Nil,
-            LoxVar::Bool(_) => Self::Bool,
-            LoxVar::Number(_) => Self::Number,
-            LoxVar::String(_) => Self::String,
+            LoxVar::Bool(..) => Self::Bool,
+            LoxVar::Number(..) => Self::Number,
+            LoxVar::String(..) => Self::String,
+            LoxVar::Callable(..) => Self::Callable,
         }
     }
 }
 
 impl LoxVar {
+    pub fn kind(&self) -> LoxVarKind {
+        self.into()
+    }
+
     fn expect_number(&self) -> Option<f64> {
         match self {
             Self::Number(n) => Some(*n),
@@ -117,17 +202,17 @@ impl LoxVar {
     }
 
     #[cfg(feature = "implicit_converions")]
-    pub fn try_convert(&self, to: LoxVarKinds) -> Option<LoxVar> {
+    pub fn try_convert(&self, to: LoxVarKind) -> Option<LoxVar> {
         match to {
-            LoxVarKinds::Nil => Some(LoxVar::Nil),
-            LoxVarKinds::Bool => Some(LoxVar::Bool(self.is_truthy())),
-            LoxVarKinds::Number => match self {
+            LoxVarKind::Nil => Some(LoxVar::Nil),
+            LoxVarKind::Bool => Some(LoxVar::Bool(self.is_truthy())),
+            LoxVarKind::Number => match self {
                 LoxVar::Nil => None,
                 LoxVar::Bool(b) => Some(LoxVar::Number(*b as u8 as f64)),
                 LoxVar::Number(n) => Some(LoxVar::Number(*n)),
                 LoxVar::String(s) => Some(LoxVar::Number(s.parse().ok()?)),
             },
-            LoxVarKinds::String => Some(LoxVar::String(self.to_string())),
+            LoxVarKind::String => Some(LoxVar::String(self.to_string())),
         }
     }
 }
@@ -151,6 +236,7 @@ impl Display for LoxVar {
             LoxVar::Bool(b) => write!(f, "{b}"),
             LoxVar::Number(n) => write!(f, "{n}"),
             LoxVar::String(s) => write!(f, "{s}"),
+            LoxVar::Callable(c) => write!(f, "{}", c.signature()),
         }
     }
 }
@@ -206,8 +292,8 @@ impl PartialOrd for LoxVar {
             (_ls, _rs) => {
                 #[cfg(feature = "implicit_converions")]
                 {
-                    _ls.try_convert(LoxVarKinds::Number)?
-                        .partial_cmp(&_rs.try_convert(LoxVarKinds::Number)?)
+                    _ls.try_convert(LoxVarKind::Number)?
+                        .partial_cmp(&_rs.try_convert(LoxVarKind::Number)?)
                 }
                 #[cfg(not(feature = "implicit_converions"))]
                 {
