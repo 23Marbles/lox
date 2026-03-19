@@ -117,7 +117,8 @@ impl Stmt {
                         })?,
                         body.clone(),
                         parameters.clone(),
-                        name.to_string()
+                        name.to_string(),
+                        env
                     ))),
                 );
                 Ok(ControlFlow::None)
@@ -474,7 +475,7 @@ impl Expr {
                         .map(|expr| expr.evaluate(env))
                         .collect::<Result<_, _>>()?;
 
-                    Ok(func.call(env, arguments.clone()).map_err(|mut err| {
+                    Ok(func.call(arguments.clone()).map_err(|mut err| {
                         err.call_pos = Some(Box::new(*position));
                         err.input_args = arguments;
 

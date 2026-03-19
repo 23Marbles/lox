@@ -5,14 +5,14 @@ use std::{
 
 use crate::tree_walk::{
     error::fn_err::{FunctionError, FunctionErrorKind},
-    lox_var::{Env, LoxCallable, LoxVar},
+    lox_var::{LoxCallable, LoxVar},
 };
 
 pub fn lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
     vec![(
         "clock",
         Rc::new(NativeFunc {
-            func: |_, args| {
+            func: |args| {
                 if !args.is_empty() {
                     Err(FunctionError::new(FunctionErrorKind::IncorrectArity {
                         expected: 0,
@@ -34,13 +34,13 @@ pub fn lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
 
 #[derive(Debug, Clone)]
 pub struct NativeFunc {
-    pub func: fn(&mut Env, Vec<LoxVar>) -> Result<LoxVar, FunctionError>,
+    pub func: fn(Vec<LoxVar>) -> Result<LoxVar, FunctionError>,
     pub signature: &'static str,
 }
 
 impl LoxCallable for NativeFunc {
-    fn call(&self, env: &mut Env, args: Vec<LoxVar>) -> Result<LoxVar, FunctionError> {
-        (self.func)(env, args)
+    fn call(&self, args: Vec<LoxVar>) -> Result<LoxVar, FunctionError> {
+        (self.func)(args)
     }
 
     fn signature(&self) -> String {

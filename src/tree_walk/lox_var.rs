@@ -70,11 +70,9 @@ impl EnvironmentImpl for Env {
             .borrow()
             .enclosing
             .clone()
-            .expect("Tried to ascend above the global environment");
-        *self = Env::new(RefCell::new(Environment {
-            enclosing: parent.borrow().enclosing.clone(),
-            values: parent.borrow().values.clone(),
-        }));
+            .expect("Tried to ascend above global");
+
+        *self = parent;
     }
 
     fn register_globals(&mut self, lib: Vec<(String, Rc<dyn LoxCallable>)>) {
@@ -126,7 +124,7 @@ impl Environment {
 }
 
 pub trait LoxCallable: Debug {
-    fn call(&self, env: &mut Env, arguments: Vec<LoxVar>) -> Result<LoxVar, FunctionError>;
+    fn call(&self, arguments: Vec<LoxVar>) -> Result<LoxVar, FunctionError>;
 
     fn signature(&self) -> String;
 }
@@ -137,28 +135,31 @@ pub struct LoxFunc {
     name: String,
     body: Vec<Stmt>,
     parameters: Vec<String>,
+    closure: Env,
 }
 
 impl LoxFunc {
-    pub fn new(arity: u8, body: Vec<Stmt>, parameters: Vec<String>, name: String) -> Self {
+    pub fn new(arity: u8, body: Vec<Stmt>, parameters: Vec<String>, name: String, closure: &Env) -> Self {
         Self {
             arity,
             body,
             parameters,
             name,
+            closure: closure.clone(),
         }
     }
 }
 
 impl LoxCallable for LoxFunc {
-    fn call(&self, env: &mut Env, arguments: Vec<LoxVar>) -> Result<LoxVar, FunctionError> {
+    fn call(&self, arguments: Vec<LoxVar>) -> Result<LoxVar, FunctionError> {
         if arguments.len() != self.arity as usize {
             Err(FunctionError::new(FunctionErrorKind::IncorrectArity {
                 expected: self.arity,
                 got: arguments.len(),
             }))
         } else {
-            let mut scope = ScopeGuard::new(env);
+            let mut env = self.closure.clone();
+            let mut scope = ScopeGuard::new(&mut env);
             for (name, arg) in self.parameters.iter().zip(arguments) {
                 scope.borrow_mut().define(name.to_string(), arg);
             }

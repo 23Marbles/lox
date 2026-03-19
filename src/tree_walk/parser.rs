@@ -11,7 +11,7 @@ pub struct Parser<'a> {
     tokens: Vec<Token<'a>>,
     current: usize,
     errors: Vec<ParseError>,
-    in_func: bool,
+    func_depth: u8,
 }
 
 impl<'a> Iterator for Parser<'a> {
@@ -38,7 +38,7 @@ impl<'a> Parser<'a> {
             tokens,
             current: 0,
             errors: Vec::new(),
-            in_func: false,
+            func_depth: 0,
         }
     }
 
@@ -161,9 +161,9 @@ impl<'a> Parser<'a> {
         let end_pos: ErrorPos = self.expect(TokenKind::RightParen)?.into();
         self.expect(TokenKind::LeftBrace)?;
 
-        self.in_func = true;
+        self.func_depth += 1;
         let body = self.block()?;
-        self.in_func = false;
+        self.func_depth -= 1;
 
         Ok(Stmt::Function {
             name: name.to_string(),
@@ -222,7 +222,7 @@ impl<'a> Parser<'a> {
         let end_pos: ErrorPos = self
             .expect(TokenKind::Semicolon)
             .map_err(|err| {
-                if !self.in_func {
+                if self.func_depth == 0 {
                     self.error(ParseErrorKind::ReturnOutsideFunction, Some(start_pos))
                 } else {
                     err
@@ -230,7 +230,7 @@ impl<'a> Parser<'a> {
             })?
             .into();
 
-        if !self.in_func {
+        if self.func_depth == 0 {
             Err(self.error(
                 ParseErrorKind::ReturnOutsideFunction,
                 Some(start_pos.span_to(end_pos)),

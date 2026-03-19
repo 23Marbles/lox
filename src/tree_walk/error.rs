@@ -80,27 +80,23 @@ pub mod run_err {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             if let Some(source) = &self.source {
                 match &self.kind {
-                    RunErrorKind::IoError(err) => write!(f, "Io error:\n{err}")?,
+                    RunErrorKind::IoError(err) => write!(f, "\x1b[1mIo error:\n{err}\x1b[0m")?,
                     RunErrorKind::ScanErrors(errs) => {
-                        write!(f, "Scan errors:")?;
                         for e in errs {
                             writeln!(f)?;
                             e.display_err(source, f)?;
                         }
                     }
                     RunErrorKind::ParseErrors(errs) => {
-                        write!(f, "Parse errors:")?;
                         for e in errs {
                             writeln!(f)?;
                             e.display_err(source, f)?;
                         }
                     }
                     RunErrorKind::EvaluateError(err) => {
-                        writeln!(f, "Evaluation error:")?;
                         err.display_err(source, f)?;
                     }
                     RunErrorKind::RuntimeError(err) => {
-                        writeln!(f, "Runtime error:")?;
                         err.display_err(source, f)?;
                     }
                 }
