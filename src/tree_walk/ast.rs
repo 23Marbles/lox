@@ -117,6 +117,7 @@ impl Stmt {
                         })?,
                         body.clone(),
                         parameters.clone(),
+                        name.to_string()
                     ))),
                 );
                 Ok(ControlFlow::None)

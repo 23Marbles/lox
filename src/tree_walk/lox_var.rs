@@ -134,16 +134,18 @@ pub trait LoxCallable: Debug {
 #[derive(Debug)]
 pub struct LoxFunc {
     arity: u8,
+    name: String,
     body: Vec<Stmt>,
     parameters: Vec<String>,
 }
 
 impl LoxFunc {
-    pub fn new(arity: u8, body: Vec<Stmt>, parameters: Vec<String>) -> Self {
+    pub fn new(arity: u8, body: Vec<Stmt>, parameters: Vec<String>, name: String) -> Self {
         Self {
             arity,
             body,
             parameters,
+            name,
         }
     }
 }
@@ -173,7 +175,22 @@ impl LoxCallable for LoxFunc {
     }
 
     fn signature(&self) -> String {
-        todo!()
+        let mut sig = self.name.clone();
+
+        sig += "(";
+
+        if !self.parameters.is_empty() {
+            sig += &self.parameters[0]
+        }
+
+        for p in self.parameters.iter().skip(1) {
+            sig += ", ";
+            sig += p;
+        }
+
+        sig += ")";
+
+        sig
     }
 }
 
