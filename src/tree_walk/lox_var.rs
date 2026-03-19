@@ -44,7 +44,7 @@ impl Deref for ScopeGuard<'_> {
     type Target = Env;
 
     fn deref(&self) -> &Self::Target {
-        &self.env
+        self.env
     }
 }
 

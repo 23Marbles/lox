@@ -96,11 +96,11 @@ pub mod run_err {
                         }
                     }
                     RunErrorKind::EvaluateError(err) => {
-                        write!(f, "Evaluation error:\n")?;
+                        writeln!(f, "Evaluation error:")?;
                         err.display_err(source, f)?;
                     }
                     RunErrorKind::RuntimeError(err) => {
-                        write!(f, "Runtime error:\n")?;
+                        writeln!(f, "Runtime error:")?;
                         err.display_err(source, f)?;
                     }
                 }
