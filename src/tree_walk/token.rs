@@ -9,7 +9,6 @@ pub struct Scanner<'a> {
     source: &'a str,
     start: usize,
     current: usize,
-    line: usize,
     eof: bool,
 }
 
@@ -19,7 +18,6 @@ impl<'a> Scanner<'a> {
             source,
             start: 0,
             current: 0,
-            line: 1,
             eof: false,
         }
     }
@@ -36,16 +34,14 @@ impl<'a> Scanner<'a> {
         Token {
             kind,
             lexeme: self.lexeme_with_bounds(start, end),
-            line: self.line,
-            column: self.column(start),
+            line: self.line(self.current),
+            column: self.column(start) + 1,
         }
     }
 
-    fn error(&self, kind: ScanErrorKind) -> ScanError {
-        ScanError::new(
-            kind,
-            ErrorPos::new(self.line, self.column(self.current), 1, 1),
-        )
+    fn error(&self, kind: ScanErrorKind, pos: Option<ErrorPos>) -> ScanError {
+        println!("{kind:?} : {:?}", pos.unwrap_or(self.pos(self.current)));
+        ScanError::new(kind, pos.unwrap_or(self.pos(self.current)))
     }
 
     fn advance(&mut self) -> char {
@@ -98,11 +94,22 @@ impl<'a> Scanner<'a> {
     fn column(&self, index: usize) -> usize {
         let line_start = self.source[..index].rfind('\n').map(|i| i + 1).unwrap_or(0);
 
-        self.source[line_start..index].chars().count() + 1
+        self.source[line_start..index].chars().count()
     }
 
-    fn new_line(&mut self) {
-        self.line += 1;
+    fn line(&self, index: usize) -> usize {
+        self.source[..index].chars().filter(|c| *c == '\n').count() + 1
+    }
+
+    /// # Panics
+    /// Panics if the index is out of range
+    fn pos(&self, index: usize) -> ErrorPos {
+        assert!(
+            self.source.len() > index - 1,
+            "Cannot find pos of out of range index"
+        );
+
+        ErrorPos::new(self.line(index), self.column(index), 1, 1)
     }
 }
 
@@ -117,8 +124,8 @@ impl<'a> Iterator for Scanner<'a> {
             return Some(Ok(Token {
                 kind: TokenKind::Eof,
                 lexeme: "\0",
-                line: self.line,
-                column: self.column(self.source.len() - 1) + 1,
+                line: self.line(self.current),
+                column: self.column(self.current),
             }));
         }
 
@@ -143,11 +150,7 @@ impl<'a> Iterator for Scanner<'a> {
                 '<' => TokenKind::Less,
                 '=' => TokenKind::Equal,
                 '/' => TokenKind::Slash,
-                ' ' | '\t' | '\r' => return self.next(), // Ignore whitespace
-                '\n' => {
-                    self.new_line();
-                    return self.next();
-                } // Ignore newlines but increment the line counter
+                ' ' | '\t' | '\r' | '\n' => return self.next(), // Ignore whitespace and newlines
                 '"' => TokenKind::String,
                 x if (x.is_alphabetic() || x == '_') => {
                     let mut string = String::new();
@@ -176,19 +179,22 @@ impl<'a> Iterator for Scanner<'a> {
 
                     break 'scan self.make_token(TokenKind::Number);
                 }
-                x => return Some(Err(self.error(ScanErrorKind::UnexpectedCharacter(x)))),
+                x => return Some(Err(self.error(ScanErrorKind::UnexpectedCharacter(x), None))),
             };
 
             match current_token_type {
                 TokenKind::String => {
                     while self.peek() != '"' && !self.is_at_end() {
-                        if self.peek() == '\n' {
-                            self.new_line();
-                        }
                         self.advance();
                     }
                     if self.is_at_end() {
-                        return Some(Err(self.error(ScanErrorKind::UnterminatedString)));
+                        return Some(
+                            Err(self.error(
+                                ScanErrorKind::UnterminatedString,
+                                Some(self.pos(self.start + 1/* trying to find first char but advance at the start */)
+                                    .span_to(self.pos(self.current)))
+                            ))
+                        );
                     }
                     self.advance();
 
@@ -217,13 +223,15 @@ impl<'a> Iterator for Scanner<'a> {
                                                 if self.advance_if_next('/') {
                                                     return self.next();
                                                 }
-                                            } else if c == '\n' {
-                                                self.new_line();
                                             }
                                         } else {
-                                            return Some(Err(
-                                                self.error(ScanErrorKind::UnterminatedComment)
-                                            ));
+                                            return Some(Err(self.error(
+                                                ScanErrorKind::UnterminatedComment,
+                                                Some(
+                                                    self.pos(self.start)
+                                                        .span_to(self.pos(self.current)),
+                                                ),
+                                            )));
                                         }
                                     }
                                 } else {

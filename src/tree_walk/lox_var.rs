@@ -18,11 +18,41 @@ where
     fn register_globals(&mut self, lib: Vec<(String, Rc<dyn LoxCallable>)>);
     fn new(enclosing: Option<Self>) -> Self;
     fn descend(&mut self);
-    #[must_use = "Make sure you are not ascending above global level"]
-    fn ascend(&mut self) -> Option<()>;
+    fn ascend(&mut self);
 }
 
 pub type Env = Rc<RefCell<Environment>>;
+
+pub struct ScopeGuard<'a> {
+    env: &'a mut Env,
+}
+
+impl<'a> ScopeGuard<'a> {
+    pub fn new(env: &'a mut Env) -> Self {
+        env.descend();
+        Self { env }
+    }
+}
+
+impl DerefMut for ScopeGuard<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.env
+    }
+}
+
+impl Deref for ScopeGuard<'_> {
+    type Target = Env;
+
+    fn deref(&self) -> &Self::Target {
+        &self.env
+    }
+}
+
+impl Drop for ScopeGuard<'_> {
+    fn drop(&mut self) {
+        self.env.ascend();
+    }
+}
 
 impl EnvironmentImpl for Env {
     fn new(enclosing: Option<Env>) -> Env {
@@ -33,13 +63,18 @@ impl EnvironmentImpl for Env {
         *self = <Env as EnvironmentImpl>::new(Some(self.clone()))
     }
 
-    fn ascend(&mut self) -> Option<()> {
-        let parent = self.borrow().enclosing.clone()?;
+    /// # Panics
+    /// Panics if the parent is None (Tried to ascend above the global environment)
+    fn ascend(&mut self) {
+        let parent = self
+            .borrow()
+            .enclosing
+            .clone()
+            .expect("Tried to ascend above the global environment");
         *self = Env::new(RefCell::new(Environment {
             enclosing: parent.borrow().enclosing.clone(),
             values: parent.borrow().values.clone(),
         }));
-        Some(())
     }
 
     fn register_globals(&mut self, lib: Vec<(String, Rc<dyn LoxCallable>)>) {
@@ -98,13 +133,13 @@ pub trait LoxCallable: Debug {
 
 #[derive(Debug)]
 pub struct LoxFunc {
-    arity: usize,
+    arity: u8,
     body: Vec<Stmt>,
     parameters: Vec<String>,
 }
 
 impl LoxFunc {
-    pub fn new(arity: usize, body: Vec<Stmt>, parameters: Vec<String>) -> Self {
+    pub fn new(arity: u8, body: Vec<Stmt>, parameters: Vec<String>) -> Self {
         Self {
             arity,
             body,
@@ -115,26 +150,21 @@ impl LoxFunc {
 
 impl LoxCallable for LoxFunc {
     fn call(&self, env: &mut Env, arguments: Vec<LoxVar>) -> Result<LoxVar, FunctionError> {
-        if arguments.len() != self.arity {
+        if arguments.len() != self.arity as usize {
             Err(FunctionError::new(FunctionErrorKind::IncorrectArity {
                 expected: self.arity,
                 got: arguments.len(),
             }))
         } else {
-            env.descend();
+            let mut scope = ScopeGuard::new(env);
             for (name, arg) in self.parameters.iter().zip(arguments) {
-                env.borrow_mut().define(name.to_string(), arg);
+                scope.borrow_mut().define(name.to_string(), arg);
             }
 
             for stmt in &self.body {
-                match stmt {
-                    Stmt::Return { value } => {
-                        env.ascend();
-                        return Ok(value.evaluate(env)?);
-                    }
-                    other => {
-                        other.run(env)?;
-                    }
+                match stmt.run(&mut scope)? {
+                    super::ast::ControlFlow::None => (),
+                    super::ast::ControlFlow::Return(lox_var) => return Ok(lox_var),
                 }
             }
 

@@ -13,7 +13,7 @@ pub fn lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
         "clock",
         Rc::new(NativeFunc {
             func: |_, args| {
-                if args.len() != 0 {
+                if !args.is_empty() {
                     Err(FunctionError::new(FunctionErrorKind::IncorrectArity {
                         expected: 0,
                         got: args.len(),

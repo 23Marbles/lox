@@ -8,9 +8,9 @@ use crate::tree_walk::{
     error::{
         ErrorPos,
         eval_err::{EvaluateError, EvaluateErrorKind},
-        runtime_err::RuntimeError,
+        runtime_err::{RuntimeError, RuntimeErrorKind},
     },
-    lox_var::{Env, EnvironmentImpl, LoxFunc, LoxVar},
+    lox_var::{Env, LoxFunc, LoxVar, ScopeGuard},
     token::{Token, TokenKind},
 };
 
@@ -36,20 +36,30 @@ pub enum Stmt {
         name: String,
         parameters: Vec<String>,
         body: Vec<Stmt>,
+        pos: ErrorPos,
     },
     Return {
         value: Expr,
     },
 }
 
+#[derive(Debug, Clone)]
+pub enum ControlFlow {
+    None,
+    Return(LoxVar),
+}
+
 impl Stmt {
-    pub fn run(&self, env: &mut Env) -> Result<Option<LoxVar>, RuntimeError> {
+    pub fn run(&self, env: &mut Env) -> Result<ControlFlow, RuntimeError> {
         match self {
-            Stmt::Expression(expr) => Ok(Some(expr.evaluate(env)?)),
+            Stmt::Expression(expr) => {
+                expr.evaluate(env)?;
+                Ok(ControlFlow::None)
+            }
             Stmt::Print(expr) => {
                 let value = expr.evaluate(env)?;
                 println!("{value}");
-                Ok(None)
+                Ok(ControlFlow::None)
             }
             Stmt::Var { name, initializer } => {
                 let value = match initializer {
@@ -57,15 +67,19 @@ impl Stmt {
                     None => LoxVar::Nil,
                 };
                 env.borrow_mut().define(name.to_string(), value.clone());
-                Ok(None)
+                Ok(ControlFlow::None)
             }
             Stmt::Block(stmts) => {
-                env.descend();
+                let mut scope = ScopeGuard::new(env);
+
                 for stmt in stmts {
-                    stmt.run(env)?;
+                    match stmt.run(&mut scope)? {
+                        ControlFlow::None => (),
+                        ControlFlow::Return(lox_var) => return Ok(ControlFlow::Return(lox_var)),
+                    };
                 }
-                env.ascend().expect("Has descended");
-                Ok(None)
+
+                Ok(ControlFlow::None)
             }
             Stmt::If {
                 condition,
@@ -73,35 +87,41 @@ impl Stmt {
                 else_branch,
             } => {
                 if condition.evaluate(env)?.is_truthy() {
-                    then_branch.run(env)?;
+                    then_branch.run(env)
                 } else if let Some(branch) = else_branch {
-                    branch.run(env)?;
+                    branch.run(env)
+                } else {
+                    Ok(ControlFlow::None)
                 }
-                Ok(None)
             }
             Stmt::While { condition, body } => {
                 while condition.evaluate(env)?.is_truthy() {
-                    body.clone().run(env)?;
+                    match body.run(env)? {
+                        ControlFlow::None => (),
+                        ControlFlow::Return(lox_var) => return Ok(ControlFlow::Return(lox_var)),
+                    };
                 }
-                Ok(None)
+                Ok(ControlFlow::None)
             }
             Stmt::Function {
                 name,
                 parameters,
                 body,
-                ..
+                pos,
             } => {
                 env.borrow_mut().define(
                     name.to_string(),
                     LoxVar::Callable(Rc::new(LoxFunc::new(
-                        parameters.len(),
+                        parameters.len().try_into().map_err(|_| {
+                            RuntimeError::new(RuntimeErrorKind::TooManyArguments(*pos))
+                        })?,
                         body.clone(),
                         parameters.clone(),
                     ))),
                 );
-                Ok(None)
+                Ok(ControlFlow::None)
             }
-            Stmt::Return { value } => Ok(Some(value.evaluate(env)?)),
+            Stmt::Return { value, .. } => Ok(ControlFlow::Return(value.evaluate(env)?)),
         }
     }
 }
@@ -154,7 +174,7 @@ impl Display for Stmt {
                     body.iter().map(|stmt| stmt.to_string()).collect::<String>()
                 )
             }
-            Stmt::Return { value } => write!(f, "(return {value})"),
+            Stmt::Return { value, .. } => write!(f, "(return {value})"),
         }
     }
 }
@@ -366,9 +386,18 @@ impl Expr {
                     Minus => left_var.sub(&right_var).map_err(|(l, r)| {
                         EvaluateError::bin_eval_error(*position, Minus, l, r).into()
                     }),
-                    Slash => left_var.div(&right_var).map_err(|(l, r)| {
-                        EvaluateError::bin_eval_error(*position, Slash, l, r).into()
-                    }),
+                    Slash => {
+                        if right_var == LoxVar::Number(0.) {
+                            Err(
+                                EvaluateError::new(EvaluateErrorKind::DivisionByZero, *position)
+                                    .into(),
+                            )
+                        } else {
+                            left_var.div(&right_var).map_err(|(l, r)| {
+                                EvaluateError::bin_eval_error(*position, Slash, l, r).into()
+                            })
+                        }
+                    }
                     Star => left_var.mul(&right_var).map_err(|(l, r)| {
                         EvaluateError::bin_eval_error(*position, Star, l, r).into()
                     }),

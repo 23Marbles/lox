@@ -17,4 +17,3 @@ inline_comments = []
 break = []
 
 [dependencies]
-paste = "1.0.15"

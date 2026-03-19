@@ -9,8 +9,8 @@ use std::{
 
 use crate::tree_walk::{
     error::run_err::RunError,
-    interpreter::Interpreter,
-    lox_var::{Env, EnvironmentImpl, LoxCallable, LoxVar},
+    interpreter::{Interpreter, InterpreterConfig},
+    lox_var::{Env, EnvironmentImpl, LoxCallable},
     parser::Parser,
     token::Scanner,
 };
@@ -46,14 +46,14 @@ fn run_file(
     file.read_to_string(&mut contents)?;
 
     let mut env = <Env as EnvironmentImpl>::new(None);
-
     env.register_globals(
         lib.iter()
             .map(|(name, func)| (name.to_string(), func.clone()))
             .collect(),
     );
+    let mut interpreter = Interpreter::new(Vec::new(), &mut env, InterpreterConfig::new(false));
 
-    run(&contents, &mut env).map(|_| ()).map_err(|mut err| {
+    run(&contents, &mut interpreter).map_err(|mut err| {
         err.set_source(contents);
         err
     })
@@ -62,11 +62,16 @@ fn run_file(
 fn run_prompt(lib: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), RunError> {
     let mut line_buf = String::new();
     let mut env = <Env as EnvironmentImpl>::new(None);
-
     env.register_globals(
         lib.iter()
             .map(|(name, func)| (name.to_string(), func.clone()))
             .collect(),
+    );
+
+    let mut interpreter = Interpreter::new(
+        Vec::new(),
+        &mut env,
+        InterpreterConfig::new(cfg!(feature = "repl_expr_print")),
     );
 
     loop {
@@ -88,21 +93,18 @@ fn run_prompt(lib: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), RunEr
             line_buf.insert(line_buf.len() - 2, ';');
         }
 
-        let out = run(line_buf.trim_end(), &mut env);
+        let out = run(line_buf.trim_end(), &mut interpreter);
 
         if let Err(mut err) = out {
             err.set_source(line_buf.clone());
             println!("{err}");
-        } else if let Some(_var) = out.expect("already checked for err variants") {
-            #[cfg(feature = "repl_expr_print")]
-            println!("{_var}")
         }
 
         line_buf.clear();
     }
 }
 
-fn run(source: &str, env: &mut Env) -> Result<Option<LoxVar>, RunError> {
+fn run(source: &str, interpreter: &mut Interpreter) -> Result<(), RunError> {
     let scanner = Scanner::new(source);
 
     let mut errors: Vec<error::scan_err::ScanError> = Vec::new();
@@ -137,7 +139,7 @@ fn run(source: &str, env: &mut Env) -> Result<Option<LoxVar>, RunError> {
             }
         }
 
-        let mut interpreter = Interpreter::new(parsed, env);
+        interpreter.update_stmts(parsed);
 
         Ok(interpreter.interpret()?)
     } else {

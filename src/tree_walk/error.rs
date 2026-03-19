@@ -9,8 +9,9 @@ pub trait LoxPos {
 pub trait LoxError: LoxPos + Display {
     fn display_err(&self, source: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let pos = self.pos();
-        write!(f, "{pos} {self}\n")?;
-        pos.display_err(source, f)
+        writeln!(f, "\x1b[1;36m{pos} \x1b[39m{self}\x1b[0m")?;
+        pos.display_err(source, f)?;
+        write!(f, "\n\x1b[1;36m\\\x1b[0m")
     }
 }
 
@@ -81,23 +82,25 @@ pub mod run_err {
                 match &self.kind {
                     RunErrorKind::IoError(err) => write!(f, "Io error:\n{err}")?,
                     RunErrorKind::ScanErrors(errs) => {
-                        write!(f, "Scan errors: ")?;
+                        write!(f, "Scan errors:")?;
                         for e in errs {
+                            writeln!(f)?;
                             e.display_err(source, f)?;
                         }
                     }
                     RunErrorKind::ParseErrors(errs) => {
-                        write!(f, "Parse errors: ")?;
+                        write!(f, "Parse errors:")?;
                         for e in errs {
+                            writeln!(f)?;
                             e.display_err(source, f)?;
                         }
                     }
                     RunErrorKind::EvaluateError(err) => {
-                        write!(f, "Evaluation error:\n{err}")?;
+                        write!(f, "Evaluation error:\n")?;
                         err.display_err(source, f)?;
                     }
                     RunErrorKind::RuntimeError(err) => {
-                        write!(f, "Runtime error:\n{err}")?;
+                        write!(f, "Runtime error:\n")?;
                         err.display_err(source, f)?;
                     }
                 }
@@ -105,14 +108,16 @@ pub mod run_err {
                 match &self.kind {
                     RunErrorKind::IoError(err) => write!(f, "Io error:\n{err}")?,
                     RunErrorKind::ScanErrors(errs) => {
-                        write!(f, "Scan errors: ")?;
+                        write!(f, "Scan errors:")?;
                         for e in errs {
+                            writeln!(f)?;
                             write!(f, "\n{} {e}", e.pos())?
                         }
                     }
                     RunErrorKind::ParseErrors(errs) => {
-                        write!(f, "Parse errors: ")?;
+                        write!(f, "Parse errors:")?;
                         for e in errs {
+                            writeln!(f)?;
                             write!(f, "\n{e}")?
                         }
                     }
@@ -228,6 +233,7 @@ pub mod runtime_err {
             match &self.kind {
                 RuntimeErrorKind::EvaluateError(evaluate_error) => evaluate_error.pos(),
                 RuntimeErrorKind::FunctionError(function_error) => function_error.pos(),
+                RuntimeErrorKind::TooManyArguments(error_pos) => *error_pos,
             }
         }
     }
@@ -241,6 +247,11 @@ pub mod runtime_err {
                 RuntimeErrorKind::FunctionError(function_error) => {
                     function_error.display_err(source, f)
                 }
+                RuntimeErrorKind::TooManyArguments(error_pos) => {
+                    writeln!(f, "\x1b[1;36m{error_pos} \x1b[39m{self}\x1b[0m")?;
+                    error_pos.display_err(source, f)?;
+                    write!(f, "\n\x1b[1;36m\\\x1b[0m")
+                }
             }
         }
     }
@@ -251,6 +262,7 @@ pub mod runtime_err {
     pub enum RuntimeErrorKind {
         EvaluateError(EvaluateError),
         FunctionError(FunctionError),
+        TooManyArguments(ErrorPos),
     }
 
     impl Display for RuntimeErrorKind {
@@ -258,6 +270,9 @@ pub mod runtime_err {
             match self {
                 RuntimeErrorKind::EvaluateError(err) => write!(f, "{err}"),
                 RuntimeErrorKind::FunctionError(err) => write!(f, "{err}"),
+                RuntimeErrorKind::TooManyArguments(..) => {
+                    write!(f, "Too many arguments for function, expected at most 255")
+                }
             }
         }
     }
@@ -321,6 +336,7 @@ pub mod parse_err {
         InvalidAssignTarget(String),
         TooManyArguments,
         ExpectedName(Named),
+        ReturnOutsideFunction,
     }
 
     impl Display for ParseErrorKind {
@@ -339,6 +355,9 @@ pub mod parse_err {
                     write!(f, "Function can't have over 255 arguments")
                 }
                 ParseErrorKind::ExpectedName(named) => write!(f, "Expected {named} name"),
+                ParseErrorKind::ReturnOutsideFunction => {
+                    write!(f, "Cannot return outside a function body")
+                }
             }
         }
     }
@@ -428,13 +447,14 @@ pub mod eval_err {
             name: String,
         },
         IncorrectArity {
-            expected: usize,
+            expected: u8,
             got: usize,
         },
         IncompatableConversion {
             from: LoxVarKind,
             to: LoxVarKind,
         },
+        DivisionByZero,
     }
 
     impl Display for EvaluateErrorKind {
@@ -467,6 +487,7 @@ pub mod eval_err {
                 EvaluateErrorKind::IncompatableConversion { from, to } => {
                     write!(f, "Could not convert from {from:?} to {to:?}")
                 }
+                EvaluateErrorKind::DivisionByZero => write!(f, "Tried to divide by zero"),
             }
         }
     }
@@ -510,7 +531,9 @@ pub mod fn_err {
 
     impl LoxPos for FunctionError {
         fn pos(&self) -> ErrorPos {
-            *self.call_pos.clone()
+            *self
+                .call_pos
+                .clone()
                 .expect("Call pos needs to be set for function error")
         }
     }
@@ -518,13 +541,14 @@ pub mod fn_err {
     impl LoxError for FunctionError {
         fn display_err(&self, source: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             let call_pos = *self
-                .call_pos.clone()
+                .call_pos
+                .clone()
                 .expect("Call pos needs to be inserted to produce errors");
 
-            write!(f, "{call_pos} {self}\n")?;
-            write!(
+            writeln!(f, "\x1b[1;36m{call_pos} \x1b[39mFunction errored with error: {self}\x1b[0m")?;
+            writeln!(
                 f,
-                "Function called here with arguments ({})\n",
+                "\x1b[1;36m|\x1b[0m \x1b[1mFunction called here with arguments ({})\x1b[0m",
                 self.input_args
                     .iter()
                     .enumerate()
@@ -538,11 +562,11 @@ pub mod fn_err {
             call_pos.display_err(source, f)?;
 
             if let Some(sub_pos) = self.sub_pos.as_ref() {
-                write!(f, "{sub_pos} Actual error occured here")?;
+                write!(f, "\n\x1b[1;36m{sub_pos}\x1b[0m \x1b[1mActual error occured here\x1b[0m\n")?;
                 sub_pos.display_err(source, f)?;
             }
 
-            Ok(())
+            write!(f, "\n\x1b[1;36m\\\x1b[0m")
         }
     }
 
@@ -554,7 +578,7 @@ pub mod fn_err {
 
     #[derive(Debug, Clone)]
     pub enum FunctionErrorKind {
-        IncorrectArity { expected: usize, got: usize },
+        IncorrectArity { expected: u8, got: usize },
         SubError(Box<RuntimeErrorKind>),
     }
 
@@ -612,13 +636,25 @@ impl ErrorPos {
     /// # Panics
     /// Panics if to is less then from.
     pub fn span_to(&self, to: Self) -> Self {
-        assert!(to.column > self.column);
-        assert!(to.line > self.line);
+        assert!(
+            to.line >= self.line,
+            "The line of the second is before the first"
+        );
+        if self.line == to.line {
+            assert!(
+                to.column >= self.column,
+                "The column of the second is before the first"
+            );
+        }
 
         Self {
             line: self.line,
             column: self.column,
-            columns: to.column + to.columns,
+            columns: if self.line == to.line {
+                (to.column + to.columns) - self.column
+            } else {
+                to.column + to.columns
+            },
             lines: self.lines + ((to.line + to.lines - 1) - self.line),
         }
     }
@@ -638,55 +674,69 @@ impl LoxPos for ErrorPos {
 
 impl LoxError for ErrorPos {
     fn display_err(&self, source: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let lines =
-            source.lines().collect::<Vec<&str>>()[self.line..self.line + self.lines].to_vec();
+        let lines = source.lines().collect::<Vec<&str>>()
+            [self.line - 1..(self.line + self.lines) - 1]
+            .to_vec();
 
-        match (self.line + self.lines) - 1 {
-            n if n == 1 => {
-                write!(f, "|   {}", lines[0])?;
+        match self.lines {
+            0 => Ok(()),
+            1 => {
+                write!(f, "\x1b[1;36m|\x1b[0m  {}", lines[0])?;
                 write!(
                     f,
-                    "\n\\  {}{}",
+                    "\n\x1b[1;36m|\x1b[0m {}\x1b[31m{}\x1b[0m",
                     " ".repeat(self.column),
                     "^".repeat(self.columns)
                 )
             }
-            n if n == 2 => {
-                write!(f, "|   {}", lines[0])?;
+            2 => {
+                write!(f, "\x1b[1;36m|\x1b[0m  {}", lines[0])?;
                 write!(
                     f,
-                    "\n|  {}{}",
+                    "\n\x1b[1;36m|\x1b[0m{}\x1b[31m{}\x1b[0m",
                     " ".repeat(self.column),
                     "^".repeat(lines[0].len() - self.column)
                 )?;
 
-                write!(f, "\n|   {}", lines[1])?;
-                write!(f, "\n|   {}", "^".repeat(self.columns))
+                write!(f, "\n\x1b[1;36m|\x1b[0m  {}", lines[1])?;
+                write!(
+                    f,
+                    "\n\x1b[1;36m|\x1b[0m  \x1b[31m{}\x1b[0m",
+                    "^".repeat(self.columns)
+                )
             }
-            n if n > 2 => {
-                write!(f, "|   {}", lines[0])?;
+            _ => {
+                // > 2
+                write!(f, "\x1b[1;36m|\x1b[0m  {}", lines[0])?;
                 write!(
                     f,
-                    "\n|  {}{}",
+                    "\n\x1b[1;36m|\x1b[0m{}\x1b[31m{}\x1b[0m",
                     " ".repeat(self.column),
                     "^".repeat(lines[0].len() - self.column)
                 )?;
 
-                for l in lines[1..lines.len() - 2].to_vec() {
-                    write!(f, "\n|   {}", l)?;
-                    write!(f, "\n|   {}", "^".repeat(l.len()))?;
+                for l in &lines[1..lines.len() - 2] {
+                    write!(f, "\n\x1b[1;36m|\x1b[0m  {}", l)?;
+                    write!(
+                        f,
+                        "\n\x1b[1;36m|\x1b[0m  \x1b[31m{}\x1b[0m",
+                        "^".repeat(l.len())
+                    )?;
                 }
 
                 write!(
                     f,
-                    "\n|   {}",
+                    "\n\x1b[1;36m|\x1b[0m  {}",
                     lines
                         .last()
                         .expect("This iterator must have at leat 3 elements")
                 )?;
-                write!(f, "\n|   {}", "^".repeat(self.columns))
+                write!(
+                    f,
+                    "\n\x1b[1;36m|\x1b[0m  \x1b[31m{}\x1b[0m",
+                    "^".repeat(self.columns)
+                )
             }
-            _ => Ok(()),
         }
     }
 }

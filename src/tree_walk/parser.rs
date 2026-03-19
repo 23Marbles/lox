@@ -11,6 +11,7 @@ pub struct Parser<'a> {
     tokens: Vec<Token<'a>>,
     current: usize,
     errors: Vec<ParseError>,
+    in_func: bool,
 }
 
 impl<'a> Iterator for Parser<'a> {
@@ -37,22 +38,26 @@ impl<'a> Parser<'a> {
             tokens,
             current: 0,
             errors: Vec::new(),
+            in_func: false,
         }
     }
 
     #[must_use]
-    fn error(&mut self, kind: ParseErrorKind) -> ParseError {
+    fn error(&mut self, kind: ParseErrorKind, pos: Option<ErrorPos>) -> ParseError {
         let errored_pos: ErrorPos = match kind {
             ParseErrorKind::UnexpectedTokenKind(_) | ParseErrorKind::InvalidAssignTarget(_) => {
                 // The current tokens full position
                 self.peek().into()
             }
-            ParseErrorKind::TooManyArguments => self.tokens[self.current - 1].into(), // The last token's full position
+            ParseErrorKind::TooManyArguments => self.tokens[self.current - 1].into(),
             ParseErrorKind::ExpectedTokenKind(_) | ParseErrorKind::ExpectedName(_) => {
                 // The first charcter after the current tokens position
                 let prev_pos: ErrorPos = self.tokens[self.current - 1].into();
 
                 prev_pos.end()
+            }
+            ParseErrorKind::ReturnOutsideFunction => {
+                pos.expect("Only ever called with pos when kind is ReturnOutsideFunc")
             }
         };
 
@@ -128,14 +133,15 @@ impl<'a> Parser<'a> {
                 ParseErrorKind::ExpectedName(Named::Function),
             )?
             .lexeme;
-        self.expect(TokenKind::LeftParen)?;
+
+        let start_pos: ErrorPos = self.expect(TokenKind::LeftParen)?.into();
 
         let mut parameters: Vec<&'a str> = Vec::new();
 
         if !self.check(TokenKind::RightParen) {
             'collect_arguments: loop {
                 if parameters.len() >= u8::MAX as usize {
-                    let _ = self.error(ParseErrorKind::TooManyArguments);
+                    let _ = self.error(ParseErrorKind::TooManyArguments, None);
                 }
 
                 parameters.push(
@@ -152,15 +158,18 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.expect(TokenKind::RightParen)?;
-        self.expect(TokenKind::RightBrace)?;
+        let end_pos: ErrorPos = self.expect(TokenKind::RightParen)?.into();
+        self.expect(TokenKind::LeftBrace)?;
 
+        self.in_func = true;
         let body = self.block()?;
+        self.in_func = false;
 
         Ok(Stmt::Function {
             name: name.to_string(),
             parameters: parameters.iter().map(|param| param.to_string()).collect(),
             body,
+            pos: start_pos.span_to(end_pos),
         })
     }
 
@@ -194,8 +203,40 @@ impl<'a> Parser<'a> {
             self.while_statement()
         } else if self.match_any([For]) {
             self.for_statement()
+        } else if self.match_any([Return]) {
+            self.return_statement()
         } else {
             self.expression_statement()
+        }
+    }
+
+    fn return_statement(&mut self) -> Result<Stmt, ParseError> {
+        let start_pos: ErrorPos = self.previous().into();
+
+        let value = if !self.check(TokenKind::Semicolon) {
+            self.expression()?
+        } else {
+            Expr::Literal(Literal::Nil)
+        };
+
+        let end_pos: ErrorPos = self
+            .expect(TokenKind::Semicolon)
+            .map_err(|err| {
+                if !self.in_func {
+                    self.error(ParseErrorKind::ReturnOutsideFunction, Some(start_pos))
+                } else {
+                    err
+                }
+            })?
+            .into();
+
+        if !self.in_func {
+            Err(self.error(
+                ParseErrorKind::ReturnOutsideFunction,
+                Some(start_pos.span_to(end_pos)),
+            ))
+        } else {
+            Ok(Stmt::Return { value })
         }
     }
 
@@ -283,7 +324,10 @@ impl<'a> Parser<'a> {
         if self.advance().kind == TokenKind::RightBrace {
             Ok(statements)
         } else {
-            Err(self.error(ParseErrorKind::ExpectedTokenKind(TokenKind::RightBrace)))
+            Err(self.error(
+                ParseErrorKind::ExpectedTokenKind(TokenKind::RightBrace),
+                None,
+            ))
         }
     }
 
@@ -442,7 +486,7 @@ impl<'a> Parser<'a> {
         if !self.check(TokenKind::RightParen) {
             loop {
                 if args.len() > u8::MAX as usize {
-                    let _ = self.error(ParseErrorKind::TooManyArguments);
+                    let _ = self.error(ParseErrorKind::TooManyArguments, None);
                 }
                 args.push(self.expression()?);
 
@@ -502,7 +546,7 @@ impl<'a> Parser<'a> {
                     position: token.into(),
                 })
             }
-            k => Err(self.error(ParseErrorKind::UnexpectedTokenKind(k))),
+            k => Err(self.error(ParseErrorKind::UnexpectedTokenKind(k), None)),
         }
     }
 
@@ -525,12 +569,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    #[must_use]
     fn consume(&mut self, kind: TokenKind, err: ParseErrorKind) -> Result<Token<'a>, ParseError> {
         if self.check(kind) {
             Ok(self.advance())
         } else {
-            Err(self.error(err))
+            Err(self.error(err, None))
         }
     }
 
