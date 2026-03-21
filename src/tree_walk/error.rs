@@ -268,7 +268,6 @@ pub mod parse_err {
         InvalidAssignTarget(String),
         TooManyArguments,
         ExpectedName(Named),
-        ReturnOutsideFunction,
     }
 
     impl Display for ParseErrorKind {
@@ -286,10 +285,7 @@ pub mod parse_err {
                 ParseErrorKind::TooManyArguments => {
                     write!(f, "Function can't have over 255 arguments")
                 }
-                ParseErrorKind::ExpectedName(named) => write!(f, "Expected {named} name"),
-                ParseErrorKind::ReturnOutsideFunction => {
-                    write!(f, "Cannot return outside a function body")
-                }
+                ParseErrorKind::ExpectedName(named) => write!(f, "Expected {named} name")
             }
         }
     }
@@ -352,20 +348,26 @@ pub mod anaylysis_err {
         ReadInOwnInitializer,
         DefinedMultipleTimes(String),
         ReturnFromTop,
+        ReturnValueFromInit,
+        ThisOutsideClass,
     }
 
     impl Display for ResolverErrKind {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self {
                 ResolverErrKind::ReadInOwnInitializer => {
-                    write!(f, "Tried to read variable in its own initializer")
+                    write!(f, "Can't read variable in its own initializer")
                 }
                 ResolverErrKind::DefinedMultipleTimes(name) => {
                     write!(f, "Already a variablw with this name in scope: {name}")
                 }
                 ResolverErrKind::ReturnFromTop => {
-                    write!(f, "Tried to return outside of a function")
+                    write!(f, "Can't return outside of a function")
                 }
+                ResolverErrKind::ThisOutsideClass => {
+                    write!(f, "Can't use `this` outside a class method")
+                }
+                ResolverErrKind::ReturnValueFromInit => write!(f, "Can't return a value from an initializer"),
             }
         }
     }

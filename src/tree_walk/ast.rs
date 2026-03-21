@@ -46,7 +46,7 @@ pub enum Stmt {
         pos: ErrorPos,
     },
     Return {
-        value: Expr,
+        value: Option<Expr>,
         pos: ErrorPos,
     },
     Class {
@@ -134,11 +134,12 @@ impl Stmt {
                         parameters.clone(),
                         name.to_string(),
                         env,
+                        false
                     ))),
                 );
                 Ok(ControlFlow::None)
             }
-            Stmt::Return { value, .. } => Ok(ControlFlow::Return(value.evaluate(env)?.clone())),
+            Stmt::Return { value, .. } => Ok(ControlFlow::Return(value.as_ref().unwrap_or(&Expr::Literal(Literal::Nil)).evaluate(env)?.clone())),
             Stmt::Class { name, methods, .. } => {
                 let mut method_map = HashMap::new();
 
@@ -156,6 +157,7 @@ impl Stmt {
                             parameters.clone(),
                             m_name.clone(),
                             env,
+                            m_name == "init"
                         );
 
                         method_map.insert(m_name.clone(), Rc::new(func));
@@ -226,7 +228,7 @@ impl Display for Stmt {
                     body.iter().map(|stmt| stmt.to_string()).collect::<String>()
                 )
             }
-            Stmt::Return { value, .. } => write!(f, "(return {value})"),
+            Stmt::Return { value, .. } => {write!(f, "(return")?; if let Some(val) = value {write!(f, "{val}")?}; write!(f, ")")},
             Stmt::Class { name, methods, .. } => {
                 write!(f, "(class {name}")?;
                 for m in methods {
@@ -297,6 +299,7 @@ pub enum Expr {
 
     This {
         distance: Option<usize>,
+        pos: ErrorPos,
     },
 }
 
@@ -618,7 +621,7 @@ impl Expr {
                     Err(EvaluateError::new(EvaluateErrorKind::NotInstance(obj.into()), *pos).into())
                 }
             }
-            Expr::This { distance } => Ok(env
+            Expr::This { distance, .. } => Ok(env
                 .borrow()
                 .get("this", *distance)
                 .expect("Cannot have a reference to this outside of method")),

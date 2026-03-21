@@ -11,7 +11,6 @@ pub struct Parser<'a> {
     tokens: Vec<Token<'a>>,
     current: usize,
     errors: Vec<ParseError>,
-    func_depth: u8,
 }
 
 impl<'a> Iterator for Parser<'a> {
@@ -38,12 +37,11 @@ impl<'a> Parser<'a> {
             tokens,
             current: 0,
             errors: Vec::new(),
-            func_depth: 0,
         }
     }
 
     #[must_use]
-    fn error(&mut self, kind: ParseErrorKind, pos: Option<ErrorPos>) -> ParseError {
+    fn error(&mut self, kind: ParseErrorKind) -> ParseError {
         let errored_pos: ErrorPos = match kind {
             ParseErrorKind::UnexpectedTokenKind(_) | ParseErrorKind::InvalidAssignTarget(_) => {
                 // The current tokens full position
@@ -55,9 +53,6 @@ impl<'a> Parser<'a> {
                 let prev_pos: ErrorPos = self.tokens[self.current - 1].into();
 
                 prev_pos.end()
-            }
-            ParseErrorKind::ReturnOutsideFunction => {
-                pos.expect("Only ever called with pos when kind is ReturnOutsideFunc")
             }
         };
 
@@ -162,7 +157,7 @@ impl<'a> Parser<'a> {
         if !self.check(TokenKind::RightParen) {
             'collect_arguments: loop {
                 if parameters.len() >= u8::MAX as usize {
-                    let _ = self.error(ParseErrorKind::TooManyArguments, None);
+                    let _ = self.error(ParseErrorKind::TooManyArguments);
                 }
 
                 parameters.push(
@@ -182,9 +177,7 @@ impl<'a> Parser<'a> {
         let end_pos: ErrorPos = self.expect(TokenKind::RightParen)?.into();
         self.expect(TokenKind::LeftBrace)?;
 
-        self.func_depth += 1;
         let body = self.block()?;
-        self.func_depth -= 1;
 
         Ok(Stmt::Function {
             name: name.to_owned(),
@@ -240,21 +233,13 @@ impl<'a> Parser<'a> {
         let start_pos: ErrorPos = self.previous().into();
 
         let value = if !self.check(TokenKind::Semicolon) {
-            self.expression()?
+            Some(self.expression()?)
         } else {
-            Expr::Literal(Literal::Nil)
+            None
         };
 
         let end_pos: ErrorPos = self
-            .expect(TokenKind::Semicolon)
-            .map_err(|err| {
-                if self.func_depth == 0 {
-                    self.error(ParseErrorKind::ReturnOutsideFunction, Some(start_pos))
-                } else {
-                    err
-                }
-            })?
-            .into();
+            .expect(TokenKind::Semicolon)?.into();
 
         Ok(Stmt::Return {
             value,
@@ -347,8 +332,7 @@ impl<'a> Parser<'a> {
             Ok(statements)
         } else {
             Err(self.error(
-                ParseErrorKind::ExpectedTokenKind(TokenKind::RightBrace),
-                None,
+                ParseErrorKind::ExpectedTokenKind(TokenKind::RightBrace)
             ))
         }
     }
@@ -524,7 +508,7 @@ impl<'a> Parser<'a> {
         if !self.check(TokenKind::RightParen) {
             loop {
                 if args.len() > u8::MAX as usize {
-                    let _ = self.error(ParseErrorKind::TooManyArguments, None);
+                    let _ = self.error(ParseErrorKind::TooManyArguments);
                 }
                 args.push(self.expression()?);
 
@@ -578,9 +562,10 @@ impl<'a> Parser<'a> {
                 Ok(Expr::Grouping(Box::new(expr)))
             }
             This => {
-                self.advance();
+                let pos = self.advance().into();
                 Ok(Expr::This {
                     distance: None,
+                    pos,
                 })
             }
             Identifier => {
@@ -591,7 +576,7 @@ impl<'a> Parser<'a> {
                     distance: None,
                 })
             }
-            k => Err(self.error(ParseErrorKind::UnexpectedTokenKind(k), None)),
+            k => Err(self.error(ParseErrorKind::UnexpectedTokenKind(k))),
         }
     }
 
@@ -618,7 +603,7 @@ impl<'a> Parser<'a> {
         if self.check(kind) {
             Ok(self.advance())
         } else {
-            Err(self.error(err, None))
+            Err(self.error(err))
         }
     }
 

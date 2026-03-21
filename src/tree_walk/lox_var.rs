@@ -35,6 +35,7 @@ pub mod functions {
         body: Vec<Stmt>,
         parameters: Vec<String>,
         closure: Env,
+        is_init: bool,
     }
 
     impl LoxFunc {
@@ -44,6 +45,7 @@ pub mod functions {
             parameters: Vec<String>,
             name: String,
             closure: &Env,
+            is_init: bool
         ) -> Self {
             Self {
                 arity,
@@ -51,7 +53,12 @@ pub mod functions {
                 parameters,
                 name,
                 closure: closure.clone(),
+                is_init,
             }
+        }
+
+        pub fn arity(&self) -> u8 {
+            self.arity
         }
 
         pub fn bind(&self, instance: InstanceRef) -> LoxFunc {
@@ -66,6 +73,7 @@ pub mod functions {
                 body: self.body.clone(),
                 parameters: self.parameters.clone(),
                 closure: env,
+                is_init: self.is_init,
             }
         }
     }
@@ -84,14 +92,19 @@ pub mod functions {
                     scope.borrow_mut().define(name.to_owned(), arg.to_owned());
                 }
 
+                let mut result: Option<LoxVar> = None;
+
                 for stmt in &self.body {
                     match stmt.run(&mut scope)? {
                         ControlFlow::None => (),
-                        ControlFlow::Return(lox_var) => return Ok(lox_var),
+                        ControlFlow::Return(lox_var) => {result = Some(lox_var); break;},
                     }
                 }
-
-                Ok(LoxVar::Nil) // Default to this if nothing is returned
+                if self.is_init {
+                    Ok(scope.borrow().get("this", Some(1)).expect("Initalizers always have this"))
+                } else {
+                    Ok(result.unwrap_or(LoxVar::Nil)) // Default to this if nothing is returned
+                }
             }
         }
 
@@ -137,13 +150,17 @@ pub mod class {
         pub fn find_method(&self, name: &str) -> Option<Rc<LoxFunc>> {
             self.methods.get(name).cloned()
         }
+
+        fn arity(&self) -> Option<u8> {
+            Some(self.find_method("init")?.arity())
+        }
     }
 
     impl LoxCallable for LoxClass {
         fn call(&self, arguments: &[LoxVar]) -> Result<LoxVar, FunctionError> {
-            if !arguments.is_empty() {
+            if arguments.len() != self.arity().unwrap_or(0) as usize {
                 return Err(FunctionError::new(FunctionErrorKind::IncorrectArity {
-                    expected: 0,
+                    expected: self.arity().unwrap_or(0),
                     got: arguments.len(),
                 }));
             }

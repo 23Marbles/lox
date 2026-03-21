@@ -12,6 +12,7 @@ pub struct Resolver {
     scopes: Vec<HashMap<String, bool>>,
     errors: Vec<ResolverErr>,
     func_path: Vec<FunctionKind>,
+    class_path: Vec<ClassKind>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -19,6 +20,13 @@ enum FunctionKind {
     None,
     Method,
     Function,
+    Initializer
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClassKind {
+    None,
+    Class,
 }
 
 impl Resolver {
@@ -29,6 +37,11 @@ impl Resolver {
             func_path: {
                 let mut vec = Vec::with_capacity(4);
                 vec.push(FunctionKind::None);
+                vec
+            },
+            class_path: {
+                let mut vec = Vec::with_capacity(3);
+                vec.push(ClassKind::None);
                 vec
             },
         }
@@ -146,13 +159,20 @@ impl Resolver {
             }
             Stmt::Print(expr) => self.resolve_expr(expr),
             Stmt::Return { value, pos } => {
-                if *self.func_path.last().expect(
+                match self.func_path.last().expect(
                     "Only ever descends and ascends in parralel so should never pop the top",
-                ) == FunctionKind::None
+                )
                 {
-                    self.error(ResolverErrKind::ReturnFromTop, *pos);
+                    FunctionKind::None => 
+                        self.error(ResolverErrKind::ReturnFromTop, *pos),
+                    
+                    FunctionKind::Initializer => if value.is_some() {self.error(ResolverErrKind::ReturnValueFromInit, *pos)},
+                    _ => (),
                 };
-                self.resolve_expr(value)
+
+                if let Some(val) = value {
+                    self.resolve_expr(val)
+                }
             }
             Stmt::While { condition, body } => {
                 self.resolve_expr(condition);
@@ -162,6 +182,8 @@ impl Resolver {
                 self.decalare(name.to_owned(), *pos);
 
                 self.begin_scope();
+                self.class_path.push(ClassKind::Class);
+
                 self.scopes
                     .iter_mut()
                     .last()
@@ -173,12 +195,16 @@ impl Resolver {
                         parameters,
                         body,
                         pos,
-                        ..
+                        name, 
                     } = method
                     {
-                        self.resolve_function(parameters, *pos, body, FunctionKind::Method);
+                        self.resolve_function(parameters, *pos, body, if name == "init" {FunctionKind::Initializer} else {
+                            FunctionKind::Method
+                        });
                     }
                 }
+
+                self.class_path.pop();
             }
         }
     }
@@ -237,7 +263,18 @@ impl Resolver {
                 self.resolve_expr(value);
                 return;
             }
-            Expr::This { .. } => "this",
+            Expr::This { pos, .. } => {
+                if *self
+                    .class_path
+                    .last()
+                    .expect("Always has a higher class as they come in pairs")
+                    == ClassKind::None
+                {
+                    self.error(ResolverErrKind::ThisOutsideClass, *pos);
+                    return;
+                }
+                "this"
+            }
         };
 
         self.resolve_local(expr, name);
