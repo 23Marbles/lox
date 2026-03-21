@@ -120,18 +120,39 @@ impl<'a> Parser<'a> {
         if self.match_any([TokenKind::Var]) {
             self.var_declaration()
         } else if self.match_any([TokenKind::Fun]) {
-            self.fun_declaration()
+            self.fun_declaration(Named::Function)
+        } else if self.match_any([TokenKind::Class]) {
+            self.class_declaration()
         } else {
             self.statement()
         }
     }
 
-    fn fun_declaration(&mut self) -> Result<Stmt, ParseError> {
+    fn class_declaration(&mut self) -> Result<Stmt, ParseError> {
+        let token = self.consume(
+            TokenKind::Identifier,
+            ParseErrorKind::ExpectedName(Named::Class),
+        )?;
+        self.expect(TokenKind::LeftBrace)?;
+
+        let mut methods: Vec<Stmt> = Vec::new();
+
+        while !self.check(TokenKind::RightBrace) && !self.is_at_end() {
+            methods.push(self.fun_declaration(Named::Method)?);
+        }
+
+        let end_pos: ErrorPos = self.expect(TokenKind::RightBrace)?.into();
+
+        Ok(Stmt::Class {
+            name: token.lexeme.to_owned(),
+            methods,
+            pos: ErrorPos::from(token).span_to(end_pos),
+        })
+    }
+
+    fn fun_declaration(&mut self, kind: Named) -> Result<Stmt, ParseError> {
         let name = self
-            .consume(
-                TokenKind::Identifier,
-                ParseErrorKind::ExpectedName(Named::Function),
-            )?
+            .consume(TokenKind::Identifier, ParseErrorKind::ExpectedName(kind))?
             .lexeme;
 
         let start_pos: ErrorPos = self.expect(TokenKind::LeftParen)?.into();
@@ -166,8 +187,12 @@ impl<'a> Parser<'a> {
         self.func_depth -= 1;
 
         Ok(Stmt::Function {
-            name: name.to_string(),
-            parameters: parameters.iter().map(|param| param.to_string()).collect(),
+            name: name.to_owned(),
+            parameters: parameters
+                .iter()
+                .cloned()
+                .map(|param| param.to_owned())
+                .collect(),
             body,
             pos: start_pos.span_to(end_pos),
         })
@@ -187,7 +212,7 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Var {
             name: token.lexeme.to_owned(),
             initializer,
-            position: token.into()
+            position: token.into(),
         })
     }
 
@@ -231,7 +256,10 @@ impl<'a> Parser<'a> {
             })?
             .into();
 
-        Ok(Stmt::Return { value, pos: start_pos.span_to(end_pos) })
+        Ok(Stmt::Return {
+            value,
+            pos: start_pos.span_to(end_pos),
+        })
     }
 
     fn for_statement(&mut self) -> Result<Stmt, ParseError> {
@@ -357,6 +385,13 @@ impl<'a> Parser<'a> {
                     value: Box::new(value),
                     distance: None,
                 })
+            } else if let Expr::Get { object, name, pos } = expr {
+                Ok(Expr::Set {
+                    object,
+                    name,
+                    value: Box::new(value),
+                    pos,
+                })
             } else {
                 let err = ParseError::new(
                     ParseErrorKind::InvalidAssignTarget(expr.string()),
@@ -462,11 +497,21 @@ impl<'a> Parser<'a> {
                 expr = self.finish_call(
                     expr,
                     match self.tokens[self.current - 2] {
-                        // No paniking (Just trust me bro)
+                        // No panicking (Just trust me bro)
                         ident if ident.kind == TokenKind::Identifier => ident.into(),
                         _ => self.previous().into(),
                     },
                 )?;
+            } else if self.match_any([TokenKind::Dot]) {
+                let token = self.consume(
+                    TokenKind::Identifier,
+                    ParseErrorKind::ExpectedName(Named::Property),
+                )?;
+                expr = Expr::Get {
+                    object: Box::new(expr),
+                    name: token.lexeme.to_owned(),
+                    pos: token.into(),
+                };
             } else {
                 break Ok(expr);
             }

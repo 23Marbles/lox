@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fmt::Display,
     ops::{Add, Div, Mul, Sub},
     rc::Rc,
@@ -10,7 +11,12 @@ use crate::tree_walk::{
         eval_err::{EvaluateError, EvaluateErrorKind},
         runtime_err::{RuntimeError, RuntimeErrorKind},
     },
-    lox_var::{Env, LoxFunc, LoxVar, ScopeGuard},
+    interpreter::env::{Env, ScopeGuard},
+    lox_var::{
+        LoxVar,
+        class::{InstanceImpl, LoxClass},
+        functions::{LoxCallable, LoxFunc},
+    },
     token::{Token, TokenKind},
 };
 
@@ -43,6 +49,11 @@ pub enum Stmt {
         value: Expr,
         pos: ErrorPos,
     },
+    Class {
+        name: String,
+        methods: Vec<Stmt>,
+        pos: ErrorPos,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -63,7 +74,9 @@ impl Stmt {
                 println!("{value}");
                 Ok(ControlFlow::None)
             }
-            Stmt::Var { name, initializer, .. } => {
+            Stmt::Var {
+                name, initializer, ..
+            } => {
                 let value = match initializer {
                     Some(value) => value.evaluate(env)?,
                     None => LoxVar::Nil,
@@ -126,6 +139,39 @@ impl Stmt {
                 Ok(ControlFlow::None)
             }
             Stmt::Return { value, .. } => Ok(ControlFlow::Return(value.evaluate(env)?.clone())),
+            Stmt::Class { name, methods, .. } => {
+                let mut method_map = HashMap::new();
+
+                for method in methods {
+                    if let Stmt::Function {
+                        name: m_name,
+                        parameters,
+                        body,
+                        ..
+                    } = method
+                    {
+                        let func = LoxFunc::new(
+                            parameters.len() as u8,
+                            body.clone(),
+                            parameters.clone(),
+                            m_name.clone(),
+                            env,
+                        );
+
+                        method_map.insert(m_name.clone(), Rc::new(func));
+                    }
+                }
+
+                let class = LoxClass {
+                    name: name.clone(),
+                    methods: method_map,
+                };
+
+                env.borrow_mut()
+                    .define(name.clone(), LoxVar::Class(Rc::new(class)));
+
+                Ok(ControlFlow::None)
+            }
         }
     }
 }
@@ -135,7 +181,9 @@ impl Display for Stmt {
         match self {
             Stmt::Expression(expr) => write!(f, "{expr}"),
             Stmt::Print(expr) => write!(f, "(print {expr})"),
-            Stmt::Var { name, initializer, .. } => write!(f, "(var {} = {initializer:?})", name),
+            Stmt::Var {
+                name, initializer, ..
+            } => write!(f, "(var {} = {initializer:?})", name),
             Stmt::Block(stmts) => write!(
                 f,
                 "{{{}}}",
@@ -179,6 +227,13 @@ impl Display for Stmt {
                 )
             }
             Stmt::Return { value, .. } => write!(f, "(return {value})"),
+            Stmt::Class { name, methods, .. } => {
+                write!(f, "(class {name}")?;
+                for m in methods {
+                    write!(f, "{m}")?;
+                }
+                write!(f, ")")
+            }
         }
     }
 }
@@ -225,6 +280,19 @@ pub enum Expr {
         callee: Box<Expr>,
         args: Vec<Expr>,
         position: ErrorPos,
+    },
+
+    Get {
+        object: Box<Expr>,
+        name: String,
+        pos: ErrorPos,
+    },
+
+    Set {
+        object: Box<Expr>,
+        name: String,
+        value: Box<Expr>,
+        pos: ErrorPos,
     },
 }
 
@@ -287,6 +355,13 @@ impl Expr {
 
                 base_string
             }
+            Expr::Get { object, name, .. } => object.string() + "." + name,
+            Expr::Set {
+                object,
+                name,
+                value,
+                ..
+            } => object.string() + "." + name + " = " + &value.to_string(),
         }
     }
 
@@ -491,6 +566,7 @@ impl Expr {
                         err
                     })?)
                 }
+                LoxVar::Class(class) => Ok(class.call(&Vec::new())?),
                 other => Err(EvaluateError::new(
                     EvaluateErrorKind::NonCallable {
                         name: other.to_string(),
@@ -499,6 +575,43 @@ impl Expr {
                 )
                 .into()),
             },
+            Expr::Get { object, name, pos } => {
+                let obj = object.evaluate(env)?;
+
+                if let LoxVar::Instance(inst) = obj {
+                    if let Some(property) = inst.get(name) {
+                        Ok(property)
+                    } else if let Some(method) = inst.borrow().class.find_method(name) {
+                        Ok(LoxVar::Callable(method))
+                    } else {
+                       Err(EvaluateError::new(
+                            EvaluateErrorKind::UndefinedProperty(name.to_owned()),
+                            *pos,
+                        )
+                        .into())
+                    }
+                } else {
+                    Err(EvaluateError::new(EvaluateErrorKind::NotInstance(obj.into()), *pos).into())
+                }
+            }
+            Expr::Set {
+                object,
+                name,
+                value,
+                pos,
+            } => {
+                let obj = object.evaluate(env)?;
+
+                if let LoxVar::Instance(mut inst) = obj {
+                    let val = value.evaluate(env)?;
+
+                    inst.set(name.clone(), val.clone());
+
+                    Ok(val)
+                } else {
+                    Err(EvaluateError::new(EvaluateErrorKind::NotInstance(obj.into()), *pos).into())
+                }
+            }
         }
     }
 }
@@ -537,6 +650,13 @@ impl Display for Expr {
                 write!(f, "))")?;
                 Ok(())
             }
+            Expr::Get { object, name, .. } => write!(f, "(get ({object} {name}))"),
+            Expr::Set {
+                object,
+                name,
+                value,
+                ..
+            } => write!(f, "(set ({object} {name}) {value})"),
         }
     }
 }

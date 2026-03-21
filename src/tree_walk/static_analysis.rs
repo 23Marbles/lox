@@ -1,4 +1,4 @@
-use std::{collections::HashMap};
+use std::collections::HashMap;
 
 use crate::tree_walk::{
     ast::{Expr, Stmt},
@@ -11,7 +11,14 @@ use crate::tree_walk::{
 pub struct Resolver {
     scopes: Vec<HashMap<String, bool>>,
     errors: Vec<ResolverErr>,
-    func_depth: usize,
+    func_path: Vec<FunctionKind>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FunctionKind {
+    None,
+    Method,
+    Function,
 }
 
 impl Resolver {
@@ -19,7 +26,11 @@ impl Resolver {
         Self {
             scopes: Vec::new(),
             errors: Vec::new(),
-            func_depth: 0,
+            func_path: {
+                let mut vec = Vec::with_capacity(4);
+                vec.push(FunctionKind::None);
+                vec
+            },
         }
     }
 
@@ -75,33 +86,46 @@ impl Resolver {
         }
     }
 
+    fn resolve_function(
+        &mut self,
+        parameters: &Vec<String>,
+        pos: ErrorPos,
+        body: &mut Vec<Stmt>,
+        kind: FunctionKind,
+    ) {
+        self.func_path.push(kind);
+        self.begin_scope();
+        for param in parameters {
+            self.decalare(param.clone(), pos);
+            self.define(param.clone());
+        }
+        let _ = self.resolve_stmts(body);
+        self.end_scope();
+        self.func_path.pop();
+    }
+
     fn resolve_stmt(&mut self, stmt: &mut Stmt) {
         match stmt {
             Stmt::Function {
                 name,
                 parameters,
                 body,
-                pos
+                pos,
             } => {
                 self.decalare(name.clone(), *pos);
                 self.define(name.clone());
-                {
-                    // Resolve function
-                    self.begin_scope();
-                    for param in parameters {
-                        self.decalare(param.clone(), *pos);
-                        self.define(param.clone());
-                    }
-                    let _ = self.resolve_stmts(body);
-                    self.end_scope();
-                }
+                self.resolve_function(parameters, *pos, body, FunctionKind::Function);
             }
             Stmt::Block(stmts) => {
                 self.begin_scope();
                 let _ = self.resolve_stmts(stmts);
                 self.end_scope();
             }
-            Stmt::Var { name, initializer, position } => {
+            Stmt::Var {
+                name,
+                initializer,
+                position,
+            } => {
                 self.decalare(name.to_owned(), *position);
                 if let Some(initializer) = initializer {
                     self.resolve_expr(initializer);
@@ -121,10 +145,24 @@ impl Resolver {
                 }
             }
             Stmt::Print(expr) => self.resolve_expr(expr),
-            Stmt::Return { value, pos } => {if self.func_depth == 0 {self.error(ResolverErrKind::ReturnFromTop, *pos);}; self.resolve_expr(value)},
+            Stmt::Return { value, pos } => {
+                if *self.func_path.last().expect("Only ever descends and ascends in parralel so should never pop the top") == FunctionKind::None {
+                    self.error(ResolverErrKind::ReturnFromTop, *pos);
+                };
+                self.resolve_expr(value)
+            }
             Stmt::While { condition, body } => {
                 self.resolve_expr(condition);
                 self.resolve_stmt(body);
+            }
+            Stmt::Class { name, methods, pos } => {
+                self.decalare(name.to_owned(), *pos);
+
+                for method in methods {
+                    if let Stmt::Function { parameters, body, pos, .. } = method {
+                        self.resolve_function(parameters, *pos, body, FunctionKind::Method);
+                    }
+                }
             }
         }
     }
@@ -172,6 +210,15 @@ impl Resolver {
             }
             Expr::Unary { right, .. } => {
                 self.resolve_expr(right);
+                return;
+            }
+            Expr::Get { object, .. } => {
+                self.resolve_expr(object);
+                return;
+            }
+            Expr::Set { object, value, .. } => {
+                self.resolve_expr(object);
+                self.resolve_expr(value);
                 return;
             }
         };

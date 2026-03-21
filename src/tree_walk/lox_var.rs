@@ -1,266 +1,228 @@
 use std::{
-    cell::RefCell,
-    collections::HashMap,
     fmt::{Debug, Display},
     ops::*,
     rc::Rc,
 };
 
 use crate::tree_walk::{
-    ast::{ControlFlow, Literal, Stmt},
-    error::{
-        eval_err::EvaluateErrorKind,
-        fn_err::{FunctionError, FunctionErrorKind},
+    ast::Literal,
+    lox_var::{
+        class::{InstanceRef, LoxClass},
+        functions::LoxCallable,
     },
 };
 
-pub trait EnvironmentImpl
-where
-    Self: Sized,
-{
-    fn new_env(enclosing: Option<Self>) -> Self;
-    fn new_with_globals(globals: Vec<(&'static str, LoxVar)>) -> Self;
-    fn descend(&mut self);
-    fn ascend(&mut self);
-}
+pub mod functions {
+    use std::fmt::Debug;
 
-pub type Env = Rc<RefCell<Environment>>;
+    use crate::tree_walk::{
+        ast::{ControlFlow, Stmt},
+        error::fn_err::{FunctionError, FunctionErrorKind},
+        interpreter::env::{Env, EnvironmentImpl, ScopeGuard},
+        lox_var::{InstanceRef, LoxVar},
+    };
 
-impl EnvironmentImpl for Env {
-    fn new_env(enclosing: Option<Self>) -> Self {
-        Rc::new(RefCell::new(Environment::new(enclosing)))
+    pub trait LoxCallable: Debug {
+        fn call(&self, arguments: &Vec<LoxVar>) -> Result<LoxVar, FunctionError>;
+
+        fn signature(&self) -> String;
     }
 
-    fn new_with_globals(globals: Vec<(&'static str, LoxVar)>) -> Self {
-        Rc::new(RefCell::new(Environment::new_with_globals(globals)))
-    }
-
-    fn descend(&mut self) {
-        *self = Env::new_env(Some(self.clone()))
-    }
-
-    fn ascend(&mut self) {
-        let parent = self
-            .borrow()
-            .enclosing
-            .clone()
-            .expect("Tried to ascend above global");
-
-        *self = parent;
-    }
-}
-
-pub struct ScopeGuard<'a> {
-    env: &'a mut Env,
-}
-
-impl<'a> ScopeGuard<'a> {
-    pub fn new(env: &'a mut Env) -> Self {
-        env.descend();
-        Self { env }
-    }
-}
-
-impl DerefMut for ScopeGuard<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.env
-    }
-}
-
-impl Deref for ScopeGuard<'_> {
-    type Target = Env;
-
-    fn deref(&self) -> &Self::Target {
-        self.env
-    }
-}
-
-impl Drop for ScopeGuard<'_> {
-    fn drop(&mut self) {
-        self.env.ascend();
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Environment {
-    enclosing: Option<Env>,
-    values: HashMap<String, LoxVar>,
-}
-
-impl Environment {
-    fn new(parent: Option<Env>) -> Environment {
-        Self {
-            enclosing: parent,
-            values: HashMap::new(),
-        }
-    }
-
-    fn new_with_globals(globals: Vec<(&'static str, LoxVar)>) -> Environment {
-        Self::new(Some(Rc::new(RefCell::new(Self {
-            enclosing: None,
-            values: {
-                let mut hash_map = HashMap::with_capacity(4);
-                for (name, value) in globals {
-                    if let Some(original) = hash_map.insert(name.to_owned(), value.clone()) {
-                        eprintln!("Conflicting globals, overwriting {original} with {value}")
-                    }
-                }
-                hash_map
-            },
-        }))))
-    }
-
-    pub fn define(&mut self, name: String, value: LoxVar) {
-        self.values.insert(name, value);
-    }
-
-    pub fn get(&self, name: &str, dist: Option<usize>) -> Option<LoxVar> {
-        if let Some(dist) = dist {
-            if dist == 0 {
-                self.values.get(name).cloned()
-            } else {
-                self.enclosing.clone()?.borrow().get(name, Some(dist - 1))
-            }
-        } else {
-            if let Some(v) = self.values.get(name) {
-                Some(v.clone())
-            } else {
-                self.enclosing.as_ref()?.borrow().get(name, None)
-            }
-        }
-    }
-
-    pub fn assign(
-        &mut self,
-        name: &str,
-        value: &LoxVar,
-        dist: Option<usize>,
-    ) -> Result<(), EvaluateErrorKind> {
-        if let Some(dist) = dist {
-            if dist == 0 {
-                self.values
-                    .insert(name.to_owned(), value.clone())
-                    .ok_or(EvaluateErrorKind::UndeclaredVariable {
-                        name: name.to_owned(),
-                    })
-                    .map(|_| ())
-            } else {
-                self.enclosing
-                    .clone()
-                    .ok_or(EvaluateErrorKind::UndeclaredVariable {
-                        name: name.to_owned(),
-                    })?
-                    .borrow_mut()
-                    .assign(name, value, Some(dist - 1))
-            }
-        } else {
-            if let Some(_) = self.values.insert(name.to_owned(), value.clone()) {
-                Ok(())
-            } else if let Some(ref parent) = self.enclosing {
-                parent.borrow_mut().assign(name, value, None)
-            } else {
-                Err(EvaluateErrorKind::UndeclaredVariable {
-                    name: name.to_owned(),
-                })
-            }
-        }
-    }
-}
-
-pub trait LoxCallable: Debug {
-    fn call(&self, arguments: &Vec<LoxVar>) -> Result<LoxVar, FunctionError>;
-
-    fn signature(&self) -> String;
-}
-
-#[derive(Debug)]
-pub struct LoxFunc {
-    arity: u8,
-    name: String,
-    body: Vec<Stmt>,
-    parameters: Vec<String>,
-    closure: Env,
-}
-
-impl LoxFunc {
-    pub fn new(
+    #[derive(Debug)]
+    pub struct LoxFunc {
         arity: u8,
+        name: String,
         body: Vec<Stmt>,
         parameters: Vec<String>,
-        name: String,
-        closure: &Env,
-    ) -> Self {
-        Self {
-            arity,
-            body,
-            parameters,
-            name,
-            closure: closure.clone(),
+        closure: Env,
+    }
+
+    impl LoxFunc {
+        pub fn new(
+            arity: u8,
+            body: Vec<Stmt>,
+            parameters: Vec<String>,
+            name: String,
+            closure: &Env,
+        ) -> Self {
+            Self {
+                arity,
+                body,
+                parameters,
+                name,
+                closure: closure.clone(),
+            }
+        }
+
+        pub fn bind(&self, instance: InstanceRef) -> LoxFunc {
+            let env = Env::new_env(Some(self.closure.clone()));
+
+            env.borrow_mut()
+                .define("this".to_owned(), LoxVar::Instance(instance));
+
+            LoxFunc {
+                arity: self.arity,
+                name: self.name.clone(),
+                body: self.body.clone(),
+                parameters: self.parameters.clone(),
+                closure: env,
+            }
+        }
+    }
+
+    impl LoxCallable for LoxFunc {
+        fn call(&self, arguments: &Vec<LoxVar>) -> Result<LoxVar, FunctionError> {
+            if arguments.len() != self.arity as usize {
+                Err(FunctionError::new(FunctionErrorKind::IncorrectArity {
+                    expected: self.arity,
+                    got: arguments.len(),
+                }))
+            } else {
+                let mut env = self.closure.clone();
+                let mut scope = ScopeGuard::new(&mut env);
+                for (name, arg) in self.parameters.iter().zip(arguments) {
+                    scope.borrow_mut().define(name.to_owned(), arg.to_owned());
+                }
+
+                for stmt in &self.body {
+                    match stmt.run(&mut scope)? {
+                        ControlFlow::None => (),
+                        ControlFlow::Return(lox_var) => return Ok(lox_var),
+                    }
+                }
+
+                Ok(LoxVar::Nil) // Default to this if nothing is returned
+            }
+        }
+
+        fn signature(&self) -> String {
+            let mut sig = self.name.clone();
+
+            sig += "(";
+
+            if !self.parameters.is_empty() {
+                sig += &self.parameters[0]
+            }
+
+            for p in self.parameters.iter().skip(1) {
+                sig += ", ";
+                sig += p;
+            }
+
+            sig += ")";
+
+            sig
         }
     }
 }
 
-impl LoxCallable for LoxFunc {
-    fn call(&self, arguments: &Vec<LoxVar>) -> Result<LoxVar, FunctionError> {
-        if arguments.len() != self.arity as usize {
-            Err(FunctionError::new(FunctionErrorKind::IncorrectArity {
-                expected: self.arity,
-                got: arguments.len(),
-            }))
-        } else {
-            let mut env = self.closure.clone();
-            let mut scope = ScopeGuard::new(&mut env);
-            for (name, arg) in self.parameters.iter().zip(arguments) {
-                scope.borrow_mut().define(name.to_owned(), arg.to_owned());
-            }
+pub mod class {
+    use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-            for stmt in &self.body {
-                match stmt.run(&mut scope)? {
-                    ControlFlow::None => (),
-                    ControlFlow::Return(lox_var) => return Ok(lox_var),
-                }
-            }
+    use crate::tree_walk::{
+        error::fn_err::{FunctionError, FunctionErrorKind},
+        lox_var::{
+            LoxVar,
+            functions::{LoxCallable, LoxFunc},
+        },
+    };
 
-            Ok(LoxVar::Nil) // Default to this if nothing is returned
+    #[derive(Debug, Clone)]
+    pub struct LoxClass {
+        pub name: String,
+        pub methods: HashMap<String, Rc<LoxFunc>>,
+    }
+
+    impl LoxClass {
+        pub fn find_method(&self, name: &str) -> Option<Rc<LoxFunc>> {
+            self.methods.get(name).cloned()
         }
     }
 
-    fn signature(&self) -> String {
-        let mut sig = self.name.clone();
+    impl LoxCallable for LoxClass {
+        fn call(&self, arguments: &Vec<LoxVar>) -> Result<LoxVar, FunctionError> {
+            if !arguments.is_empty() {
+                return Err(FunctionError::new(FunctionErrorKind::IncorrectArity {
+                    expected: 0,
+                    got: arguments.len(),
+                }));
+            }
 
-        sig += "(";
+            let instance = Rc::new(RefCell::new(LoxInstance::new(Rc::new(self.clone()))));
 
-        if !self.parameters.is_empty() {
-            sig += &self.parameters[0]
+            if let Some(init) = self.find_method("init") {
+                init.bind(instance.clone()).call(arguments)?;
+            }
+
+            Ok(LoxVar::Instance(instance))
         }
 
-        for p in self.parameters.iter().skip(1) {
-            sig += ", ";
-            sig += p;
+        fn signature(&self) -> String {
+            format!("{}()", self.name)
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct LoxInstance {
+        pub class: Rc<LoxClass>,
+        pub fields: HashMap<String, LoxVar>,
+    }
+
+    impl LoxInstance {
+        pub fn new(class: Rc<LoxClass>) -> Self {
+            Self {
+                class,
+                fields: HashMap::new(),
+            }
+        }
+    }
+
+    pub trait InstanceImpl {
+        fn get(&self, name: &str) -> Option<LoxVar>;
+        fn set(&mut self, name: String, value: LoxVar);
+    }
+
+    pub type InstanceRef = Rc<RefCell<LoxInstance>>;
+
+    impl InstanceImpl for InstanceRef {
+        fn get(&self, name: &str) -> Option<LoxVar> {
+            if let Some(v) = self.borrow().fields.get(name) {
+                return Some(v.clone());
+            }
+
+            if let Some(method) = self.borrow().class.find_method(name) {
+                return Some(LoxVar::Callable(Rc::new(method.bind(self.clone()))));
+            }
+
+            None
         }
 
-        sig += ")";
-
-        sig
+        fn set(&mut self, name: String, value: LoxVar) {
+            self.borrow_mut().fields.insert(name, value);
+        }
     }
 }
 
 #[derive(Clone, Debug)]
 pub enum LoxVar {
-    Nil,
-    Bool(bool),
     Number(f64),
+    Bool(bool),
     String(String),
     Callable(Rc<dyn LoxCallable>),
+    Class(Rc<LoxClass>),
+    Instance(InstanceRef),
+    Nil,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum LoxVarKind {
-    Nil,
-    Bool,
     Number,
+    Bool,
     String,
     Callable,
+    Class,
+    Instance,
+    Nil,
 }
 
 impl From<LoxVar> for LoxVarKind {
@@ -271,6 +233,8 @@ impl From<LoxVar> for LoxVarKind {
             LoxVar::Number(..) => Self::Number,
             LoxVar::String(..) => Self::String,
             LoxVar::Callable(..) => Self::Callable,
+            LoxVar::Class(..) => Self::Class,
+            LoxVar::Instance(..) => Self::Instance,
         }
     }
 }
@@ -283,6 +247,8 @@ impl From<&LoxVar> for LoxVarKind {
             LoxVar::Number(..) => Self::Number,
             LoxVar::String(..) => Self::String,
             LoxVar::Callable(..) => Self::Callable,
+            LoxVar::Class(..) => Self::Class,
+            LoxVar::Instance(..) => Self::Instance,
         }
     }
 }
@@ -342,7 +308,11 @@ impl Display for LoxVar {
             LoxVar::Bool(b) => write!(f, "{b}"),
             LoxVar::Number(n) => write!(f, "{n}"),
             LoxVar::String(s) => write!(f, "{s}"),
-            LoxVar::Callable(c) => write!(f, "{}", c.signature()),
+            LoxVar::Callable(c) => write!(f, "<{}>", c.signature()),
+            LoxVar::Class(c) => write!(f, "{}", c.name),
+            LoxVar::Instance(i) => {
+                write!(f, "{} instance", i.borrow().class.name)
+            }
         }
     }
 }

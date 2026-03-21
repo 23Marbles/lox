@@ -8,7 +8,15 @@ use std::{
 };
 
 use crate::tree_walk::{
-    error::run_err::RunError, interpreter::{Interpreter, InterpreterConfig}, lox_var::{Env, EnvironmentImpl, LoxCallable, LoxVar}, parser::Parser, static_analysis::Resolver, token::Scanner
+    error::run_err::RunError,
+    interpreter::{
+        Interpreter, InterpreterConfig,
+        env::{Env, EnvironmentImpl},
+    },
+    lox_var::{LoxVar, functions::LoxCallable},
+    parser::Parser,
+    static_analysis::Resolver,
+    token::Scanner,
 };
 mod ast;
 pub mod error;

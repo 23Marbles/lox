@@ -19,7 +19,8 @@ pub mod run_err {
     use std::{error::Error, fmt::Display};
 
     use crate::tree_walk::error::{
-        ErrorPos, LoxError, LoxPos, anaylysis_err::ResolverErr, eval_err::EvaluateError, parse_err::ParseError, runtime_err::RuntimeError, scan_err::ScanError
+        ErrorPos, LoxError, LoxPos, anaylysis_err::ResolverErr, eval_err::EvaluateError,
+        parse_err::ParseError, runtime_err::RuntimeError, scan_err::ScanError,
     };
 
     #[derive(Debug)]
@@ -79,7 +80,8 @@ pub mod run_err {
                     let from = resolver_errs[0].pos();
                     let to = resolver_errs.last().unwrap().pos(); // Already checked len
 
-                    from.span_to(to)}
+                    from.span_to(to)
+                }
                 RunErrorKind::EvaluateError(evaluate_error) => evaluate_error.pos(),
                 RunErrorKind::RuntimeError(runtime_error) => runtime_error.pos(),
             }
@@ -108,7 +110,7 @@ pub mod run_err {
                             writeln!(f)?;
                             e.display_err(source, f)?;
                         }
-                    },
+                    }
                     RunErrorKind::EvaluateError(err) => {
                         err.display_err(source, f)?;
                     }
@@ -273,13 +275,13 @@ pub mod parse_err {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self {
                 ParseErrorKind::UnexpectedTokenKind(token_kind) => {
-                    write!(f, "Unexpected token kind: [{:?}]", token_kind)
+                    write!(f, "Unexpected token kind: `{:?}`", token_kind)
                 }
                 ParseErrorKind::ExpectedTokenKind(token_kind) => {
-                    write!(f, "Expected token kind: [{:?}]", token_kind)
+                    write!(f, "Expected token kind: `{:?}`", token_kind)
                 }
                 ParseErrorKind::InvalidAssignTarget(s) => {
-                    write!(f, "Invalid assignment target [{s}]")
+                    write!(f, "Invalid assignment target `{s}`")
                 }
                 ParseErrorKind::TooManyArguments => {
                     write!(f, "Function can't have over 255 arguments")
@@ -296,6 +298,9 @@ pub mod parse_err {
     pub enum Named {
         Function,
         Parameter,
+        Class,
+        Method,
+        Property,
     }
 
     impl Display for Named {
@@ -303,6 +308,9 @@ pub mod parse_err {
             match self {
                 Named::Function => write!(f, "function"),
                 Named::Parameter => write!(f, "parameter"),
+                Named::Class => write!(f, "class"),
+                Named::Method => write!(f, "method"),
+                Named::Property => write!(f, "property"),
             }
         }
     }
@@ -351,9 +359,13 @@ pub mod anaylysis_err {
             match self {
                 ResolverErrKind::ReadInOwnInitializer => {
                     write!(f, "Tried to read variable in its own initializer")
-                },
-                ResolverErrKind::DefinedMultipleTimes(name) => write!(f, "Already a variablw with this name in scope: {name}"),
-                ResolverErrKind::ReturnFromTop => write!(f, "Tried to return outside of a function"),
+                }
+                ResolverErrKind::DefinedMultipleTimes(name) => {
+                    write!(f, "Already a variablw with this name in scope: {name}")
+                }
+                ResolverErrKind::ReturnFromTop => {
+                    write!(f, "Tried to return outside of a function")
+                }
             }
         }
     }
@@ -526,6 +538,8 @@ pub mod eval_err {
             to: LoxVarKind,
         },
         DivisionByZero,
+        UndefinedProperty(String),
+        NotInstance(LoxVarKind),
     }
 
     impl Display for EvaluateErrorKind {
@@ -533,7 +547,7 @@ pub mod eval_err {
             match &self {
                 EvaluateErrorKind::IncompatableUnaryOperator { operator, var_ty } => write!(
                     f,
-                    "Cannot use unary operator [{operator:?}] on type [{var_ty:?}]",
+                    "Cannot use unary operator `{operator:?}` on type `{var_ty:?}`",
                 ),
                 EvaluateErrorKind::IncompatableBinaryOperator {
                     operator,
@@ -541,13 +555,13 @@ pub mod eval_err {
                     right_ty,
                 } => write!(
                     f,
-                    "Cannot use binary operator [{operator:?}] on types [{left_ty:?}, {right_ty:?}]",
+                    "Cannot use binary operator `{operator:?}` on types `{left_ty:?}`, `{right_ty:?}`",
                 ),
                 EvaluateErrorKind::UndeclaredVariable { name } => {
                     write!(f, "Tried to access undeclared variable with name {name}")
                 }
                 EvaluateErrorKind::NonCallable { name } => {
-                    write!(f, "Could not call {}", name)
+                    write!(f, "Could not call `{name}`")
                 }
                 EvaluateErrorKind::IncorrectArity { expected, got } => {
                     write!(
@@ -556,9 +570,18 @@ pub mod eval_err {
                     )
                 }
                 EvaluateErrorKind::IncompatableConversion { from, to } => {
-                    write!(f, "Could not convert from {from:?} to {to:?}")
+                    write!(f, "Could not convert from `{from:?}` to `{to:?}`")
                 }
                 EvaluateErrorKind::DivisionByZero => write!(f, "Tried to divide by zero"),
+                EvaluateErrorKind::UndefinedProperty(name) => {
+                    write!(f, "Property `{name}` is not defined")
+                }
+                EvaluateErrorKind::NotInstance(kind) => {
+                    write!(
+                        f,
+                        "Tried to access a property of a non-instance, is of type `{kind:?}` instead"
+                    )
+                }
             }
         }
     }

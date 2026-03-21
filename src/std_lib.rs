@@ -5,7 +5,7 @@ use std::{
 
 use crate::tree_walk::{
     error::fn_err::{FunctionError, FunctionErrorKind},
-    lox_var::{LoxCallable, LoxVar},
+    lox_var::{LoxVar, functions::LoxCallable},
 };
 
 pub fn lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
