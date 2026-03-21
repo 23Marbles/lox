@@ -174,7 +174,7 @@ impl<'a> Parser<'a> {
     }
 
     fn var_declaration(&mut self) -> Result<Stmt, ParseError> {
-        let name = self.expect(TokenKind::Identifier)?.lexeme;
+        let token = self.expect(TokenKind::Identifier)?;
 
         let initializer = if self.match_any([TokenKind::Equal]) {
             Some(self.expression()?)
@@ -185,8 +185,9 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::Semicolon)?;
 
         Ok(Stmt::Var {
-            name: name.to_string(),
+            name: token.lexeme.to_owned(),
             initializer,
+            position: token.into()
         })
     }
 
@@ -230,14 +231,7 @@ impl<'a> Parser<'a> {
             })?
             .into();
 
-        if self.func_depth == 0 {
-            Err(self.error(
-                ParseErrorKind::ReturnOutsideFunction,
-                Some(start_pos.span_to(end_pos)),
-            ))
-        } else {
-            Ok(Stmt::Return { value })
-        }
+        Ok(Stmt::Return { value, pos: start_pos.span_to(end_pos) })
     }
 
     fn for_statement(&mut self) -> Result<Stmt, ParseError> {
@@ -361,6 +355,7 @@ impl<'a> Parser<'a> {
                     name,
                     position: equals.into(),
                     value: Box::new(value),
+                    distance: None,
                 })
             } else {
                 let err = ParseError::new(
@@ -385,7 +380,6 @@ impl<'a> Parser<'a> {
                 left: Box::new(expr),
                 operator: self.previous().kind,
                 right: Box::new(self.logic_and()?),
-                _position: self.previous().into(),
             };
         }
 
@@ -400,7 +394,6 @@ impl<'a> Parser<'a> {
                 left: Box::new(expr),
                 operator: self.previous().kind,
                 right: Box::new(self.equality()?),
-                _position: self.previous().into(),
             };
         }
 
@@ -544,6 +537,7 @@ impl<'a> Parser<'a> {
                 Ok(Expr::Variable {
                     name: token.lexeme.to_string(),
                     position: token.into(),
+                    distance: None,
                 })
             }
             k => Err(self.error(ParseErrorKind::UnexpectedTokenKind(k), None)),

@@ -8,35 +8,32 @@ use std::{
 };
 
 use crate::tree_walk::{
-    error::run_err::RunError,
-    interpreter::{Interpreter, InterpreterConfig},
-    lox_var::{Env, EnvironmentImpl, LoxCallable},
-    parser::Parser,
-    token::Scanner,
+    error::run_err::RunError, interpreter::{Interpreter, InterpreterConfig}, lox_var::{Env, EnvironmentImpl, LoxCallable, LoxVar}, parser::Parser, static_analysis::Resolver, token::Scanner
 };
 mod ast;
 pub mod error;
 mod interpreter;
 pub mod lox_var;
 mod parser;
+mod static_analysis;
 mod token;
 
-pub fn main(lib: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), RunError> {
+pub fn main(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), RunError> {
     let args: Vec<String> = env::args().collect();
 
     if args.len() > 2 {
         println!("usage: rlox [script]");
         exit(64)
     } else if args.len() == 2 {
-        run_file(Path::new(&args[1]), lib)
+        run_file(Path::new(&args[1]), globals)
     } else {
-        run_prompt(lib)
+        run_prompt(globals)
     }
 }
 
 fn run_file(
     file_path: &Path,
-    lib: Vec<(&'static str, Rc<dyn LoxCallable>)>,
+    globals: Vec<(&'static str, Rc<dyn LoxCallable>)>,
 ) -> Result<(), RunError> {
     #[cfg(debug_assertions)]
     println!("script opened at {:?}", file_path);
@@ -45,12 +42,14 @@ fn run_file(
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
 
-    let mut env = <Env as EnvironmentImpl>::new(None);
-    env.register_globals(
-        lib.iter()
-            .map(|(name, func)| (name.to_string(), func.clone()))
+    let mut env = Env::new_with_globals(
+        globals
+            .iter()
+            .cloned()
+            .map(|(name, func)| (name, LoxVar::Callable(func)))
             .collect(),
     );
+
     let mut interpreter = Interpreter::new(Vec::new(), &mut env, InterpreterConfig::new(false));
 
     run(&contents, &mut interpreter).map_err(|mut err| {
@@ -59,15 +58,16 @@ fn run_file(
     })
 }
 
-fn run_prompt(lib: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), RunError> {
+fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), RunError> {
     let mut line_buf = String::new();
-    let mut env = <Env as EnvironmentImpl>::new(None);
-    env.register_globals(
-        lib.iter()
-            .map(|(name, func)| (name.to_string(), func.clone()))
+
+    let mut env = Env::new_with_globals(
+        globals
+            .iter()
+            .cloned()
+            .map(|(name, func)| (name, LoxVar::Callable(func)))
             .collect(),
     );
-
     let mut interpreter = Interpreter::new(
         Vec::new(),
         &mut env,
@@ -129,7 +129,7 @@ fn run(source: &str, interpreter: &mut Interpreter) -> Result<(), RunError> {
         }
 
         let mut parser = Parser::new(tokens);
-        let parsed = parser.parse()?;
+        let mut parsed = parser.parse()?;
 
         #[cfg(debug_assertions)]
         {
@@ -138,6 +138,9 @@ fn run(source: &str, interpreter: &mut Interpreter) -> Result<(), RunError> {
                 println!("{t}")
             }
         }
+
+        let mut resolver = Resolver::new();
+        resolver.resolve_stmts(&mut parsed)?;
 
         interpreter.update_stmts(parsed);
 

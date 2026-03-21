@@ -3,7 +3,7 @@ use crate::tree_walk::{ast::Stmt, error::runtime_err::RuntimeError, lox_var::Env
 pub struct Interpreter<'a> {
     pub cfg: InterpreterConfig,
     statements: Vec<Stmt>,
-    env: &'a mut Env,
+    pub env: &'a mut Env,
 }
 
 #[derive(Debug, Clone, Copy)]

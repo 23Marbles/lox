@@ -7,21 +7,48 @@ use std::{
 };
 
 use crate::tree_walk::{
-    ast::{Literal, Stmt},
-    error::fn_err::{FunctionError, FunctionErrorKind},
+    ast::{ControlFlow, Literal, Stmt},
+    error::{
+        eval_err::EvaluateErrorKind,
+        fn_err::{FunctionError, FunctionErrorKind},
+    },
 };
 
 pub trait EnvironmentImpl
 where
     Self: Sized,
 {
-    fn register_globals(&mut self, lib: Vec<(String, Rc<dyn LoxCallable>)>);
-    fn new(enclosing: Option<Self>) -> Self;
+    fn new_env(enclosing: Option<Self>) -> Self;
+    fn new_with_globals(globals: Vec<(&'static str, LoxVar)>) -> Self;
     fn descend(&mut self);
     fn ascend(&mut self);
 }
 
 pub type Env = Rc<RefCell<Environment>>;
+
+impl EnvironmentImpl for Env {
+    fn new_env(enclosing: Option<Self>) -> Self {
+        Rc::new(RefCell::new(Environment::new(enclosing)))
+    }
+
+    fn new_with_globals(globals: Vec<(&'static str, LoxVar)>) -> Self {
+        Rc::new(RefCell::new(Environment::new_with_globals(globals)))
+    }
+
+    fn descend(&mut self) {
+        *self = Env::new_env(Some(self.clone()))
+    }
+
+    fn ascend(&mut self) {
+        let parent = self
+            .borrow()
+            .enclosing
+            .clone()
+            .expect("Tried to ascend above global");
+
+        *self = parent;
+    }
+}
 
 pub struct ScopeGuard<'a> {
     env: &'a mut Env,
@@ -54,35 +81,6 @@ impl Drop for ScopeGuard<'_> {
     }
 }
 
-impl EnvironmentImpl for Env {
-    fn new(enclosing: Option<Env>) -> Env {
-        Rc::new(RefCell::new(Environment::new(enclosing)))
-    }
-
-    fn descend(&mut self) {
-        *self = <Env as EnvironmentImpl>::new(Some(self.clone()))
-    }
-
-    /// # Panics
-    /// Panics if the parent is None (Tried to ascend above the global environment)
-    fn ascend(&mut self) {
-        let parent = self
-            .borrow()
-            .enclosing
-            .clone()
-            .expect("Tried to ascend above global");
-
-        *self = parent;
-    }
-
-    fn register_globals(&mut self, lib: Vec<(String, Rc<dyn LoxCallable>)>) {
-        let mut self_mut = self.borrow_mut();
-        for (name, func) in lib {
-            self_mut.define(name, LoxVar::Callable(func));
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct Environment {
     enclosing: Option<Env>,
@@ -90,41 +88,87 @@ pub struct Environment {
 }
 
 impl Environment {
-    pub fn new(enclosing: Option<Env>) -> Self {
+    fn new(parent: Option<Env>) -> Environment {
         Self {
+            enclosing: parent,
             values: HashMap::new(),
-            enclosing,
         }
+    }
+
+    fn new_with_globals(globals: Vec<(&'static str, LoxVar)>) -> Environment {
+        Self::new(Some(Rc::new(RefCell::new(Self {
+            enclosing: None,
+            values: {
+                let mut hash_map = HashMap::with_capacity(4);
+                for (name, value) in globals {
+                    if let Some(original) = hash_map.insert(name.to_owned(), value.clone()) {
+                        eprintln!("Conflicting globals, overwriting {original} with {value}")
+                    }
+                }
+                hash_map
+            },
+        }))))
     }
 
     pub fn define(&mut self, name: String, value: LoxVar) {
         self.values.insert(name, value);
     }
 
-    pub fn get(&self, name: String) -> Option<LoxVar> {
-        self.values.get(&name).cloned().or_else(|| {
-            self.enclosing
-                .as_ref()
-                .and_then(|parent| parent.borrow().get(name))
-        })
+    pub fn get(&self, name: &str, dist: Option<usize>) -> Option<LoxVar> {
+        if let Some(dist) = dist {
+            if dist == 0 {
+                self.values.get(name).cloned()
+            } else {
+                self.enclosing.clone()?.borrow().get(name, Some(dist - 1))
+            }
+        } else {
+            if let Some(v) = self.values.get(name) {
+                Some(v.clone())
+            } else {
+                self.enclosing.as_ref()?.borrow().get(name, None)
+            }
+        }
     }
 
-    /// # Panics
-    /// Panics if the enclosing variable is assigned and
-    pub fn assign(&mut self, name: &str, value: LoxVar) -> bool {
-        if self.values.contains_key(name) {
-            self.values.insert(name.to_string(), value);
-            return true;
-        } else if let Some(ref parent) = self.enclosing {
-            return parent.borrow_mut().assign(name, value);
+    pub fn assign(
+        &mut self,
+        name: &str,
+        value: &LoxVar,
+        dist: Option<usize>,
+    ) -> Result<(), EvaluateErrorKind> {
+        if let Some(dist) = dist {
+            if dist == 0 {
+                self.values
+                    .insert(name.to_owned(), value.clone())
+                    .ok_or(EvaluateErrorKind::UndeclaredVariable {
+                        name: name.to_owned(),
+                    })
+                    .map(|_| ())
+            } else {
+                self.enclosing
+                    .clone()
+                    .ok_or(EvaluateErrorKind::UndeclaredVariable {
+                        name: name.to_owned(),
+                    })?
+                    .borrow_mut()
+                    .assign(name, value, Some(dist - 1))
+            }
+        } else {
+            if let Some(_) = self.values.insert(name.to_owned(), value.clone()) {
+                Ok(())
+            } else if let Some(ref parent) = self.enclosing {
+                parent.borrow_mut().assign(name, value, None)
+            } else {
+                Err(EvaluateErrorKind::UndeclaredVariable {
+                    name: name.to_owned(),
+                })
+            }
         }
-
-        false
     }
 }
 
 pub trait LoxCallable: Debug {
-    fn call(&self, arguments: Vec<LoxVar>) -> Result<LoxVar, FunctionError>;
+    fn call(&self, arguments: &Vec<LoxVar>) -> Result<LoxVar, FunctionError>;
 
     fn signature(&self) -> String;
 }
@@ -139,7 +183,13 @@ pub struct LoxFunc {
 }
 
 impl LoxFunc {
-    pub fn new(arity: u8, body: Vec<Stmt>, parameters: Vec<String>, name: String, closure: &Env) -> Self {
+    pub fn new(
+        arity: u8,
+        body: Vec<Stmt>,
+        parameters: Vec<String>,
+        name: String,
+        closure: &Env,
+    ) -> Self {
         Self {
             arity,
             body,
@@ -151,7 +201,7 @@ impl LoxFunc {
 }
 
 impl LoxCallable for LoxFunc {
-    fn call(&self, arguments: Vec<LoxVar>) -> Result<LoxVar, FunctionError> {
+    fn call(&self, arguments: &Vec<LoxVar>) -> Result<LoxVar, FunctionError> {
         if arguments.len() != self.arity as usize {
             Err(FunctionError::new(FunctionErrorKind::IncorrectArity {
                 expected: self.arity,
@@ -161,13 +211,13 @@ impl LoxCallable for LoxFunc {
             let mut env = self.closure.clone();
             let mut scope = ScopeGuard::new(&mut env);
             for (name, arg) in self.parameters.iter().zip(arguments) {
-                scope.borrow_mut().define(name.to_string(), arg);
+                scope.borrow_mut().define(name.to_owned(), arg.to_owned());
             }
 
             for stmt in &self.body {
                 match stmt.run(&mut scope)? {
-                    super::ast::ControlFlow::None => (),
-                    super::ast::ControlFlow::Return(lox_var) => return Ok(lox_var),
+                    ControlFlow::None => (),
+                    ControlFlow::Return(lox_var) => return Ok(lox_var),
                 }
             }
 

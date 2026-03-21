@@ -1,0 +1,7 @@
+return;
+
+fun bad() {
+  var a = "first";
+  var a = "second";
+  var a = a;
+}

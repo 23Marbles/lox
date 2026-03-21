@@ -21,6 +21,7 @@ pub enum Stmt {
     Var {
         name: String,
         initializer: Option<Expr>,
+        position: ErrorPos,
     },
     Block(Vec<Stmt>),
     If {
@@ -40,6 +41,7 @@ pub enum Stmt {
     },
     Return {
         value: Expr,
+        pos: ErrorPos,
     },
 }
 
@@ -61,7 +63,7 @@ impl Stmt {
                 println!("{value}");
                 Ok(ControlFlow::None)
             }
-            Stmt::Var { name, initializer } => {
+            Stmt::Var { name, initializer, .. } => {
                 let value = match initializer {
                     Some(value) => value.evaluate(env)?,
                     None => LoxVar::Nil,
@@ -118,12 +120,12 @@ impl Stmt {
                         body.clone(),
                         parameters.clone(),
                         name.to_string(),
-                        env
+                        env,
                     ))),
                 );
                 Ok(ControlFlow::None)
             }
-            Stmt::Return { value, .. } => Ok(ControlFlow::Return(value.evaluate(env)?)),
+            Stmt::Return { value, .. } => Ok(ControlFlow::Return(value.evaluate(env)?.clone())),
         }
     }
 }
@@ -133,7 +135,7 @@ impl Display for Stmt {
         match self {
             Stmt::Expression(expr) => write!(f, "{expr}"),
             Stmt::Print(expr) => write!(f, "(print {expr})"),
-            Stmt::Var { name, initializer } => write!(f, "(var {} = {initializer:?})", name),
+            Stmt::Var { name, initializer, .. } => write!(f, "(var {} = {initializer:?})", name),
             Stmt::Block(stmts) => write!(
                 f,
                 "{{{}}}",
@@ -202,11 +204,13 @@ pub enum Expr {
 
     Variable {
         name: String,
+        distance: Option<usize>,
         position: ErrorPos,
     },
 
     Assign {
         name: String,
+        distance: Option<usize>,
         position: ErrorPos,
         value: Box<Expr>,
     },
@@ -215,7 +219,6 @@ pub enum Expr {
         left: Box<Expr>,
         operator: TokenKind,
         right: Box<Expr>,
-        _position: ErrorPos,
     },
 
     Call {
@@ -226,6 +229,14 @@ pub enum Expr {
 }
 
 impl Expr {
+    pub fn resolve(&mut self, dist: usize) {
+        match self {
+            Expr::Variable { distance, .. } => *distance = Some(dist),
+            Expr::Assign { distance, .. } => *distance = Some(dist),
+            _ => {}
+        }
+    }
+
     pub fn binary(left: Expr, operator: Token<'_>, right: Expr) -> Self {
         Self::Binary {
             left: Box::new(left),
@@ -412,10 +423,14 @@ impl Expr {
                 }
             }
             Expr::Grouping(expr) => expr.evaluate(env),
-            Expr::Variable { name, position } => env.borrow().get(name.to_string()).ok_or(
+            Expr::Variable {
+                name,
+                position,
+                distance,
+            } => env.borrow().get(name, *distance).ok_or(
                 EvaluateError::new(
                     EvaluateErrorKind::UndeclaredVariable {
-                        name: name.to_string(),
+                        name: name.to_owned(),
                     },
                     *position,
                 )
@@ -425,19 +440,13 @@ impl Expr {
                 name,
                 position,
                 value,
+                distance,
             } => {
                 let value = value.evaluate(env)?;
-                if !env.borrow_mut().assign(name, value.clone()) {
-                    Err(EvaluateError::new(
-                        EvaluateErrorKind::UndeclaredVariable {
-                            name: name.to_string(),
-                        },
-                        *position,
-                    )
-                    .into())
-                } else {
-                    Ok(value)
-                }
+                env.borrow_mut()
+                    .assign(name, &value, *distance)
+                    .map_err(|err| EvaluateError::new(err, *position))?;
+                Ok(value)
             }
             Expr::Logical {
                 left,
@@ -475,7 +484,7 @@ impl Expr {
                         .map(|expr| expr.evaluate(env))
                         .collect::<Result<_, _>>()?;
 
-                    Ok(func.call(arguments.clone()).map_err(|mut err| {
+                    Ok(func.call(&arguments).map_err(|mut err| {
                         err.call_pos = Some(Box::new(*position));
                         err.input_args = arguments;
 
