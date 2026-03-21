@@ -294,13 +294,18 @@ pub enum Expr {
         value: Box<Expr>,
         pos: ErrorPos,
     },
+
+    This {
+        distance: Option<usize>,
+    },
 }
 
 impl Expr {
     pub fn resolve(&mut self, dist: usize) {
         match self {
-            Expr::Variable { distance, .. } => *distance = Some(dist),
-            Expr::Assign { distance, .. } => *distance = Some(dist),
+            Expr::Variable { distance, .. }
+            | Expr::Assign { distance, .. }
+            | Expr::This { distance, .. } => *distance = Some(dist),
             _ => {}
         }
     }
@@ -362,6 +367,7 @@ impl Expr {
                 value,
                 ..
             } => object.string() + "." + name + " = " + &value.to_string(),
+            Expr::This { .. } => "this".to_owned(),
         }
     }
 
@@ -584,7 +590,7 @@ impl Expr {
                     } else if let Some(method) = inst.borrow().class.find_method(name) {
                         Ok(LoxVar::Callable(method))
                     } else {
-                       Err(EvaluateError::new(
+                        Err(EvaluateError::new(
                             EvaluateErrorKind::UndefinedProperty(name.to_owned()),
                             *pos,
                         )
@@ -612,6 +618,10 @@ impl Expr {
                     Err(EvaluateError::new(EvaluateErrorKind::NotInstance(obj.into()), *pos).into())
                 }
             }
+            Expr::This { distance } => Ok(env
+                .borrow()
+                .get("this", *distance)
+                .expect("Cannot have a reference to this outside of method")),
         }
     }
 }
@@ -657,6 +667,7 @@ impl Display for Expr {
                 value,
                 ..
             } => write!(f, "(set ({object} {name}) {value})"),
+            Expr::This { .. } => write!(f, "(this)"),
         }
     }
 }

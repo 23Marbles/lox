@@ -1,8 +1,4 @@
-use crate::tree_walk::{
-    ast::Stmt,
-    error::runtime_err::RuntimeError,
-    interpreter::env::Env,
-};
+use crate::tree_walk::{ast::Stmt, error::runtime_err::RuntimeError, interpreter::env::Env};
 
 pub struct Interpreter<'a> {
     pub cfg: InterpreterConfig,

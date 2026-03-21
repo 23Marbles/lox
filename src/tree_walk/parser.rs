@@ -568,7 +568,7 @@ impl<'a> Parser<'a> {
             String => {
                 self.advance();
                 Ok(Expr::Literal(Literal::String(
-                    self.previous().lexeme.to_string(),
+                    self.previous().lexeme.to_owned(),
                 )))
             }
             LeftParen => {
@@ -577,10 +577,16 @@ impl<'a> Parser<'a> {
                 self.expect(RightParen)?;
                 Ok(Expr::Grouping(Box::new(expr)))
             }
+            This => {
+                self.advance();
+                Ok(Expr::This {
+                    distance: None,
+                })
+            }
             Identifier => {
                 let token = self.advance();
                 Ok(Expr::Variable {
-                    name: token.lexeme.to_string(),
+                    name: token.lexeme.to_owned(),
                     position: token.into(),
                     distance: None,
                 })

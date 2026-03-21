@@ -146,7 +146,10 @@ impl Resolver {
             }
             Stmt::Print(expr) => self.resolve_expr(expr),
             Stmt::Return { value, pos } => {
-                if *self.func_path.last().expect("Only ever descends and ascends in parralel so should never pop the top") == FunctionKind::None {
+                if *self.func_path.last().expect(
+                    "Only ever descends and ascends in parralel so should never pop the top",
+                ) == FunctionKind::None
+                {
                     self.error(ResolverErrKind::ReturnFromTop, *pos);
                 };
                 self.resolve_expr(value)
@@ -158,8 +161,21 @@ impl Resolver {
             Stmt::Class { name, methods, pos } => {
                 self.decalare(name.to_owned(), *pos);
 
+                self.begin_scope();
+                self.scopes
+                    .iter_mut()
+                    .last()
+                    .expect("Just began a new scope")
+                    .insert("this".to_owned(), true);
+
                 for method in methods {
-                    if let Stmt::Function { parameters, body, pos, .. } = method {
+                    if let Stmt::Function {
+                        parameters,
+                        body,
+                        pos,
+                        ..
+                    } = method
+                    {
                         self.resolve_function(parameters, *pos, body, FunctionKind::Method);
                     }
                 }
@@ -178,11 +194,11 @@ impl Resolver {
                     self.error(ResolverErrKind::ReadInOwnInitializer, *position);
                 }
 
-                name.clone()
+                &name.clone()
             }
             Expr::Assign { name, value, .. } => {
                 self.resolve_expr(value);
-                name.clone()
+                &name.clone()
             }
             Expr::Binary { left, right, .. } => {
                 self.resolve_expr(left);
@@ -221,9 +237,10 @@ impl Resolver {
                 self.resolve_expr(value);
                 return;
             }
+            Expr::This { .. } => "this",
         };
 
-        self.resolve_local(expr, &name);
+        self.resolve_local(expr, name);
     }
 
     fn resolve_local(&self, expr: &mut Expr, name: &str) {
