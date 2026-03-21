@@ -23,7 +23,7 @@ pub mod functions {
     };
 
     pub trait LoxCallable: Debug {
-        fn call(&self, arguments: &Vec<LoxVar>) -> Result<LoxVar, FunctionError>;
+        fn call(&self, arguments: &[LoxVar]) -> Result<LoxVar, FunctionError>;
 
         fn signature(&self) -> String;
     }
@@ -71,7 +71,7 @@ pub mod functions {
     }
 
     impl LoxCallable for LoxFunc {
-        fn call(&self, arguments: &Vec<LoxVar>) -> Result<LoxVar, FunctionError> {
+        fn call(&self, arguments: &[LoxVar]) -> Result<LoxVar, FunctionError> {
             if arguments.len() != self.arity as usize {
                 Err(FunctionError::new(FunctionErrorKind::IncorrectArity {
                     expected: self.arity,
@@ -140,7 +140,7 @@ pub mod class {
     }
 
     impl LoxCallable for LoxClass {
-        fn call(&self, arguments: &Vec<LoxVar>) -> Result<LoxVar, FunctionError> {
+        fn call(&self, arguments: &[LoxVar]) -> Result<LoxVar, FunctionError> {
             if !arguments.is_empty() {
                 return Err(FunctionError::new(FunctionErrorKind::IncorrectArity {
                     expected: 0,

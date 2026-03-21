@@ -34,7 +34,7 @@ impl Resolver {
         }
     }
 
-    pub fn resolve_stmts(&mut self, stmts: &mut Vec<Stmt>) -> Result<(), Vec<ResolverErr>> {
+    pub fn resolve_stmts(&mut self, stmts: &mut [Stmt]) -> Result<(), Vec<ResolverErr>> {
         for s in stmts.iter_mut() {
             self.resolve_stmt(s);
         }
@@ -90,7 +90,7 @@ impl Resolver {
         &mut self,
         parameters: &Vec<String>,
         pos: ErrorPos,
-        body: &mut Vec<Stmt>,
+        body: &mut [Stmt],
         kind: FunctionKind,
     ) {
         self.func_path.push(kind);

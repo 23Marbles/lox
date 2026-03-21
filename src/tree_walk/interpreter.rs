@@ -173,12 +173,10 @@ pub mod env {
                 } else {
                     self.enclosing.clone()?.borrow().get(name, Some(dist - 1))
                 }
+            } else if let Some(v) = self.values.get(name) {
+                Some(v.clone())
             } else {
-                if let Some(v) = self.values.get(name) {
-                    Some(v.clone())
-                } else {
-                    self.enclosing.as_ref()?.borrow().get(name, None)
-                }
+                self.enclosing.as_ref()?.borrow().get(name, None)
             }
         }
 
@@ -205,16 +203,14 @@ pub mod env {
                         .borrow_mut()
                         .assign(name, value, Some(dist - 1))
                 }
+            } else if self.values.insert(name.to_owned(), value.clone()).is_some() {
+                Ok(())
+            } else if let Some(ref parent) = self.enclosing {
+                parent.borrow_mut().assign(name, value, None)
             } else {
-                if let Some(_) = self.values.insert(name.to_owned(), value.clone()) {
-                    Ok(())
-                } else if let Some(ref parent) = self.enclosing {
-                    parent.borrow_mut().assign(name, value, None)
-                } else {
-                    Err(EvaluateErrorKind::UndeclaredVariable {
-                        name: name.to_owned(),
-                    })
-                }
+                Err(EvaluateErrorKind::UndeclaredVariable {
+                    name: name.to_owned(),
+                })
             }
         }
     }

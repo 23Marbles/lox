@@ -34,12 +34,12 @@ pub fn lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
 
 #[derive(Debug, Clone)]
 pub struct NativeFunc {
-    pub func: fn(&Vec<LoxVar>) -> Result<LoxVar, FunctionError>,
+    pub func: fn(&[LoxVar]) -> Result<LoxVar, FunctionError>,
     pub signature: &'static str,
 }
 
 impl LoxCallable for NativeFunc {
-    fn call(&self, args: &Vec<LoxVar>) -> Result<LoxVar, FunctionError> {
+    fn call(&self, args: &[LoxVar]) -> Result<LoxVar, FunctionError> {
         (self.func)(args)
     }
 
