@@ -1,37 +1,36 @@
-
 // --- Base classes and inheritance ---
 class Doughnut {
-    cook() {
-        print "Frying a doughnut base.";
-    }
+  cook() {
+    print "Frying a doughnut base.";
+  }
 
-    describe() {
-        print "I am a plain doughnut.";
-    }
+  describe() {
+    print "I am a plain doughnut.";
+  }
 
-    init(type) {
-        this.type = type;
-        print "Created a " + type + " doughnut.";
-    }
+  init(type) {
+    this.type = type;
+    print "Created a " + type + " doughnut.";
+  }
 }
 
 class BostonCream < Doughnut {
-    cook() {
-        super.cook(); // call parent cook
-        print "Adding cream and chocolate topping.";
-    }
+  cook() {
+    super.cook(); // call parent cook
+    print "Adding cream and chocolate topping.";
+  }
 
-    describe() {
-        super.describe();
-        print "I am a Boston Cream doughnut.";
-    }
+  describe() {
+    super.describe();
+    print "I am a Boston Cream doughnut.";
+  }
 }
 
 // --- Deep inheritance ---
 class FancyBoston < BostonCream {
-    decorate() {
-        print "Adding sprinkles!";
-    }
+  decorate() {
+    print "Adding sprinkles!";
+  }
 }
 
 // --- Multiple instances ---
@@ -40,20 +39,20 @@ var b1 = BostonCream("Boston Cream");
 var f1 = FancyBoston("Fancy Boston");
 
 // --- Method calls ---
-d1.cook();         // Frying a doughnut base.
-d1.describe();     // I am a plain doughnut.
+d1.cook(); // Frying a doughnut base.
+d1.describe(); // I am a plain doughnut.
 
-b1.cook();         // Fry + cream + chocolate
-b1.describe();     // Super describe + Boston Cream description
+b1.cook(); // Fry + cream + chocolate
+b1.describe(); // Super describe + Boston Cream description
 
-f1.cook();         // Inherited cook chain
-f1.describe();     // Inherited describe chain
-f1.decorate();     // FancyBoston own method
+f1.cook(); // Inherited cook chain
+f1.describe(); // Inherited describe chain
+f1.decorate(); // FancyBoston own method
 
 // --- Field access ---
-print d1.type;     // plain
-print b1.type;     // Boston Cream
-print f1.type;     // Fancy Boston
+print d1.type; // plain
+print b1.type; // Boston Cream
+print f1.type; // Fancy Boston
 
 // --- Nested instances ---
 var nested = BostonCream("nested");
@@ -63,11 +62,11 @@ nested.sub.decorate();
 
 // --- Overriding test ---
 class OverrideTest < FancyBoston {
-    cook() {
-        print "OverrideTest cooking!";
-    }
+  cook() {
+    print "OverrideTest cooking!";
+  }
 }
 
 var ot = OverrideTest("Override");
-ot.cook();         // Should print only OverrideTest cooking!
-ot.decorate();     // Inherited decorate from FancyBoston
+ot.cook(); // Should print only OverrideTest cooking!
+ot.decorate(); // Inherited decorate from FancyBoston
