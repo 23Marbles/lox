@@ -48,7 +48,7 @@ impl<'a> Parser<'a> {
                 self.peek().into()
             }
             ParseErrorKind::TooManyArguments => self.tokens[self.current - 1].into(),
-            ParseErrorKind::ExpectedTokenKind(_) | ParseErrorKind::ExpectedName(_) => {
+            ParseErrorKind::ExpectedTokenKind(_) | ParseErrorKind::ExpectedName { .. } => {
                 // The first charcter after the current tokens position
                 let prev_pos: ErrorPos = self.tokens[self.current - 1].into();
 
@@ -126,8 +126,29 @@ impl<'a> Parser<'a> {
     fn class_declaration(&mut self) -> Result<Stmt, ParseError> {
         let token = self.consume(
             TokenKind::Identifier,
-            ParseErrorKind::ExpectedName(Named::Class),
+            ParseErrorKind::ExpectedName {
+                name: Named::Class,
+                after: self.previous().kind,
+            },
         )?;
+
+        let super_class = if self.match_any([TokenKind::Less]) {
+            let token = self.consume(
+                TokenKind::Identifier,
+                ParseErrorKind::ExpectedName {
+                    name: Named::SuperClass,
+                    after: self.previous().kind,
+                },
+            )?;
+            Some(Expr::Variable {
+                name: token.lexeme.to_owned(),
+                distance: None,
+                position: token.into(),
+            })
+        } else {
+            None
+        };
+
         self.expect(TokenKind::LeftBrace)?;
 
         let mut methods: Vec<Stmt> = Vec::new();
@@ -141,13 +162,20 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Class {
             name: token.lexeme.to_owned(),
             methods,
+            super_class,
             pos: ErrorPos::from(token).span_to(end_pos),
         })
     }
 
     fn fun_declaration(&mut self, kind: Named) -> Result<Stmt, ParseError> {
         let name = self
-            .consume(TokenKind::Identifier, ParseErrorKind::ExpectedName(kind))?
+            .consume(
+                TokenKind::Identifier,
+                ParseErrorKind::ExpectedName {
+                    name: kind,
+                    after: self.previous().kind,
+                },
+            )?
             .lexeme;
 
         let start_pos: ErrorPos = self.expect(TokenKind::LeftParen)?.into();
@@ -163,7 +191,10 @@ impl<'a> Parser<'a> {
                 parameters.push(
                     self.consume(
                         TokenKind::Identifier,
-                        ParseErrorKind::ExpectedName(Named::Parameter),
+                        ParseErrorKind::ExpectedName {
+                            name: Named::Parameter,
+                            after: self.previous().kind,
+                        },
                     )?
                     .lexeme,
                 );
@@ -238,8 +269,7 @@ impl<'a> Parser<'a> {
             None
         };
 
-        let end_pos: ErrorPos = self
-            .expect(TokenKind::Semicolon)?.into();
+        let end_pos: ErrorPos = self.expect(TokenKind::Semicolon)?.into();
 
         Ok(Stmt::Return {
             value,
@@ -331,9 +361,7 @@ impl<'a> Parser<'a> {
         if self.advance().kind == TokenKind::RightBrace {
             Ok(statements)
         } else {
-            Err(self.error(
-                ParseErrorKind::ExpectedTokenKind(TokenKind::RightBrace)
-            ))
+            Err(self.error(ParseErrorKind::ExpectedTokenKind(TokenKind::RightBrace)))
         }
     }
 
@@ -489,7 +517,10 @@ impl<'a> Parser<'a> {
             } else if self.match_any([TokenKind::Dot]) {
                 let token = self.consume(
                     TokenKind::Identifier,
-                    ParseErrorKind::ExpectedName(Named::Property),
+                    ParseErrorKind::ExpectedName {
+                        name: Named::Property,
+                        after: self.previous().kind,
+                    },
                 )?;
                 expr = Expr::Get {
                     object: Box::new(expr),
@@ -560,6 +591,25 @@ impl<'a> Parser<'a> {
                 let expr = self.expression()?;
                 self.expect(RightParen)?;
                 Ok(Expr::Grouping(Box::new(expr)))
+            }
+            Super => {
+                let start_pos: ErrorPos = self.advance().into();
+
+                self.expect(TokenKind::Dot)?;
+
+                let ident_token = self.consume(
+                    TokenKind::Identifier,
+                    ParseErrorKind::ExpectedName {
+                        name: Named::Method,
+                        after: self.previous().kind,
+                    },
+                )?;
+
+                Ok(Expr::Super {
+                    method_name: ident_token.lexeme.to_owned(),
+                    distance: None,
+                    pos: start_pos.span_to(ident_token.into()),
+                })
             }
             This => {
                 let pos = self.advance().into();

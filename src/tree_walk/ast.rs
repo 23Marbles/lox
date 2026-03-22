@@ -11,7 +11,7 @@ use crate::tree_walk::{
         eval_err::{EvaluateError, EvaluateErrorKind},
         runtime_err::{RuntimeError, RuntimeErrorKind},
     },
-    interpreter::env::{Env, ScopeGuard},
+    interpreter::env::{Env, EnvironmentImpl, ScopeGuard},
     lox_var::{
         LoxVar,
         class::{InstanceImpl, LoxClass},
@@ -51,6 +51,7 @@ pub enum Stmt {
     },
     Class {
         name: String,
+        super_class: Option<Expr>,
         methods: Vec<Stmt>,
         pos: ErrorPos,
     },
@@ -134,13 +135,56 @@ impl Stmt {
                         parameters.clone(),
                         name.to_string(),
                         env,
-                        false
+                        false,
                     ))),
                 );
                 Ok(ControlFlow::None)
             }
-            Stmt::Return { value, .. } => Ok(ControlFlow::Return(value.as_ref().unwrap_or(&Expr::Literal(Literal::Nil)).evaluate(env)?.clone())),
-            Stmt::Class { name, methods, .. } => {
+            Stmt::Return { value, .. } => Ok(ControlFlow::Return(
+                value
+                    .as_ref()
+                    .unwrap_or(&Expr::Literal(Literal::Nil))
+                    .evaluate(env)?
+                    .clone(),
+            )),
+            Stmt::Class {
+                name,
+                methods,
+                super_class,
+                pos,
+            } => {
+                env.borrow_mut().define(name.clone(), LoxVar::Nil);
+
+                let super_class = if let Some(expr) = super_class {
+                    let var = expr.evaluate(env)?;
+
+                    if let LoxVar::Class(s_class) = var {
+                        Some(s_class)
+                    } else {
+                        return Err(RuntimeError::new(RuntimeErrorKind::SuperClassIsNotAClass(
+                            var,
+                            if let Expr::Variable { position, .. } = expr {
+                                *position
+                            } else {
+                                *pos
+                            },
+                        )));
+                    }
+                } else {
+                    None
+                };
+
+                let mut method_env = env.clone();
+
+                if let Some(ref super_class) = super_class {
+                    let new_env = Env::new_env(Some(env.clone()));
+                    new_env
+                        .borrow_mut()
+                        .define("super".to_string(), LoxVar::Class(super_class.clone()));
+
+                    method_env = new_env;
+                }
+
                 let mut method_map = HashMap::new();
 
                 for method in methods {
@@ -156,8 +200,8 @@ impl Stmt {
                             body.clone(),
                             parameters.clone(),
                             m_name.clone(),
-                            env,
-                            m_name == "init"
+                            &method_env,
+                            m_name == "init",
                         );
 
                         method_map.insert(m_name.clone(), Rc::new(func));
@@ -167,10 +211,12 @@ impl Stmt {
                 let class = LoxClass {
                     name: name.clone(),
                     methods: method_map,
+                    super_class,
                 };
 
                 env.borrow_mut()
-                    .define(name.clone(), LoxVar::Class(Rc::new(class)));
+                    .assign(name, &LoxVar::Class(Rc::new(class)), None)
+                    .unwrap();
 
                 Ok(ControlFlow::None)
             }
@@ -228,13 +274,30 @@ impl Display for Stmt {
                     body.iter().map(|stmt| stmt.to_string()).collect::<String>()
                 )
             }
-            Stmt::Return { value, .. } => {write!(f, "(return")?; if let Some(val) = value {write!(f, "{val}")?}; write!(f, ")")},
-            Stmt::Class { name, methods, .. } => {
+            Stmt::Return { value, .. } => {
+                write!(f, "(return")?;
+                if let Some(val) = value {
+                    write!(f, "{val}")?
+                };
+                write!(f, ")")
+            }
+            Stmt::Class {
+                name,
+                methods,
+                super_class,
+                ..
+            } => {
                 write!(f, "(class {name}")?;
-                for m in methods {
+                if let Some(class) = super_class {
+                    write!(f, " < {class}")?;
+                }
+                if let Some(m) = methods.get(0) {
+                    write!(f, " ({m}")?;
+                }
+                for m in methods.iter().skip(1) {
                     write!(f, "{m}")?;
                 }
-                write!(f, ")")
+                write!(f, "))")
             }
         }
     }
@@ -297,6 +360,12 @@ pub enum Expr {
         pos: ErrorPos,
     },
 
+    Super {
+        method_name: String,
+        distance: Option<usize>,
+        pos: ErrorPos,
+    },
+
     This {
         distance: Option<usize>,
         pos: ErrorPos,
@@ -308,7 +377,8 @@ impl Expr {
         match self {
             Expr::Variable { distance, .. }
             | Expr::Assign { distance, .. }
-            | Expr::This { distance, .. } => *distance = Some(dist),
+            | Expr::This { distance, .. }
+            | Expr::Super { distance, .. } => *distance = Some(dist),
             _ => {}
         }
     }
@@ -371,6 +441,7 @@ impl Expr {
                 ..
             } => object.string() + "." + name + " = " + &value.to_string(),
             Expr::This { .. } => "this".to_owned(),
+            Expr::Super { method_name, .. } => "super.".to_owned() + method_name,
         }
     }
 
@@ -561,29 +632,33 @@ impl Expr {
                 callee,
                 args,
                 position,
-            } => match callee.evaluate(env)? {
-                LoxVar::Callable(func) => {
-                    let arguments: Vec<LoxVar> = args
-                        .iter()
-                        .map(|expr| expr.evaluate(env))
-                        .collect::<Result<_, _>>()?;
-
-                    Ok(func.call(&arguments).map_err(|mut err| {
+            } => {
+                let arguments: Vec<LoxVar> = args
+                    .iter()
+                    .map(|expr| expr.evaluate(env))
+                    .collect::<Result<_, _>>()?;
+                match callee.evaluate(env)? {
+                    LoxVar::Callable(func) => Ok(func.call(&arguments).map_err(|mut err| {
                         err.call_pos = Some(Box::new(*position));
                         err.input_args = arguments;
 
                         err
-                    })?)
+                    })?),
+                    LoxVar::Class(class) => Ok(class.call(&arguments).map_err(|mut err| {
+                        err.call_pos = Some(Box::new(*position));
+                        err.input_args = arguments;
+
+                        err
+                    })?),
+                    other => Err(EvaluateError::new(
+                        EvaluateErrorKind::NonCallable {
+                            name: other.to_string(),
+                        },
+                        *position,
+                    )
+                    .into()),
                 }
-                LoxVar::Class(class) => Ok(class.call(&Vec::new())?),
-                other => Err(EvaluateError::new(
-                    EvaluateErrorKind::NonCallable {
-                        name: other.to_string(),
-                    },
-                    *position,
-                )
-                .into()),
-            },
+            }
             Expr::Get { object, name, pos } => {
                 let obj = object.evaluate(env)?;
 
@@ -625,6 +700,32 @@ impl Expr {
                 .borrow()
                 .get("this", *distance)
                 .expect("Cannot have a reference to this outside of method")),
+            Expr::Super {
+                distance,
+                method_name,
+                pos,
+            } => {
+                let dist = distance.expect("super must be resolved");
+
+                let superclass = match env.borrow().get("super", Some(dist)) {
+                    Some(LoxVar::Class(cls)) => cls,
+                    _ => unreachable!("super must be a class"),
+                };
+
+                let instance = match env.borrow().get("this", Some(dist - 1)) {
+                    Some(LoxVar::Instance(inst)) => inst,
+                    _ => unreachable!("this must be an instance"),
+                };
+
+                let method = superclass
+                    .find_method(method_name)
+                    .ok_or(EvaluateError::new(
+                        EvaluateErrorKind::UndefinedProperty(method_name.to_owned()),
+                        *pos,
+                    ))?;
+
+                Ok(LoxVar::Callable(method.bind(instance)))
+            }
         }
     }
 }
@@ -671,6 +772,7 @@ impl Display for Expr {
                 ..
             } => write!(f, "(set ({object} {name}) {value})"),
             Expr::This { .. } => write!(f, "(this)"),
+            Expr::Super { .. } => write!(f, "super"),
         }
     }
 }

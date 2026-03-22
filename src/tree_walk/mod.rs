@@ -11,7 +11,7 @@ use crate::tree_walk::{
     error::run_err::RunError,
     interpreter::{
         Interpreter, InterpreterConfig,
-        env::{Env, EnvironmentImpl},
+        env::{Env, EnvironmentImpl, debug_print},
     },
     lox_var::{LoxVar, functions::LoxCallable},
     parser::Parser,
@@ -152,7 +152,14 @@ fn run(source: &str, interpreter: &mut Interpreter) -> Result<(), RunError> {
 
         interpreter.update_stmts(parsed);
 
-        Ok(interpreter.interpret()?)
+        let error = interpreter.interpret().err();
+
+        if let Some(e) = error {
+            debug_print(interpreter.env);
+            Err(e.into())
+        } else {
+            Ok(())
+        }
     } else {
         Err(errors.into())
     }

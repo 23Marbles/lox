@@ -61,6 +61,38 @@ pub mod env {
         rc::Rc,
     };
 
+    pub fn debug_print(env: &Env) {
+        println!("=== ENVIRONMENT DUMP ===");
+
+        let mut current = Some(env.clone());
+        let mut depth = 0;
+
+        while let Some(env_rc) = current {
+            let env_ref = env_rc.borrow();
+
+            println!(
+                "\nScope {} {}:",
+                depth,
+                if depth == 0 {
+                    "(current)"
+                } else if env_ref.enclosing.is_none() {
+                    "(global)"
+                } else {
+                    ""
+                }
+            );
+
+            for (k, v) in &env_ref.values {
+                println!("  {} = {:?}", k, v);
+            }
+
+            current = env_ref.enclosing.clone();
+            depth += 1;
+        }
+
+        println!("\n========================");
+    }
+
     use crate::tree_walk::{error::eval_err::EvaluateErrorKind, lox_var::LoxVar};
     pub trait EnvironmentImpl
     where
@@ -144,7 +176,7 @@ pub mod env {
         }
 
         fn new_with_globals(globals: Vec<(&'static str, LoxVar)>) -> Environment {
-            Self::new(Some(Rc::new(RefCell::new(Self {
+            Self {
                 enclosing: None,
                 values: {
                     let mut hash_map = HashMap::with_capacity(4);
@@ -155,24 +187,40 @@ pub mod env {
                     }
                     hash_map
                 },
-            }))))
+            }
         }
 
         pub fn define(&mut self, name: String, value: LoxVar) {
             self.values.insert(name, value);
         }
 
-        pub fn get(&self, name: &str, dist: Option<usize>) -> Option<LoxVar> {
-            if let Some(dist) = dist {
-                if dist == 0 {
-                    self.values.get(name).cloned()
-                } else {
-                    self.enclosing.clone()?.borrow().get(name, Some(dist - 1))
-                }
-            } else if let Some(v) = self.values.get(name) {
-                Some(v.clone())
+        pub fn get_at(&self, dist: usize, name: &str) -> Option<LoxVar> {
+            if dist == 0 {
+                return self.values.get(name).cloned();
+            }
+
+            self.enclosing.as_ref()?.borrow().get_at(dist - 1, name)
+        }
+
+        pub fn get_dynamic(&self, name: &str) -> Option<LoxVar> {
+            if let Some(v) = self.values.get(name) {
+                return Some(v.clone());
+            }
+
+            if let Some(ref parent) = self.enclosing {
+                return parent.borrow().get_dynamic(name);
+            }
+
+            None
+        }
+
+        pub fn get(&self, name: &str, distance: Option<usize>) -> Option<LoxVar> {
+            #[cfg(debug_assertions)]
+            println!("LOOKUP: {} @ {:?}", name, distance);
+            if let Some(dist) = distance {
+                self.get_at(dist, name)
             } else {
-                self.enclosing.as_ref()?.borrow().get(name, None)
+                self.get_dynamic(name)
             }
         }
 

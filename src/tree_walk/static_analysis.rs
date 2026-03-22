@@ -20,13 +20,14 @@ enum FunctionKind {
     None,
     Method,
     Function,
-    Initializer
+    Initializer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ClassKind {
     None,
     Class,
+    SubClass,
 }
 
 impl Resolver {
@@ -161,12 +162,14 @@ impl Resolver {
             Stmt::Return { value, pos } => {
                 match self.func_path.last().expect(
                     "Only ever descends and ascends in parralel so should never pop the top",
-                )
-                {
-                    FunctionKind::None => 
-                        self.error(ResolverErrKind::ReturnFromTop, *pos),
-                    
-                    FunctionKind::Initializer => if value.is_some() {self.error(ResolverErrKind::ReturnValueFromInit, *pos)},
+                ) {
+                    FunctionKind::None => self.error(ResolverErrKind::ReturnFromTop, *pos),
+
+                    FunctionKind::Initializer => {
+                        if value.is_some() {
+                            self.error(ResolverErrKind::ReturnValueFromInit, *pos)
+                        }
+                    }
                     _ => (),
                 };
 
@@ -178,11 +181,46 @@ impl Resolver {
                 self.resolve_expr(condition);
                 self.resolve_stmt(body);
             }
-            Stmt::Class { name, methods, pos } => {
+            Stmt::Class {
+                name,
+                super_class,
+                methods,
+                pos,
+            } => {
                 self.decalare(name.to_owned(), *pos);
+                self.define(name.to_owned());
+
+                if let Some(s_class) = super_class {
+                    if let Expr::Variable {
+                        name: s_name,
+                        position: s_pos,
+                        ..
+                    } = s_class
+                    {
+                        if name == s_name {
+                            self.error(
+                                ResolverErrKind::SelfReferentialInheritance,
+                                pos.span_to(*s_pos),
+                            );
+                        }
+                    }
+
+                    self.resolve_expr(s_class);
+
+                    self.begin_scope();
+                    self.scopes
+                        .iter_mut()
+                        .last()
+                        .expect("Just began a scope")
+                        .insert("super".to_owned(), true);
+                }
 
                 self.begin_scope();
-                self.class_path.push(ClassKind::Class);
+                self.class_path.push(if super_class.is_some() {
+                    ClassKind::SubClass
+                } else {
+                    ClassKind::Class
+                });
 
                 self.scopes
                     .iter_mut()
@@ -195,13 +233,26 @@ impl Resolver {
                         parameters,
                         body,
                         pos,
-                        name, 
+                        name,
                     } = method
                     {
-                        self.resolve_function(parameters, *pos, body, if name == "init" {FunctionKind::Initializer} else {
-                            FunctionKind::Method
-                        });
+                        self.resolve_function(
+                            parameters,
+                            *pos,
+                            body,
+                            if name == "init" {
+                                FunctionKind::Initializer
+                            } else {
+                                FunctionKind::Method
+                            },
+                        );
                     }
+                }
+
+                self.end_scope();
+
+                if super_class.is_some() {
+                    self.end_scope();
                 }
 
                 self.class_path.pop();
@@ -274,6 +325,18 @@ impl Resolver {
                     return;
                 }
                 "this"
+            }
+            Expr::Super { pos, .. } => {
+                if *self
+                    .class_path
+                    .last()
+                    .expect("Always has a higher class as they come in pairs")
+                    != ClassKind::SubClass
+                {
+                    self.error(ResolverErrKind::SuperOutsideSubclass, *pos);
+                    return;
+                }
+                "super"
             }
         };
 

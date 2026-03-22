@@ -13,7 +13,7 @@ use crate::tree_walk::{
 };
 
 pub mod functions {
-    use std::fmt::Debug;
+    use std::{fmt::Debug, rc::Rc};
 
     use crate::tree_walk::{
         ast::{ControlFlow, Stmt},
@@ -28,7 +28,6 @@ pub mod functions {
         fn signature(&self) -> String;
     }
 
-    #[derive(Debug)]
     pub struct LoxFunc {
         arity: u8,
         name: String,
@@ -38,6 +37,19 @@ pub mod functions {
         is_init: bool,
     }
 
+    impl Debug for LoxFunc {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("LoxFunc")
+                .field("arity", &self.arity)
+                .field("name", &self.name)
+                .field("body", &self.body)
+                .field("parameters", &self.parameters)
+                //.field("closure", &self.closure)
+                .field("is_init", &self.is_init)
+                .finish()
+        }
+    }
+
     impl LoxFunc {
         pub fn new(
             arity: u8,
@@ -45,7 +57,7 @@ pub mod functions {
             parameters: Vec<String>,
             name: String,
             closure: &Env,
-            is_init: bool
+            is_init: bool,
         ) -> Self {
             Self {
                 arity,
@@ -61,20 +73,20 @@ pub mod functions {
             self.arity
         }
 
-        pub fn bind(&self, instance: InstanceRef) -> LoxFunc {
+        pub fn bind(&self, instance: InstanceRef) -> Rc<LoxFunc> {
             let env = Env::new_env(Some(self.closure.clone()));
 
             env.borrow_mut()
                 .define("this".to_owned(), LoxVar::Instance(instance));
 
-            LoxFunc {
+            Rc::new(LoxFunc {
                 arity: self.arity,
                 name: self.name.clone(),
                 body: self.body.clone(),
                 parameters: self.parameters.clone(),
                 closure: env,
                 is_init: self.is_init,
-            }
+            })
         }
     }
 
@@ -97,11 +109,17 @@ pub mod functions {
                 for stmt in &self.body {
                     match stmt.run(&mut scope)? {
                         ControlFlow::None => (),
-                        ControlFlow::Return(lox_var) => {result = Some(lox_var); break;},
+                        ControlFlow::Return(lox_var) => {
+                            result = Some(lox_var);
+                            break;
+                        }
                     }
                 }
                 if self.is_init {
-                    Ok(scope.borrow().get("this", Some(1)).expect("Initalizers always have this"))
+                    Ok(scope
+                        .borrow()
+                        .get("this", Some(1))
+                        .expect("Initalizers always have this"))
                 } else {
                     Ok(result.unwrap_or(LoxVar::Nil)) // Default to this if nothing is returned
                 }
@@ -144,11 +162,16 @@ pub mod class {
     pub struct LoxClass {
         pub name: String,
         pub methods: HashMap<String, Rc<LoxFunc>>,
+        pub super_class: Option<Rc<LoxClass>>,
     }
 
     impl LoxClass {
         pub fn find_method(&self, name: &str) -> Option<Rc<LoxFunc>> {
-            self.methods.get(name).cloned()
+            if let Some(m) = self.methods.get(name) {
+                Some(m.clone())
+            } else {
+                self.super_class.as_ref()?.find_method(name)
+            }
         }
 
         fn arity(&self) -> Option<u8> {
@@ -208,7 +231,7 @@ pub mod class {
             }
 
             if let Some(method) = self.borrow().class.find_method(name) {
-                return Some(LoxVar::Callable(Rc::new(method.bind(self.clone()))));
+                return Some(LoxVar::Callable(method.bind(self.clone())));
             }
 
             None

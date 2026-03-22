@@ -267,7 +267,7 @@ pub mod parse_err {
         ExpectedTokenKind(TokenKind),
         InvalidAssignTarget(String),
         TooManyArguments,
-        ExpectedName(Named),
+        ExpectedName { name: Named, after: TokenKind },
     }
 
     impl Display for ParseErrorKind {
@@ -285,7 +285,9 @@ pub mod parse_err {
                 ParseErrorKind::TooManyArguments => {
                     write!(f, "Function can't have over 255 arguments")
                 }
-                ParseErrorKind::ExpectedName(named) => write!(f, "Expected {named} name")
+                ParseErrorKind::ExpectedName { name, after } => {
+                    write!(f, "Expected {name} name after token `{after}`")
+                }
             }
         }
     }
@@ -295,6 +297,7 @@ pub mod parse_err {
         Function,
         Parameter,
         Class,
+        SuperClass,
         Method,
         Property,
     }
@@ -305,6 +308,7 @@ pub mod parse_err {
                 Named::Function => write!(f, "function"),
                 Named::Parameter => write!(f, "parameter"),
                 Named::Class => write!(f, "class"),
+                Named::SuperClass => write!(f, "super class"),
                 Named::Method => write!(f, "method"),
                 Named::Property => write!(f, "property"),
             }
@@ -350,6 +354,8 @@ pub mod anaylysis_err {
         ReturnFromTop,
         ReturnValueFromInit,
         ThisOutsideClass,
+        SelfReferentialInheritance,
+        SuperOutsideSubclass,
     }
 
     impl Display for ResolverErrKind {
@@ -367,7 +373,15 @@ pub mod anaylysis_err {
                 ResolverErrKind::ThisOutsideClass => {
                     write!(f, "Can't use `this` outside a class method")
                 }
-                ResolverErrKind::ReturnValueFromInit => write!(f, "Can't return a value from an initializer"),
+                ResolverErrKind::ReturnValueFromInit => {
+                    write!(f, "Can't return a value from an initializer")
+                }
+                ResolverErrKind::SelfReferentialInheritance => {
+                    write!(f, "Classes cannot inherit from themselves")
+                }
+                ResolverErrKind::SuperOutsideSubclass => {
+                    write!(f, "Can't use super outside a subclass")
+                }
             }
         }
     }
@@ -376,8 +390,9 @@ pub mod anaylysis_err {
 pub mod runtime_err {
     use std::{error::Error, fmt::Display};
 
-    use crate::tree_walk::error::{
-        ErrorPos, LoxError, LoxPos, eval_err::EvaluateError, fn_err::FunctionError,
+    use crate::tree_walk::{
+        error::{ErrorPos, LoxError, LoxPos, eval_err::EvaluateError, fn_err::FunctionError},
+        lox_var::LoxVar,
     };
 
     #[derive(Debug, Clone)]
@@ -403,6 +418,7 @@ pub mod runtime_err {
                 RuntimeErrorKind::EvaluateError(evaluate_error) => evaluate_error.pos(),
                 RuntimeErrorKind::FunctionError(function_error) => function_error.pos(),
                 RuntimeErrorKind::TooManyArguments(error_pos) => *error_pos,
+                RuntimeErrorKind::SuperClassIsNotAClass(.., error_pos) => *error_pos,
             }
         }
     }
@@ -421,6 +437,11 @@ pub mod runtime_err {
                     error_pos.display_err(source, f)?;
                     write!(f, "\n\x1b[1;36m\\\x1b[0m")
                 }
+                RuntimeErrorKind::SuperClassIsNotAClass(.., error_pos) => {
+                    writeln!(f, "\x1b[1;36m{error_pos} \x1b[39m{self}\x1b[0m")?;
+                    error_pos.display_err(source, f)?;
+                    write!(f, "\n\x1b[1;36m\\\x1b[0m")
+                }
             }
         }
     }
@@ -432,6 +453,7 @@ pub mod runtime_err {
         EvaluateError(EvaluateError),
         FunctionError(FunctionError),
         TooManyArguments(ErrorPos),
+        SuperClassIsNotAClass(LoxVar, ErrorPos),
     }
 
     impl Display for RuntimeErrorKind {
@@ -441,6 +463,9 @@ pub mod runtime_err {
                 RuntimeErrorKind::FunctionError(err) => write!(f, "{err}"),
                 RuntimeErrorKind::TooManyArguments(..) => {
                     write!(f, "Too many arguments for function, expected at most 255")
+                }
+                RuntimeErrorKind::SuperClassIsNotAClass(not_class, ..) => {
+                    write!(f, "The super class `{not_class}` must be a class")
                 }
             }
         }
