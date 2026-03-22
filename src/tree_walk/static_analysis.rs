@@ -195,14 +195,12 @@ impl Resolver {
                         name: s_name,
                         position: s_pos,
                         ..
-                    } = s_class
+                    } = s_class && name == s_name
                     {
-                        if name == s_name {
-                            self.error(
-                                ResolverErrKind::SelfReferentialInheritance,
-                                pos.span_to(*s_pos),
-                            );
-                        }
+                        self.error(
+                            ResolverErrKind::SelfReferentialInheritance,
+                            pos.span_to(*s_pos),
+                        );
                     }
 
                     self.resolve_expr(s_class);

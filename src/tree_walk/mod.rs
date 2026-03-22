@@ -11,7 +11,7 @@ use crate::tree_walk::{
     error::run_err::RunError,
     interpreter::{
         Interpreter, InterpreterConfig,
-        env::{Env, EnvironmentImpl, debug_print},
+        env::{Env, EnvironmentImpl},
     },
     lox_var::{LoxVar, functions::LoxCallable},
     parser::Parser,
@@ -39,7 +39,7 @@ pub fn main(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), Run
     }
 }
 
-fn run_file(
+pub fn run_file(
     file_path: &Path,
     globals: Vec<(&'static str, Rc<dyn LoxCallable>)>,
 ) -> Result<(), RunError> {
@@ -155,7 +155,6 @@ fn run(source: &str, interpreter: &mut Interpreter) -> Result<(), RunError> {
         let error = interpreter.interpret().err();
 
         if let Some(e) = error {
-            debug_print(interpreter.env);
             Err(e.into())
         } else {
             Ok(())

@@ -291,7 +291,7 @@ impl Display for Stmt {
                 if let Some(class) = super_class {
                     write!(f, " < {class}")?;
                 }
-                if let Some(m) = methods.get(0) {
+                if let Some(m) = methods.first() {
                     write!(f, " ({m}")?;
                 }
                 for m in methods.iter().skip(1) {

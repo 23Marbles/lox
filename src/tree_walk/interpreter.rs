@@ -61,6 +61,7 @@ pub mod env {
         rc::Rc,
     };
 
+    #[allow(unused)]
     pub fn debug_print(env: &Env) {
         println!("=== ENVIRONMENT DUMP ===");
 

@@ -40,7 +40,6 @@ impl<'a> Scanner<'a> {
     }
 
     fn error(&self, kind: ScanErrorKind, pos: Option<ErrorPos>) -> ScanError {
-        println!("{kind:?} : {:?}", pos.unwrap_or(self.pos(self.current)));
         ScanError::new(kind, pos.unwrap_or(self.pos(self.current)))
     }
 
