@@ -1,5 +1,0 @@
-fun hi(x) {
-  print x;
-}
-
-hi(8);

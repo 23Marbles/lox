@@ -1,5 +1,5 @@
 use crate::tree_walk::{
-    ast::{Expr, Literal, Stmt},
+    ast::{Literal, expr::Expr, stmt::Stmt},
     error::{
         ErrorPos,
         parse_err::{Named, ParseError, ParseErrorKind},

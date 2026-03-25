@@ -5,6 +5,7 @@ use std::{
 
 use crate::tree_walk::{
     error::fn_err::{FunctionError, FunctionErrorKind},
+    interpreter::Interpreter,
     lox_var::{LoxVar, functions::LoxCallable},
 };
 
@@ -39,7 +40,7 @@ pub struct NativeFunc {
 }
 
 impl LoxCallable for NativeFunc {
-    fn call(&self, args: &[LoxVar]) -> Result<LoxVar, FunctionError> {
+    fn call(&self, _: &mut Interpreter, args: &[LoxVar]) -> Result<LoxVar, FunctionError> {
         (self.func)(args)
     }
 

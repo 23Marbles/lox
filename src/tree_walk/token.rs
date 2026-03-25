@@ -144,7 +144,7 @@ impl<'a> Iterator for Scanner<'a> {
                 '+' => break 'scan self.make_token(TokenKind::Plus),
                 ';' => break 'scan self.make_token(TokenKind::Semicolon),
                 '*' => break 'scan self.make_token(TokenKind::Star),
-                '!' => break 'scan self.make_token(TokenKind::Bang),
+                '!' => TokenKind::Bang,
                 '>' => TokenKind::Greater,
                 '<' => TokenKind::Less,
                 '=' => TokenKind::Equal,

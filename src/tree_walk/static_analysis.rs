@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::tree_walk::{
-    ast::{Expr, Stmt},
+    ast::{expr::Expr, stmt::Stmt},
     error::{
         ErrorPos,
         anaylysis_err::{ResolverErr, ResolverErrKind},
@@ -109,12 +109,14 @@ impl Resolver {
     ) {
         self.func_path.push(kind);
         self.begin_scope();
+
         for param in parameters {
             self.decalare(param.clone(), pos);
             self.define(param.clone());
         }
         let _ = self.resolve_stmts(body);
         self.end_scope();
+
         self.func_path.pop();
     }
 
@@ -195,7 +197,8 @@ impl Resolver {
                         name: s_name,
                         position: s_pos,
                         ..
-                    } = s_class && name == s_name
+                    } = s_class
+                        && name == s_name
                     {
                         self.error(
                             ResolverErrKind::SelfReferentialInheritance,
@@ -342,6 +345,7 @@ impl Resolver {
     }
 
     fn resolve_local(&self, expr: &mut Expr, name: &str) {
+        //println!("RESOLVE {} -> {:?}", name, self.scopes);
         for (i, s) in self.scopes.iter().rev().enumerate() {
             if s.contains_key(name) {
                 expr.resolve(i);

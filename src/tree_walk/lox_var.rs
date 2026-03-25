@@ -16,14 +16,21 @@ pub mod functions {
     use std::{fmt::Debug, rc::Rc};
 
     use crate::tree_walk::{
-        ast::{ControlFlow, Stmt},
+        ast::stmt::{ControlFlow, Stmt},
         error::fn_err::{FunctionError, FunctionErrorKind},
-        interpreter::env::{Env, EnvironmentImpl, ScopeGuard},
+        interpreter::{
+            Interpreter,
+            env::{Env, EnvironmentImpl},
+        },
         lox_var::{InstanceRef, LoxVar},
     };
 
     pub trait LoxCallable: Debug {
-        fn call(&self, arguments: &[LoxVar]) -> Result<LoxVar, FunctionError>;
+        fn call(
+            &self,
+            interpreter: &mut Interpreter,
+            arguments: &[LoxVar],
+        ) -> Result<LoxVar, FunctionError>;
 
         fn signature(&self) -> String;
     }
@@ -35,6 +42,16 @@ pub mod functions {
         parameters: Vec<String>,
         closure: Env,
         is_init: bool,
+    }
+
+    impl PartialEq for LoxFunc {
+        fn eq(&self, other: &Self) -> bool {
+            self.arity == other.arity
+                && self.name == other.name
+                && self.body == other.body
+                && self.parameters == other.parameters
+                && self.is_init == other.is_init
+        }
     }
 
     impl Debug for LoxFunc {
@@ -56,7 +73,7 @@ pub mod functions {
             body: Vec<Stmt>,
             parameters: Vec<String>,
             name: String,
-            closure: &Env,
+            closure: Env,
             is_init: bool,
         ) -> Self {
             Self {
@@ -64,7 +81,7 @@ pub mod functions {
                 body,
                 parameters,
                 name,
-                closure: closure.clone(),
+                closure: closure,
                 is_init,
             }
         }
@@ -91,39 +108,54 @@ pub mod functions {
     }
 
     impl LoxCallable for LoxFunc {
-        fn call(&self, arguments: &[LoxVar]) -> Result<LoxVar, FunctionError> {
+        fn call(
+            &self,
+            interpreter: &mut Interpreter,
+            arguments: &[LoxVar],
+        ) -> Result<LoxVar, FunctionError> {
             if arguments.len() != self.arity as usize {
-                Err(FunctionError::new(FunctionErrorKind::IncorrectArity {
+                return Err(FunctionError::new(FunctionErrorKind::IncorrectArity {
                     expected: self.arity,
                     got: arguments.len(),
-                }))
-            } else {
-                let mut env = self.closure.clone();
-                let mut scope = ScopeGuard::new(&mut env);
-                for (name, arg) in self.parameters.iter().zip(arguments) {
-                    scope.borrow_mut().define(name.to_owned(), arg.to_owned());
-                }
+                }));
+            }
 
-                let mut result: Option<LoxVar> = None;
+            let new_env = Env::new_env(Some(self.closure.clone()));
 
-                for stmt in &self.body {
-                    match stmt.run(&mut scope)? {
-                        ControlFlow::None => (),
-                        ControlFlow::Return(lox_var) => {
-                            result = Some(lox_var);
-                            break;
-                        }
+            for (name, arg) in self.parameters.iter().zip(arguments) {
+                new_env.borrow_mut().define(name.to_owned(), arg.to_owned());
+            }
+
+            let previous = interpreter.env.clone();
+
+            interpreter.env = new_env.clone();
+
+            let mut result: Option<LoxVar> = None;
+
+            for stmt in &self.body {
+                match interpreter.run_stmt(stmt.clone()) {
+                    Ok(ControlFlow::None) => {}
+                    Ok(ControlFlow::Return(val)) => {
+                        result = Some(val);
+                        break;
+                    }
+                    Err(e) => {
+                        interpreter.env = previous;
+                        return Err(e.into());
                     }
                 }
-                if self.is_init {
-                    Ok(scope
-                        .borrow()
-                        .get("this", Some(1))
-                        .expect("Initalizers always have this"))
-                } else {
-                    Ok(result.unwrap_or(LoxVar::Nil)) // Default to this if nothing is returned
-                }
             }
+
+            interpreter.env = previous;
+
+            if self.is_init {
+                return Ok(new_env
+                    .borrow()
+                    .get("this", Some(1))
+                    .expect("initializer must have this"));
+            }
+
+            Ok(result.unwrap_or(LoxVar::Nil))
         }
 
         fn signature(&self) -> String {
@@ -152,13 +184,14 @@ pub mod class {
 
     use crate::tree_walk::{
         error::fn_err::{FunctionError, FunctionErrorKind},
+        interpreter::Interpreter,
         lox_var::{
             LoxVar,
             functions::{LoxCallable, LoxFunc},
         },
     };
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct LoxClass {
         pub name: String,
         pub methods: HashMap<String, Rc<LoxFunc>>,
@@ -180,7 +213,11 @@ pub mod class {
     }
 
     impl LoxCallable for LoxClass {
-        fn call(&self, arguments: &[LoxVar]) -> Result<LoxVar, FunctionError> {
+        fn call(
+            &self,
+            interpreter: &mut Interpreter,
+            arguments: &[LoxVar],
+        ) -> Result<LoxVar, FunctionError> {
             if arguments.len() != self.arity().unwrap_or(0) as usize {
                 return Err(FunctionError::new(FunctionErrorKind::IncorrectArity {
                     expected: self.arity().unwrap_or(0),
@@ -191,7 +228,7 @@ pub mod class {
             let instance = Rc::new(RefCell::new(LoxInstance::new(Rc::new(self.clone()))));
 
             if let Some(init) = self.find_method("init") {
-                init.bind(instance.clone()).call(arguments)?;
+                init.bind(instance.clone()).call(interpreter, arguments)?;
             }
 
             Ok(LoxVar::Instance(instance))
@@ -324,16 +361,16 @@ impl LoxVar {
                 LoxVar::Number(n) => Some(LoxVar::Number(*n)),
                 LoxVar::String(s) => Some(LoxVar::Number(s.parse().ok()?)),
             },
-            LoxVarKind::String => Some(LoxVar::String(self.to_string())),
+            LoxVarKind::String => Some(LoxVar::String(self.to_owned())),
         }
     }
 }
 
-impl From<&Literal> for LoxVar {
-    fn from(value: &Literal) -> Self {
+impl From<Literal> for LoxVar {
+    fn from(value: Literal) -> Self {
         match value {
-            Literal::Number(n) => Self::Number(*n),
-            Literal::String(s) => Self::String(s.to_string()),
+            Literal::Number(n) => Self::Number(n),
+            Literal::String(s) => Self::String(s),
             Literal::True => Self::Bool(true),
             Literal::False => Self::Bool(false),
             Literal::Nil => Self::Nil,
@@ -348,7 +385,7 @@ impl Display for LoxVar {
             LoxVar::Bool(b) => write!(f, "{b}"),
             LoxVar::Number(n) => write!(f, "{n}"),
             LoxVar::String(s) => write!(f, "{s}"),
-            LoxVar::Callable(c) => write!(f, "<{}>", c.signature()),
+            LoxVar::Callable(c) => write!(f, "<fn {}>", c.signature()),
             LoxVar::Class(c) => write!(f, "{}", c.name),
             LoxVar::Instance(i) => {
                 write!(f, "{} instance", i.borrow().class.name)
@@ -360,10 +397,19 @@ impl Display for LoxVar {
 impl PartialEq for LoxVar {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Bool(l0), Self::Bool(r0)) => l0 == r0,
-            (Self::Number(l0), Self::Number(r0)) => l0 == r0,
-            (Self::String(l0), Self::String(r0)) => l0 == r0,
-            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+            (Self::Number(l), Self::Number(r)) => l == r,
+            (Self::Bool(l), Self::Bool(r)) => l == r,
+            (Self::String(l), Self::String(r)) => l == r,
+
+            // identity comparison
+            (Self::Callable(l), Self::Callable(r)) => Rc::ptr_eq(l, r),
+            (Self::Class(l), Self::Class(r)) => Rc::ptr_eq(l, r),
+            (Self::Instance(l), Self::Instance(r)) => Rc::ptr_eq(l, r),
+
+            // nil == nil
+            (Self::Nil, Self::Nil) => true,
+
+            _ => false,
         }
     }
 }

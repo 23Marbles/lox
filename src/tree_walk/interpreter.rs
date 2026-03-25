@@ -1,28 +1,90 @@
-use crate::tree_walk::{ast::Stmt, error::runtime_err::RuntimeError, interpreter::env::Env};
+use std::{collections::HashMap, rc::Rc};
 
-pub struct Interpreter<'a> {
+use crate::tree_walk::{
+    ast::{
+        Literal,
+        expr::Expr,
+        stmt::{ControlFlow, Stmt},
+    },
+    error::{
+        eval_err::{EvaluateError, EvaluateErrorKind},
+        runtime_err::{RuntimeError, RuntimeErrorKind},
+    },
+    interpreter::env::{Env, EnvironmentImpl},
+    lox_var::{
+        LoxVar,
+        class::{InstanceImpl, LoxClass},
+        functions::{LoxCallable, LoxFunc},
+    },
+};
+
+const MAX_CALL_DEPTH: usize = 1024;
+
+pub struct Interpreter {
     pub cfg: InterpreterConfig,
     statements: Vec<Stmt>,
-    pub env: &'a mut Env,
+    ip: usize,
+    out_buf: InterpOut,
+    pub env: Env,
+    call_depth: usize,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct InterpreterConfig {
-    print_expr: bool,
+    _print_expr: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct InterpOut {
+    lines: Vec<String>,
+}
+
+impl InterpOut {
+    pub fn lines(&self) -> Vec<String> {
+        self.lines.clone()
+    }
+
+    fn println(&mut self, value: impl ToString) {
+        for s in value.to_string().lines() {
+            println!("split: {s}");
+            self.lines.push(s.to_string());
+        }
+    }
+
+    fn clear(&mut self) {
+        *self = Self::default();
+    }
+}
+
+impl Iterator for Interpreter {
+    type Item = Result<InterpOut, RuntimeError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.out_buf.clear();
+        let ip = self.ip;
+        self.ip += 1;
+        Some(
+            self.run_stmt(self.statements.get(ip)?.clone())
+                .map(|_| self.out_buf.clone()),
+        )
+    }
 }
 
 impl InterpreterConfig {
     pub fn new(print_expr: bool) -> Self {
-        Self { print_expr }
+        Self { _print_expr: print_expr }
     }
 }
 
-impl<'a> Interpreter<'a> {
-    pub fn new(statements: Vec<Stmt>, env: &'a mut Env, cfg: InterpreterConfig) -> Self {
+impl Interpreter {
+    pub fn new(statements: Vec<Stmt>, env: Env, cfg: InterpreterConfig) -> Self {
         Self {
             statements,
             env,
             cfg,
+            ip: 0,
+            out_buf: InterpOut::default(),
+            call_depth: 0,
         }
     }
 
@@ -30,36 +92,470 @@ impl<'a> Interpreter<'a> {
         self.statements = new_statements
     }
 
-    pub fn interpret(&mut self) -> Result<(), RuntimeError> {
-        match self.cfg.print_expr {
-            true => {
-                for s in &self.statements {
-                    match s {
-                        Stmt::Expression(expr) => println!("{}", expr.evaluate(self.env)?),
-                        other_stmt => {
-                            other_stmt.run(self.env)?;
+    pub fn run_stmt(&mut self, stmt: Stmt) -> Result<ControlFlow, RuntimeError> {
+        match stmt {
+            Stmt::Expression(expr) => {
+                self.evaluate_expr(expr)?;
+                Ok(ControlFlow::None)
+            }
+            Stmt::Print(expr) => {
+                let value = self.evaluate_expr(expr)?;
+                self.out_buf.println(value);
+                Ok(ControlFlow::None)
+            }
+            Stmt::Var {
+                name, initializer, ..
+            } => {
+                let value = match initializer {
+                    Some(value) => self.evaluate_expr(value)?,
+                    None => LoxVar::Nil,
+                };
+                self.env
+                    .borrow_mut()
+                    .define(name.to_string(), value.clone());
+                Ok(ControlFlow::None)
+            }
+            Stmt::Block(stmts) => {
+                let previous = self.env.clone();
+                self.env = Env::new_env(Some(previous.clone()));
+
+                for stmt in stmts {
+                    match self.run_stmt(stmt)? {
+                        ControlFlow::None => {}
+                        ControlFlow::Return(v) => {
+                            self.env = previous;
+                            return Ok(ControlFlow::Return(v));
                         }
                     }
                 }
+
+                self.env = previous;
+                Ok(ControlFlow::None)
             }
-            false => {
-                for s in &self.statements {
-                    s.run(self.env)?;
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                if self.evaluate_expr(condition)?.is_truthy() {
+                    self.run_stmt(*then_branch)
+                } else if let Some(branch) = else_branch {
+                    self.run_stmt(*branch)
+                } else {
+                    Ok(ControlFlow::None)
                 }
             }
-        }
+            Stmt::While { condition, body } => {
+                while self.evaluate_expr(condition.clone())?.is_truthy() {
+                    match self.run_stmt(*body.clone())? {
+                        ControlFlow::None => (),
+                        ControlFlow::Return(lox_var) => {
+                            return Ok(ControlFlow::Return(lox_var));
+                        }
+                    };
+                }
+                Ok(ControlFlow::None)
+            }
+            Stmt::Function {
+                name,
+                parameters,
+                body,
+                pos,
+            } => {
+                self.env.borrow_mut().define(
+                    name.to_string(),
+                    LoxVar::Callable(Rc::new(LoxFunc::new(
+                        parameters.len().try_into().map_err(|_| {
+                            RuntimeError::new(RuntimeErrorKind::TooManyArguments(pos))
+                        })?,
+                        body.clone(),
+                        parameters.clone(),
+                        name.to_string(),
+                        self.env.clone(),
+                        false,
+                    ))),
+                );
+                Ok(ControlFlow::None)
+            }
+            Stmt::Return { value, .. } => Ok(ControlFlow::Return(
+                self.evaluate_expr(value.unwrap_or(Expr::Literal(Literal::Nil)))?,
+            )),
+            Stmt::Class {
+                name,
+                methods,
+                super_class,
+                pos,
+            } => {
+                self.env.borrow_mut().define(name.clone(), LoxVar::Nil);
 
-        Ok(())
+                let super_class = if let Some(expr) = super_class {
+                    let var = self.evaluate_expr(expr.clone())?;
+
+                    if let LoxVar::Class(s_class) = var {
+                        Some(s_class)
+                    } else {
+                        return Err(RuntimeError::new(RuntimeErrorKind::SuperClassIsNotAClass(
+                            var,
+                            if let Expr::Variable { position, .. } = expr {
+                                position
+                            } else {
+                                pos
+                            },
+                        )));
+                    }
+                } else {
+                    None
+                };
+
+                let mut method_env = self.env.clone();
+
+                if let Some(ref super_class) = super_class {
+                    let new_env = Env::new_env(Some(self.env.clone()));
+                    new_env
+                        .borrow_mut()
+                        .define("super".to_string(), LoxVar::Class(super_class.clone()));
+
+                    method_env = new_env;
+                }
+
+                let mut method_map = HashMap::new();
+
+                for method in methods {
+                    if let Stmt::Function {
+                        name: m_name,
+                        parameters,
+                        body,
+                        ..
+                    } = method
+                    {
+                        let func = LoxFunc::new(
+                            parameters.len() as u8,
+                            body,
+                            parameters,
+                            m_name.clone(),
+                            method_env.clone(),
+                            m_name == "init",
+                        );
+
+                        method_map.insert(m_name, Rc::new(func));
+                    }
+                }
+
+                let class = LoxClass {
+                    name: name.clone(),
+                    methods: method_map,
+                    super_class,
+                };
+
+                self.env
+                    .borrow_mut()
+                    .assign(&name, &LoxVar::Class(Rc::new(class)), None)
+                    .map_err(|k| EvaluateError::new(k, pos))?;
+
+                Ok(ControlFlow::None)
+            }
+        }
+    }
+
+    pub fn evaluate_expr(&mut self, expr: Expr) -> Result<LoxVar, RuntimeError> {
+        use crate::tree_walk::token::TokenKind;
+        use std::ops::{Add, Div, Mul, Sub};
+        match expr {
+            Expr::Literal(literal) => Ok(literal.into()),
+            Expr::Unary {
+                operator,
+                right,
+                position,
+            } => {
+                let right_var = self.evaluate_expr(*right)?;
+                match operator {
+                    TokenKind::Minus => {
+                        if let LoxVar::Number(n) = right_var {
+                            Ok(LoxVar::Number(-n))
+                        } else {
+                            Err(EvaluateError::new(
+                                EvaluateErrorKind::IncompatableUnaryOperator {
+                                    operator: TokenKind::Minus,
+                                    var_ty: right_var.into(),
+                                },
+                                position,
+                            )
+                            .into())
+                        }
+                    }
+                    TokenKind::Bang => Ok(LoxVar::Bool(!right_var.is_truthy())),
+                    _ => {
+                        unreachable!("only tokens with kind minus and bang can be unary operators")
+                    }
+                }
+            }
+            Expr::Binary {
+                left,
+                operator,
+                right,
+                position,
+            } => {
+                let left_var = self.evaluate_expr(*left)?;
+                let right_var = self.evaluate_expr(*right)?;
+
+                use TokenKind::*;
+                use std::cmp::Ordering;
+
+                match operator {
+                    Greater => {
+                        if let Some(ord) = left_var.partial_cmp(&right_var) {
+                            Ok(LoxVar::Bool(ord == Ordering::Greater))
+                        } else {
+                            Err(EvaluateError::bin_eval_error(
+                                position, Greater, &left_var, &right_var,
+                            )
+                            .into())
+                        }
+                    }
+                    GreaterEqual => {
+                        if let Some(ord) = left_var.partial_cmp(&right_var) {
+                            Ok(LoxVar::Bool(ord != Ordering::Less))
+                        } else {
+                            Err(EvaluateError::bin_eval_error(
+                                position,
+                                GreaterEqual,
+                                &left_var,
+                                &right_var,
+                            )
+                            .into())
+                        }
+                    }
+                    Less => {
+                        if let Some(ord) = left_var.partial_cmp(&right_var) {
+                            Ok(LoxVar::Bool(ord == Ordering::Less))
+                        } else {
+                            Err(EvaluateError::bin_eval_error(
+                                position, Less, &left_var, &right_var,
+                            )
+                            .into())
+                        }
+                    }
+                    LessEqual => {
+                        if let Some(ord) = left_var.partial_cmp(&right_var) {
+                            Ok(LoxVar::Bool(ord != Ordering::Greater))
+                        } else {
+                            Err(EvaluateError::bin_eval_error(
+                                position, LessEqual, &left_var, &right_var,
+                            )
+                            .into())
+                        }
+                    }
+                    EqualEqual => Ok(LoxVar::Bool(left_var.eq(&right_var))),
+                    BangEqual => Ok(LoxVar::Bool(left_var.ne(&right_var))),
+                    Minus => left_var.sub(&right_var).map_err(|(l, r)| {
+                        EvaluateError::bin_eval_error(position, Minus, l, r).into()
+                    }),
+                    Slash => {
+                        if right_var == LoxVar::Number(0.) {
+                            Err(
+                                EvaluateError::new(EvaluateErrorKind::DivisionByZero, position)
+                                    .into(),
+                            )
+                        } else {
+                            left_var.div(&right_var).map_err(|(l, r)| {
+                                EvaluateError::bin_eval_error(position, Slash, l, r).into()
+                            })
+                        }
+                    }
+                    Star => left_var.mul(&right_var).map_err(|(l, r)| {
+                        EvaluateError::bin_eval_error(position, Star, l, r).into()
+                    }),
+                    Plus => left_var.add(&right_var).map_err(|(l, r)| {
+                        EvaluateError::bin_eval_error(position, Plus, l, r).into()
+                    }),
+                    _ => unreachable!(
+                        "only tokens with kind gt, ge, lt, le, ne, eq, minus, plus, slash and star can be binary operators"
+                    ),
+                }
+            }
+            Expr::Grouping(expr) => self.evaluate_expr(*expr),
+            Expr::Variable {
+                name,
+                position,
+                distance,
+            } => self.env.borrow().get(&name, distance).ok_or(
+                EvaluateError::new(
+                    EvaluateErrorKind::UndeclaredVariable {
+                        name: name.to_owned(),
+                    },
+                    position,
+                )
+                .into(),
+            ),
+            Expr::Assign {
+                name,
+                position,
+                value,
+                distance,
+            } => {
+                let value = self.evaluate_expr(*value)?;
+                self.env
+                    .borrow_mut()
+                    .assign(&name, &value, distance)
+                    .map_err(|err| EvaluateError::new(err, position))?;
+                Ok(value)
+            }
+            Expr::Logical {
+                left,
+                operator,
+                right,
+                ..
+            } => {
+                let left = self.evaluate_expr(*left)?;
+                match operator {
+                    TokenKind::And => {
+                        if !left.is_truthy() {
+                            Ok(left)
+                        } else {
+                            self.evaluate_expr(*right)
+                        }
+                    }
+                    TokenKind::Or => {
+                        if left.is_truthy() {
+                            Ok(left)
+                        } else {
+                            self.evaluate_expr(*right)
+                        }
+                    }
+                    _ => unreachable!("Logical expr can only have operators Or or And"),
+                }
+            }
+            Expr::Call {
+                callee,
+                args,
+                position,
+            } => {
+                self.call_depth += 1;
+
+                let arguments: Vec<LoxVar> = args
+                    .iter()
+                    .map(|expr| self.evaluate_expr(expr.clone()))
+                    .collect::<Result<_, _>>()?;
+                match self.evaluate_expr(*callee)? {
+                    LoxVar::Callable(func) => {
+                        let ret = func.call(self, &arguments).map_err(|mut err| {
+                            err.call_pos = Some(Box::new(position));
+                            err.input_args = arguments;
+
+                            err
+                        })?;
+
+                        if self.call_depth > MAX_CALL_DEPTH {
+                            return Err(RuntimeError::new(RuntimeErrorKind::StackOverflow(
+                                position,
+                            )));
+                        }
+
+                        self.call_depth -= 1;
+
+                        Ok(ret)
+                    }
+                    LoxVar::Class(class) => {
+                        let ret = class.call(self, &arguments).map_err(|mut err| {
+                            err.call_pos = Some(Box::new(position));
+                            err.input_args = arguments;
+
+                            err
+                        })?;
+
+                        if self.call_depth > MAX_CALL_DEPTH {
+                            return Err(RuntimeError::new(RuntimeErrorKind::StackOverflow(
+                                position,
+                            )));
+                        }
+
+                        self.call_depth -= 1;
+
+                        Ok(ret)
+                    }
+                    other => Err(EvaluateError::new(
+                        EvaluateErrorKind::NonCallable {
+                            name: other.to_string(),
+                        },
+                        position,
+                    )
+                    .into()),
+                }
+            }
+            Expr::Get { object, name, pos } => {
+                let obj = self.evaluate_expr(*object)?;
+
+                if let LoxVar::Instance(inst) = obj {
+                    if let Some(property) = inst.get(&name) {
+                        Ok(property)
+                    } else if let Some(method) = inst.borrow().class.find_method(&name) {
+                        Ok(LoxVar::Callable(method))
+                    } else {
+                        Err(EvaluateError::new(
+                            EvaluateErrorKind::UndefinedProperty(name.to_owned()),
+                            pos,
+                        )
+                        .into())
+                    }
+                } else {
+                    Err(EvaluateError::new(EvaluateErrorKind::NotInstance(obj.into()), pos).into())
+                }
+            }
+            Expr::Set {
+                object,
+                name,
+                value,
+                pos,
+            } => {
+                let obj = self.evaluate_expr(*object)?;
+
+                if let LoxVar::Instance(mut inst) = obj {
+                    let val = self.evaluate_expr(*value)?;
+
+                    inst.set(name.clone(), val.clone());
+
+                    Ok(val)
+                } else {
+                    Err(EvaluateError::new(EvaluateErrorKind::NotInstance(obj.into()), pos).into())
+                }
+            }
+            Expr::This { distance, .. } => Ok(self
+                .env
+                .borrow()
+                .get("this", distance)
+                .expect("Cannot have a reference to this outside of method")),
+            Expr::Super {
+                distance,
+                method_name,
+                pos,
+            } => {
+                let dist = distance.expect("super must be resolved");
+
+                let superclass = match self.env.borrow().get("super", Some(dist)) {
+                    Some(LoxVar::Class(cls)) => cls,
+                    _ => unreachable!("super must be a class"),
+                };
+
+                let instance = match self.env.borrow().get("this", Some(dist - 1)) {
+                    Some(LoxVar::Instance(inst)) => inst,
+                    _ => unreachable!("this must be an instance"),
+                };
+
+                let method = superclass
+                    .find_method(&method_name)
+                    .ok_or(EvaluateError::new(
+                        EvaluateErrorKind::UndefinedProperty(method_name.to_owned()),
+                        pos,
+                    ))?;
+
+                Ok(LoxVar::Callable(method.bind(instance)))
+            }
+        }
     }
 }
 
 pub mod env {
-    use std::{
-        cell::RefCell,
-        collections::HashMap,
-        ops::{Deref, DerefMut},
-        rc::Rc,
-    };
+    use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
     #[allow(unused)]
     pub fn debug_print(env: &Env) {
@@ -101,8 +597,6 @@ pub mod env {
     {
         fn new_env(enclosing: Option<Self>) -> Self;
         fn new_with_globals(globals: Vec<(&'static str, LoxVar)>) -> Self;
-        fn descend(&mut self);
-        fn ascend(&mut self);
     }
 
     pub type Env = Rc<RefCell<Environment>>;
@@ -114,51 +608,6 @@ pub mod env {
 
         fn new_with_globals(globals: Vec<(&'static str, LoxVar)>) -> Self {
             Rc::new(RefCell::new(Environment::new_with_globals(globals)))
-        }
-
-        fn descend(&mut self) {
-            *self = Env::new_env(Some(self.clone()))
-        }
-
-        fn ascend(&mut self) {
-            let parent = self
-                .borrow()
-                .enclosing
-                .clone()
-                .expect("Tried to ascend above global");
-
-            *self = parent;
-        }
-    }
-
-    pub struct ScopeGuard<'a> {
-        env: &'a mut Env,
-    }
-
-    impl<'a> ScopeGuard<'a> {
-        pub fn new(env: &'a mut Env) -> Self {
-            env.descend();
-            Self { env }
-        }
-    }
-
-    impl DerefMut for ScopeGuard<'_> {
-        fn deref_mut(&mut self) -> &mut Self::Target {
-            self.env
-        }
-    }
-
-    impl Deref for ScopeGuard<'_> {
-        type Target = Env;
-
-        fn deref(&self) -> &Self::Target {
-            self.env
-        }
-    }
-
-    impl Drop for ScopeGuard<'_> {
-        fn drop(&mut self) {
-            self.env.ascend();
         }
     }
 
@@ -203,25 +652,25 @@ pub mod env {
             self.enclosing.as_ref()?.borrow().get_at(dist - 1, name)
         }
 
-        pub fn get_dynamic(&self, name: &str) -> Option<LoxVar> {
-            if let Some(v) = self.values.get(name) {
-                return Some(v.clone());
+        pub fn get_global(&self, name: &str) -> Option<LoxVar> {
+            if let Some(ref parent) = self.enclosing {
+                return parent.borrow().get_global(name);
             }
 
-            if let Some(ref parent) = self.enclosing {
-                return parent.borrow().get_dynamic(name);
+            if let Some(v) = self.values.get(name) {
+                return Some(v.clone());
             }
 
             None
         }
 
         pub fn get(&self, name: &str, distance: Option<usize>) -> Option<LoxVar> {
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "debug_print")]
             println!("LOOKUP: {} @ {:?}", name, distance);
             if let Some(dist) = distance {
                 self.get_at(dist, name)
             } else {
-                self.get_dynamic(name)
+                self.get_global(name)
             }
         }
 
@@ -248,10 +697,14 @@ pub mod env {
                         .borrow_mut()
                         .assign(name, value, Some(dist - 1))
                 }
-            } else if self.values.insert(name.to_owned(), value.clone()).is_some() {
-                Ok(())
             } else if let Some(ref parent) = self.enclosing {
                 parent.borrow_mut().assign(name, value, None)
+            } else if self
+                .values
+                .insert(name.to_owned(), value.to_owned())
+                .is_some()
+            {
+                Ok(())
             } else {
                 Err(EvaluateErrorKind::UndeclaredVariable {
                     name: name.to_owned(),

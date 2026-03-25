@@ -1,17 +1,97 @@
-use std::fmt::Display;
+use std::{error::Error, fmt::Display};
 
-use crate::tree_walk::token::Token;
+use crate::tree_walk::{error::diagnostic::ErrorTime, token::Token};
 
 pub trait LoxPos {
     fn pos(&self) -> ErrorPos;
 }
 
-pub trait LoxError: LoxPos + Display {
+impl<T: LoxPos> LoxPos for Vec<T> {
+    fn pos(&self) -> ErrorPos {
+        assert!(!self.is_empty(), "Cannot find the pos of an empty vector");
+        self[0].pos().span_to(self.last().unwrap().pos())
+    }
+}
+
+pub trait DisplayLoxError: LoxPos + Display {
     fn display_err(&self, source: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let pos = self.pos();
         writeln!(f, "\x1b[1;36m{pos} \x1b[39m{self}\x1b[0m")?;
         pos.display_err(source, f)?;
         write!(f, "\n\x1b[1;36m\\\x1b[0m")
+    }
+
+    fn lox_msg(&self) -> String {
+        self.to_string()
+    }
+}
+
+pub trait LoxError: Error + DisplayLoxError {
+    fn time(&self) -> ErrorTime;
+}
+
+pub mod diagnostic {
+    use std::{error::Error, fmt::Display};
+
+    use crate::tree_walk::error::{DisplayLoxError, ErrorPos, LoxError, LoxPos};
+
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub enum ErrorTime {
+        Scanner,
+        Parser,
+        Resolver,
+        Runtime,
+    }
+
+    pub trait IntoDiagnostic: LoxError {
+        fn into_diagnostic(&self) -> Diagnostic {
+            Diagnostic {
+                pos: self.pos(),
+                time: self.time(),
+                msg: self.to_string(),
+            }
+        }
+    }
+
+    impl<T: LoxError> IntoDiagnostic for T {}
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct Diagnostic {
+        pos: ErrorPos,
+        time: ErrorTime,
+        msg: String,
+    }
+
+    impl Display for Diagnostic {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.msg)
+        }
+    }
+
+    impl DisplayLoxError for Diagnostic {}
+
+    impl Error for Diagnostic {}
+
+    impl LoxError for Diagnostic {
+        fn time(&self) -> ErrorTime {
+            self.time
+        }
+    }
+
+    impl LoxPos for Diagnostic {
+        fn pos(&self) -> ErrorPos {
+            self.pos
+        }
+    }
+
+    impl<T: LoxError> From<&T> for Diagnostic {
+        fn from(value: &T) -> Self {
+            Self {
+                pos: value.pos(),
+                msg: value.lox_msg(),
+                time: value.time(),
+            }
+        }
     }
 }
 
@@ -19,164 +99,146 @@ pub mod run_err {
     use std::{error::Error, fmt::Display};
 
     use crate::tree_walk::error::{
-        ErrorPos, LoxError, LoxPos, anaylysis_err::ResolverErr, eval_err::EvaluateError,
-        parse_err::ParseError, runtime_err::RuntimeError, scan_err::ScanError,
+        DisplayLoxError, ErrorPos, LoxPos,
+        diagnostic::{Diagnostic, IntoDiagnostic},
     };
 
     #[derive(Debug)]
-    enum RunErrorKind {
+    pub enum RunErrorKind {
         IoError(std::io::Error),
-        ScanErrors(Vec<ScanError>),
-        ParseErrors(Vec<ParseError>),
-        ResolverErrors(Vec<ResolverErr>),
-        EvaluateError(EvaluateError),
-        RuntimeError(RuntimeError),
+        Diagnostics(Vec<Diagnostic>),
+    }
+    #[derive(Debug)]
+    pub struct RunError {
+        pub kind: RunErrorKind,
+    }
+
+    impl PartialEq<Vec<Diagnostic>> for RunError {
+        fn eq(&self, other: &Vec<Diagnostic>) -> bool {
+            if let RunErrorKind::Diagnostics(diagnostics) = &self.kind {
+                diagnostics.len() == other.len()
+                    && diagnostics.iter().zip(other).all(|(s, o)| s == o)
+            } else {
+                false
+            }
+        }
     }
 
     #[derive(Debug)]
-    pub struct RunError {
-        source: Option<String>,
-        kind: RunErrorKind,
+    pub struct RunErrorSourced {
+        source: String,
+        err: RunError,
+    }
+
+    impl Display for RunErrorSourced {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            self.err.display_err(&self.source, f)
+        }
+    }
+
+    impl From<std::io::Error> for RunErrorSourced {
+        fn from(value: std::io::Error) -> Self {
+            Self {
+                source: "".to_owned(),
+                err: RunError::from(value),
+            }
+        }
     }
 
     impl RunError {
-        pub fn set_source(&mut self, source: String) {
-            self.source = Some(source)
+        pub fn with_source(self, source: String) -> RunErrorSourced {
+            RunErrorSourced { source, err: self }
         }
     }
 
     impl LoxPos for RunError {
         fn pos(&self) -> ErrorPos {
             match &self.kind {
-                RunErrorKind::IoError(_) => panic!("IoError does not have a position"),
-                RunErrorKind::ScanErrors(scan_errors) => {
-                    assert!(
-                        !scan_errors.is_empty(),
-                        "Does not have any position due to scan errors being empty"
-                    );
+                RunErrorKind::IoError(_) => unimplemented!("IoError does not have a position"),
+                RunErrorKind::Diagnostics(diags) => diags.pos(),
+            }
+        }
+    }
 
-                    let from = scan_errors[0].pos();
-                    let to = scan_errors.last().unwrap().pos(); // Already checked len
+    impl DisplayLoxError for RunError {
+        fn display_err(&self, source: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match &self.kind {
+                RunErrorKind::IoError(err) => write!(f, "\x1b[1mIo Error: {err}\x1b[0m"),
+                RunErrorKind::Diagnostics(diagnostics) => {
+                    if let Some(diag) = diagnostics.get(0) {
+                        diag.display_err(source, f)?;
 
-                    from.span_to(to)
+                        for d in diagnostics.iter().skip(1) {
+                            writeln!(f)?;
+                            d.display_err(source, f)?;
+                        }
+
+                        Ok(())
+                    } else {
+                        Ok(())
+                    }
                 }
-                RunErrorKind::ParseErrors(parse_errors) => {
-                    assert!(
-                        !parse_errors.is_empty(),
-                        "Does not have any position due to parse errors being empty"
-                    );
-
-                    let from = parse_errors[0].pos();
-                    let to = parse_errors.last().unwrap().pos(); // Already checked len
-
-                    from.span_to(to)
-                }
-                RunErrorKind::ResolverErrors(resolver_errs) => {
-                    assert!(
-                        !resolver_errs.is_empty(),
-                        "Does not have any position due to resolver errors being empty"
-                    );
-
-                    let from = resolver_errs[0].pos();
-                    let to = resolver_errs.last().unwrap().pos(); // Already checked len
-
-                    from.span_to(to)
-                }
-                RunErrorKind::EvaluateError(evaluate_error) => evaluate_error.pos(),
-                RunErrorKind::RuntimeError(runtime_error) => runtime_error.pos(),
             }
         }
     }
 
     impl Display for RunError {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            if let Some(source) = &self.source {
-                match &self.kind {
-                    RunErrorKind::IoError(err) => write!(f, "\x1b[1mIo error:\n{err}\x1b[0m")?,
-                    RunErrorKind::ScanErrors(errs) => {
-                        for e in errs {
+            match &self.kind {
+                RunErrorKind::IoError(err) => write!(f, "\x1b[1mIo Error: {err}\x1b[0m"),
+                RunErrorKind::Diagnostics(diagnostics) => {
+                    if let Some(diag) = diagnostics.get(0) {
+                        write!(f, "{diag}")?;
+
+                        for d in diagnostics.iter().skip(1) {
                             writeln!(f)?;
-                            e.display_err(source, f)?;
+                            write!(f, "{d}")?;
                         }
+
+                        Ok(())
+                    } else {
+                        Ok(())
                     }
-                    RunErrorKind::ParseErrors(errs) => {
-                        for e in errs {
-                            writeln!(f)?;
-                            e.display_err(source, f)?;
-                        }
-                    }
-                    RunErrorKind::ResolverErrors(errs) => {
-                        for e in errs {
-                            writeln!(f)?;
-                            e.display_err(source, f)?;
-                        }
-                    }
-                    RunErrorKind::EvaluateError(err) => {
-                        err.display_err(source, f)?;
-                    }
-                    RunErrorKind::RuntimeError(err) => {
-                        err.display_err(source, f)?;
-                    }
-                }
-            } else {
-                match &self.kind {
-                    RunErrorKind::IoError(err) => write!(f, "Io error:\n{err}")?,
-                    RunErrorKind::ScanErrors(errs) => {
-                        write!(f, "Scan errors:")?;
-                        for e in errs {
-                            writeln!(f)?;
-                            write!(f, "\n{} {e}", e.pos())?
-                        }
-                    }
-                    RunErrorKind::ParseErrors(errs) => {
-                        write!(f, "Parse errors:")?;
-                        for e in errs {
-                            writeln!(f)?;
-                            write!(f, "\n{e}")?
-                        }
-                    }
-                    RunErrorKind::ResolverErrors(errs) => {
-                        write!(f, "Reolver errors:")?;
-                        for e in errs {
-                            writeln!(f)?;
-                            write!(f, "\n{e}")?
-                        }
-                    }
-                    RunErrorKind::EvaluateError(err) => write!(f, "Evaluation error:\n{err}")?,
-                    RunErrorKind::RuntimeError(err) => write!(f, "Evaluation error:\n{err}")?,
                 }
             }
-            Ok(())
         }
     }
 
     impl Error for RunError {}
 
-    macro_rules! translate_err_impl {
-        ($from:ty, $kind:path) => {
-            impl From<$from> for RunError {
-                fn from(value: $from) -> Self {
-                    Self {
-                        source: None,
-                        kind: $kind(value),
-                    }
-                }
+    impl From<std::io::Error> for RunError {
+        fn from(value: std::io::Error) -> Self {
+            Self {
+                kind: RunErrorKind::IoError(value),
             }
-        };
+        }
     }
 
-    translate_err_impl!(std::io::Error, RunErrorKind::IoError);
-    translate_err_impl!(Vec<ScanError>, RunErrorKind::ScanErrors);
-    translate_err_impl!(Vec<ParseError>, RunErrorKind::ParseErrors);
-    translate_err_impl!(Vec<ResolverErr>, RunErrorKind::ResolverErrors);
-    translate_err_impl!(EvaluateError, RunErrorKind::EvaluateError);
-    translate_err_impl!(RuntimeError, RunErrorKind::RuntimeError);
+    impl<T: IntoDiagnostic> From<Vec<T>> for RunError {
+        fn from(value: Vec<T>) -> Self {
+            Self {
+                kind: RunErrorKind::Diagnostics(
+                    value.iter().map(|t| t.into_diagnostic()).collect(),
+                ),
+            }
+        }
+    }
+
+    impl<T: IntoDiagnostic> From<T> for RunError {
+        fn from(value: T) -> Self {
+            Self {
+                kind: RunErrorKind::Diagnostics(vec![value.into_diagnostic()]),
+            }
+        }
+    }
 }
 
 pub mod scan_err {
     use std::{error::Error, fmt::Display};
 
-    use crate::tree_walk::error::{ErrorPos, LoxError, LoxPos};
+    use crate::tree_walk::error::{
+        DisplayLoxError, ErrorPos, LoxError, LoxPos, diagnostic::ErrorTime,
+    };
 
     #[derive(Debug, Clone, Copy)]
     pub struct ScanError {
@@ -196,13 +258,19 @@ pub mod scan_err {
         }
     }
 
+    impl DisplayLoxError for ScanError {}
+
     impl LoxPos for ScanError {
         fn pos(&self) -> ErrorPos {
             self.pos
         }
     }
 
-    impl LoxError for ScanError {}
+    impl LoxError for ScanError {
+        fn time(&self) -> ErrorTime {
+            ErrorTime::Scanner
+        }
+    }
 
     impl Error for ScanError {}
 
@@ -230,7 +298,7 @@ pub mod parse_err {
     use std::{error::Error, fmt::Display};
 
     use crate::tree_walk::{
-        error::{ErrorPos, LoxError, LoxPos},
+        error::{DisplayLoxError, ErrorPos, LoxError, LoxPos, diagnostic::ErrorTime},
         token::TokenKind,
     };
     #[derive(Debug, Clone)]
@@ -251,13 +319,19 @@ pub mod parse_err {
         }
     }
 
+    impl DisplayLoxError for ParseError {}
+
     impl LoxPos for ParseError {
         fn pos(&self) -> ErrorPos {
             self.pos
         }
     }
 
-    impl LoxError for ParseError {}
+    impl LoxError for ParseError {
+        fn time(&self) -> ErrorTime {
+            ErrorTime::Parser
+        }
+    }
 
     impl Error for ParseError {}
 
@@ -317,9 +391,11 @@ pub mod parse_err {
 }
 
 pub mod anaylysis_err {
-    use std::fmt::Display;
+    use std::{error::Error, fmt::Display};
 
-    use crate::tree_walk::error::{ErrorPos, LoxError, LoxPos};
+    use crate::tree_walk::error::{
+        DisplayLoxError, ErrorPos, LoxError, LoxPos, diagnostic::ErrorTime,
+    };
 
     #[derive(Debug, Clone)]
     pub struct ResolverErr {
@@ -345,7 +421,15 @@ pub mod anaylysis_err {
         }
     }
 
-    impl LoxError for ResolverErr {}
+    impl DisplayLoxError for ResolverErr {}
+
+    impl Error for ResolverErr {}
+
+    impl LoxError for ResolverErr {
+        fn time(&self) -> ErrorTime {
+            ErrorTime::Resolver
+        }
+    }
 
     #[derive(Debug, Clone)]
     pub enum ResolverErrKind {
@@ -391,7 +475,10 @@ pub mod runtime_err {
     use std::{error::Error, fmt::Display};
 
     use crate::tree_walk::{
-        error::{ErrorPos, LoxError, LoxPos, eval_err::EvaluateError, fn_err::FunctionError},
+        error::{
+            DisplayLoxError, ErrorPos, LoxError, LoxPos, diagnostic::ErrorTime,
+            eval_err::EvaluateError, fn_err::FunctionError,
+        },
         lox_var::LoxVar,
     };
 
@@ -417,13 +504,14 @@ pub mod runtime_err {
             match &self.kind {
                 RuntimeErrorKind::EvaluateError(evaluate_error) => evaluate_error.pos(),
                 RuntimeErrorKind::FunctionError(function_error) => function_error.pos(),
-                RuntimeErrorKind::TooManyArguments(error_pos) => *error_pos,
-                RuntimeErrorKind::SuperClassIsNotAClass(.., error_pos) => *error_pos,
+                RuntimeErrorKind::TooManyArguments(error_pos)
+                | RuntimeErrorKind::SuperClassIsNotAClass(.., error_pos)
+                | RuntimeErrorKind::StackOverflow(error_pos) => *error_pos,
             }
         }
     }
 
-    impl LoxError for RuntimeError {
+    impl DisplayLoxError for RuntimeError {
         fn display_err(&self, source: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match &self.kind {
                 RuntimeErrorKind::EvaluateError(evaluate_error) => {
@@ -432,17 +520,20 @@ pub mod runtime_err {
                 RuntimeErrorKind::FunctionError(function_error) => {
                     function_error.display_err(source, f)
                 }
-                RuntimeErrorKind::TooManyArguments(error_pos) => {
-                    writeln!(f, "\x1b[1;36m{error_pos} \x1b[39m{self}\x1b[0m")?;
-                    error_pos.display_err(source, f)?;
-                    write!(f, "\n\x1b[1;36m\\\x1b[0m")
-                }
-                RuntimeErrorKind::SuperClassIsNotAClass(.., error_pos) => {
+                RuntimeErrorKind::TooManyArguments(error_pos)
+                | RuntimeErrorKind::SuperClassIsNotAClass(.., error_pos)
+                | RuntimeErrorKind::StackOverflow(error_pos) => {
                     writeln!(f, "\x1b[1;36m{error_pos} \x1b[39m{self}\x1b[0m")?;
                     error_pos.display_err(source, f)?;
                     write!(f, "\n\x1b[1;36m\\\x1b[0m")
                 }
             }
+        }
+    }
+
+    impl LoxError for RuntimeError {
+        fn time(&self) -> ErrorTime {
+            ErrorTime::Runtime
         }
     }
 
@@ -454,6 +545,7 @@ pub mod runtime_err {
         FunctionError(FunctionError),
         TooManyArguments(ErrorPos),
         SuperClassIsNotAClass(LoxVar, ErrorPos),
+        StackOverflow(ErrorPos),
     }
 
     impl Display for RuntimeErrorKind {
@@ -467,6 +559,7 @@ pub mod runtime_err {
                 RuntimeErrorKind::SuperClassIsNotAClass(not_class, ..) => {
                     write!(f, "The super class `{not_class}` must be a class")
                 }
+                RuntimeErrorKind::StackOverflow(..) => write!(f, "Max call depth reached"),
             }
         }
     }
@@ -489,10 +582,10 @@ pub mod runtime_err {
 }
 
 pub mod eval_err {
-    use std::fmt::Display;
+    use std::{error::Error, fmt::Display};
 
     use crate::tree_walk::{
-        error::{ErrorPos, LoxError, LoxPos},
+        error::{DisplayLoxError, ErrorPos, LoxError, LoxPos, diagnostic::ErrorTime},
         lox_var::{LoxVar, LoxVarKind},
         token::TokenKind,
     };
@@ -531,7 +624,15 @@ pub mod eval_err {
         }
     }
 
-    impl LoxError for EvaluateError {}
+    impl Error for EvaluateError {}
+
+    impl DisplayLoxError for EvaluateError {}
+
+    impl LoxError for EvaluateError {
+        fn time(&self) -> ErrorTime {
+            ErrorTime::Runtime
+        }
+    }
 
     impl Display for EvaluateError {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -621,11 +722,12 @@ pub mod eval_err {
 }
 
 pub mod fn_err {
-    use std::fmt::Display;
+    use std::{error::Error, fmt::Display};
 
     use crate::tree_walk::{
         error::{
-            ErrorPos, LoxError, LoxPos,
+            DisplayLoxError, ErrorPos, LoxError, LoxPos,
+            diagnostic::ErrorTime,
             runtime_err::{RuntimeError, RuntimeErrorKind},
         },
         lox_var::LoxVar,
@@ -659,7 +761,9 @@ pub mod fn_err {
         }
     }
 
-    impl LoxError for FunctionError {
+    impl Error for FunctionError {}
+
+    impl DisplayLoxError for FunctionError {
         fn display_err(&self, source: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             let call_pos = *self
                 .call_pos
@@ -694,6 +798,12 @@ pub mod fn_err {
             }
 
             write!(f, "\n\x1b[1;36m\\\x1b[0m")
+        }
+    }
+
+    impl LoxError for FunctionError {
+        fn time(&self) -> ErrorTime {
+            ErrorTime::Runtime
         }
     }
 
@@ -733,7 +843,7 @@ pub mod fn_err {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ErrorPos {
     line: usize,
     column: usize,
@@ -799,7 +909,7 @@ impl LoxPos for ErrorPos {
     }
 }
 
-impl LoxError for ErrorPos {
+impl DisplayLoxError for ErrorPos {
     fn display_err(&self, source: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let lines = source.lines().collect::<Vec<&str>>()
             [self.line - 1..(self.line + self.lines) - 1]
@@ -868,6 +978,13 @@ impl LoxError for ErrorPos {
     }
 }
 
+impl LoxError for ErrorPos {
+    /// # Not to be used
+    fn time(&self) -> ErrorTime {
+        unimplemented!("Time cannot be called on ErrorPos")
+    }
+}
+
 impl From<&Token<'_>> for ErrorPos {
     fn from(value: &Token<'_>) -> Self {
         use super::token::TokenKind::*;
@@ -921,3 +1038,5 @@ impl From<Token<'_>> for ErrorPos {
         }
     }
 }
+
+impl Error for ErrorPos {}

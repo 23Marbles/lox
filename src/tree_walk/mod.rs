@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::tree_walk::{
-    error::run_err::RunError,
+    error::run_err::{RunError, RunErrorSourced},
     interpreter::{
         Interpreter, InterpreterConfig,
         env::{Env, EnvironmentImpl},
@@ -18,15 +18,15 @@ use crate::tree_walk::{
     static_analysis::Resolver,
     token::Scanner,
 };
-mod ast;
+pub mod ast;
 pub mod error;
-mod interpreter;
+pub mod interpreter;
 pub mod lox_var;
-mod parser;
-mod static_analysis;
-mod token;
+pub mod parser;
+pub mod static_analysis;
+pub mod token;
 
-pub fn main(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), RunError> {
+pub fn main(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), RunErrorSourced> {
     let args: Vec<String> = env::args().collect();
 
     if args.len() > 2 {
@@ -42,15 +42,15 @@ pub fn main(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), Run
 pub fn run_file(
     file_path: &Path,
     globals: Vec<(&'static str, Rc<dyn LoxCallable>)>,
-) -> Result<(), RunError> {
-    #[cfg(debug_assertions)]
+) -> Result<(), RunErrorSourced> {
+    #[cfg(feature = "debug_print")]
     println!("script opened at {:?}", file_path);
 
     let mut file = File::open(file_path)?;
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
 
-    let mut env = Env::new_with_globals(
+    let env = Env::new_with_globals(
         globals
             .iter()
             .cloned()
@@ -58,18 +58,15 @@ pub fn run_file(
             .collect(),
     );
 
-    let mut interpreter = Interpreter::new(Vec::new(), &mut env, InterpreterConfig::new(false));
+    let mut interpreter = Interpreter::new(Vec::new(), env, InterpreterConfig::new(false));
 
-    run(&contents, &mut interpreter).map_err(|mut err| {
-        err.set_source(contents);
-        err
-    })
+    run(&contents, &mut interpreter).map_err(|err| err.with_source(contents))
 }
 
-fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), RunError> {
+fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), RunErrorSourced> {
     let mut line_buf = String::new();
 
-    let mut env = Env::new_with_globals(
+    let env = Env::new_with_globals(
         globals
             .iter()
             .cloned()
@@ -78,7 +75,7 @@ fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), R
     );
     let mut interpreter = Interpreter::new(
         Vec::new(),
-        &mut env,
+        env,
         InterpreterConfig::new(cfg!(feature = "repl_expr_print")),
     );
 
@@ -103,9 +100,8 @@ fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), R
 
         let out = run(line_buf.trim_end(), &mut interpreter);
 
-        if let Err(mut err) = out {
-            err.set_source(line_buf.clone());
-            println!("{err}");
+        if let Err(err) = out {
+            println!("{}", err.with_source(line_buf.clone()));
         }
 
         line_buf.clear();
@@ -128,7 +124,7 @@ fn run(source: &str, interpreter: &mut Interpreter) -> Result<(), RunError> {
         .collect();
 
     if errors.is_empty() {
-        #[cfg(debug_assertions)]
+        #[cfg(feature = "debug_print")]
         {
             println!("tokens:");
             for t in tokens.iter() {
@@ -139,7 +135,7 @@ fn run(source: &str, interpreter: &mut Interpreter) -> Result<(), RunError> {
         let mut parser = Parser::new(tokens);
         let mut parsed = parser.parse()?;
 
-        #[cfg(debug_assertions)]
+        #[cfg(feature = "debug_print")]
         {
             println!("parsed:");
             for t in parsed.iter() {
@@ -150,15 +146,32 @@ fn run(source: &str, interpreter: &mut Interpreter) -> Result<(), RunError> {
         let mut resolver = Resolver::new();
         resolver.resolve_stmts(&mut parsed)?;
 
+        #[cfg(feature = "debug_print")]
+        {
+            println!("reolved:");
+            for t in parsed.iter() {
+                println!("{t:?}")
+            }
+        }
+
         interpreter.update_stmts(parsed);
 
-        let error = interpreter.interpret().err();
-
-        if let Some(e) = error {
-            Err(e.into())
-        } else {
-            Ok(())
+        for res in &mut *interpreter {
+            match res {
+                Ok(out) => {
+                    for l in out.lines() {
+                        println!("{l}")
+                    }
+                }
+                Err(err) => {
+                    #[cfg(feature = "debug_print")]
+                    debug_print(&interpreter.env);
+                    return Err(err.into());
+                }
+            }
         }
+
+        Ok(())
     } else {
         Err(errors.into())
     }
