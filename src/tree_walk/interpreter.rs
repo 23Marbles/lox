@@ -46,7 +46,6 @@ impl InterpOut {
 
     fn println(&mut self, value: impl ToString) {
         for s in value.to_string().lines() {
-            println!("split: {s}");
             self.lines.push(s.to_string());
         }
     }
@@ -72,7 +71,9 @@ impl Iterator for Interpreter {
 
 impl InterpreterConfig {
     pub fn new(print_expr: bool) -> Self {
-        Self { _print_expr: print_expr }
+        Self {
+            _print_expr: print_expr,
+        }
     }
 }
 

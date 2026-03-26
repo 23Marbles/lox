@@ -29,4 +29,9 @@ name = "lox-tests"
 path = "tests/runner.rs"
 harness = false
 
+[[bench]]
+name = "lox-bench"
+path = "tests/runner.rs"
+harness = false
+
 [dependencies]

@@ -8,8 +8,22 @@ use std::{
 };
 
 use libtest_with::{Failed, Measurement};
-use lox::{run_with_out, tree_walk::error::diagnostic::Diagnostic};
+use lox::{run_with_out, tree_walk::{error::diagnostic::Diagnostic, run_file_with_writer}};
 use regex::Regex;
+
+use std::io::{self, Write};
+
+struct NullWriter;
+
+impl Write for NullWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        Ok(buf.len()) // pretend we wrote all bytes
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
 
 fn main() {
     use libtest_with::{Arguments, Trial};
@@ -24,8 +38,6 @@ fn main() {
 
             if path.starts_with("tests/benchmark") {
                 Trial::bench(test_name, move |test_mode| {
-                    let expectation = read_file_expectation(&path).map_err(|err| Failed::from(format!("Could not read expactions: {err}")))?;
-
                     match std::panic::catch_unwind(|| {
                         if test_mode {
                             /*println!("Test mode");
@@ -40,9 +52,9 @@ fn main() {
                             let mut times = Vec::new();
 
                             for _ in 0..REPEAT_TIMES {
-                                let expectation = expectation.clone();
+                                let globals = lox::lib();
                                 let start = Instant::now();
-                                check_file(&path, expectation)?;
+                                run_file_with_writer(&path, globals, &mut NullWriter)?;
                                 times.push(start.elapsed().as_nanos() as u64);
                             }
 
@@ -55,14 +67,27 @@ fn main() {
                         }
                     }) {
                         Ok(result) => result,
-                        Err(panic) => Err(Failed::from(format!("Benchmark panicked: {}", format_panic(panic)))),
+                        Err(panic) => Err(Failed::from(format!(
+                            "Benchmark panicked: {}",
+                            format_panic(panic)
+                        ))),
                     }
                 })
             } else {
                 Trial::test(test_name, move || {
-                    match std::panic::catch_unwind(|| check_file(&path, read_file_expectation(&path).map_err(|err| Failed::from(format!("Could not read expactions: {err}")))?)) {
+                    match std::panic::catch_unwind(|| {
+                        check_file(
+                            &path,
+                            read_file_expectation(&path).map_err(|err| {
+                                Failed::from(format!("Could not read expactions: {err}"))
+                            })?,
+                        )
+                    }) {
                         Ok(result) => result,
-                        Err(panic) => Err(Failed::from(format!("Test panicked: {}", format_panic(panic)))),
+                        Err(panic) => Err(Failed::from(format!(
+                            "Test panicked: {}",
+                            format_panic(panic)
+                        ))),
                     }
                 })
             }
@@ -129,7 +154,9 @@ fn check_expectation(source: String) -> Expectation {
         if let Some(cap) = expect_out.captures(line) {
             let exp = cap[1].trim();
             match expectations {
-                Expectation::None => expectations = Expectation::Ok(vec![exp.to_string()]),
+                Expectation::None => {
+                    expectations = Expectation::Ok(vec![exp.to_string()])
+                }
                 Expectation::Ok(ref mut items) => items.push(exp.to_string()),
                 Expectation::Err(..) => (),
             }
@@ -137,8 +164,9 @@ fn check_expectation(source: String) -> Expectation {
         if let Some(_cap) = expect_err_gen.captures(line) {
             //let exp = cap[1].trim();
             match expectations {
-                Expectation::None => expectations = Expectation::Err(vec![]),
-                Expectation::Ok(..) => expectations = Expectation::Err(vec![]),
+                Expectation::None | Expectation::Ok(..) => {
+                    expectations = Expectation::Err(vec![])
+                }
                 Expectation::Err(ref _diagnostics) => (),
             }
         }
@@ -162,20 +190,21 @@ fn check_file(path: &Path, expectation: Expectation) -> Result<(), Failed> {
                         "Expected output:\n{}\nGot:\n{}",
                         exp_out.join("\n"),
                         out.join("\n")
-                    )
-                    ))
+                    )))
                 }
             }
             Expectation::Err(err) => Err(Failed::from(format!(
                 "Expected errs:\n{}",
                 err.iter().map(|e| e.to_string() + "\n").collect::<String>()
-            )
-            )),
+            ))),
             Expectation::None => {
                 if out.is_empty() {
                     Ok(())
                 } else {
-                    Err(Failed::from(format!("Expected no output, got:\n{}", out.join("\n"))))
+                    Err(Failed::from(format!(
+                        "Expected no output, got:\n{}",
+                        out.join("\n")
+                    )))
                 }
             }
         },
@@ -194,8 +223,7 @@ fn check_file(path: &Path, expectation: Expectation) -> Result<(), Failed> {
                                 .iter()
                                 .map(|e| e.to_string() + "\n")
                                 .collect::<String>()
-                        )
-                        ))
+                        )))
                     }
                 }
             },
@@ -203,8 +231,7 @@ fn check_file(path: &Path, expectation: Expectation) -> Result<(), Failed> {
                 "Expected output:\n{}\nGot error(s)\n{}",
                 exp_out.join("\n"),
                 err.to_string()
-            )
-            )),
+            ))),
             Expectation::Err(_diagnostics) => Ok(()),
         },
     }

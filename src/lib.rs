@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{path::Path, rc::Rc};
 
 use crate::tree_walk::{
     error::{
@@ -9,7 +9,7 @@ use crate::tree_walk::{
         Interpreter, InterpreterConfig,
         env::{Env, EnvironmentImpl},
     },
-    lox_var::LoxVar,
+    lox_var::{LoxVar, functions::LoxCallable},
     parser::Parser,
     run_file,
     static_analysis::Resolver,
@@ -78,4 +78,8 @@ pub fn run_with_out(source: &str) -> Result<Vec<String>, RunError> {
     } else {
         Err(errors.into())
     }
+}
+
+pub fn lib() -> Vec<(&'static str, Rc<dyn LoxCallable + 'static>)> {
+    std_lib::lib()
 }

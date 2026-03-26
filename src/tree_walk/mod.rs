@@ -39,6 +39,31 @@ pub fn main(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), Run
     }
 }
 
+pub fn run_file_with_writer(
+    file_path: &Path,
+    globals: Vec<(&'static str, Rc<dyn LoxCallable>)>,
+    writer: &mut impl Write
+) -> Result<(), RunErrorSourced> {
+    #[cfg(feature = "debug_print")]
+    writeln!(writer, "script opened at {:?}", file_path);
+
+    let mut file = File::open(file_path)?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+
+    let env = Env::new_with_globals(
+        globals
+            .iter()
+            .cloned()
+            .map(|(name, func)| (name, LoxVar::Callable(func)))
+            .collect(),
+    );
+
+    let mut interpreter = Interpreter::new(Vec::new(), env, InterpreterConfig::new(false));
+
+    run(&contents, &mut interpreter, writer).map_err(|err| err.with_source(contents))
+}
+
 pub fn run_file(
     file_path: &Path,
     globals: Vec<(&'static str, Rc<dyn LoxCallable>)>,
@@ -60,7 +85,7 @@ pub fn run_file(
 
     let mut interpreter = Interpreter::new(Vec::new(), env, InterpreterConfig::new(false));
 
-    run(&contents, &mut interpreter).map_err(|err| err.with_source(contents))
+    run(&contents, &mut interpreter, &mut stdout()).map_err(|err| err.with_source(contents))
 }
 
 fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), RunErrorSourced> {
@@ -98,7 +123,7 @@ fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), R
             line_buf.insert(line_buf.len() - 2, ';');
         }
 
-        let out = run(line_buf.trim_end(), &mut interpreter);
+        let out = run(line_buf.trim_end(), &mut interpreter, &mut stdout());
 
         if let Err(err) = out {
             println!("{}", err.with_source(line_buf.clone()));
@@ -108,7 +133,7 @@ fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), R
     }
 }
 
-fn run(source: &str, interpreter: &mut Interpreter) -> Result<(), RunError> {
+fn run(source: &str, interpreter: &mut Interpreter, writer: &mut impl Write) -> Result<(), RunError> {
     let scanner = Scanner::new(source);
 
     let mut errors: Vec<error::scan_err::ScanError> = Vec::new();
@@ -126,9 +151,9 @@ fn run(source: &str, interpreter: &mut Interpreter) -> Result<(), RunError> {
     if errors.is_empty() {
         #[cfg(feature = "debug_print")]
         {
-            println!("tokens:");
+            writeln!(writer, "tokens:");
             for t in tokens.iter() {
-                println!("{t:?}")
+                writeln!(writer, "{t:?}")
             }
         }
 
@@ -137,9 +162,9 @@ fn run(source: &str, interpreter: &mut Interpreter) -> Result<(), RunError> {
 
         #[cfg(feature = "debug_print")]
         {
-            println!("parsed:");
+            writeln!(writer, "parsed:");
             for t in parsed.iter() {
-                println!("{t}")
+                writeln!(writer, "{t}")
             }
         }
 
@@ -148,9 +173,9 @@ fn run(source: &str, interpreter: &mut Interpreter) -> Result<(), RunError> {
 
         #[cfg(feature = "debug_print")]
         {
-            println!("reolved:");
+            writeln!(writer, "reolved:");
             for t in parsed.iter() {
-                println!("{t:?}")
+                writeln!(writer, "{t:?}")
             }
         }
 
@@ -160,7 +185,7 @@ fn run(source: &str, interpreter: &mut Interpreter) -> Result<(), RunError> {
             match res {
                 Ok(out) => {
                     for l in out.lines() {
-                        println!("{l}")
+                        writeln!(writer, "{l}")?
                     }
                 }
                 Err(err) => {
