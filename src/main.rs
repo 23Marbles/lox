@@ -1,5 +1,3 @@
-use lox;
-
 fn main() {
     #[cfg(feature = "break")]
     eprintln!("\x1b[1;31m[Warning!]\x1b[0m Break feature not stabilized");
