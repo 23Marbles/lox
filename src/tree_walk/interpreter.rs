@@ -20,6 +20,7 @@ use crate::tree_walk::{
 
 const MAX_CALL_DEPTH: usize = 1024;
 
+#[derive(Debug, Clone)]
 pub struct Interpreter {
     pub cfg: InterpreterConfig,
     statements: Vec<Stmt>,

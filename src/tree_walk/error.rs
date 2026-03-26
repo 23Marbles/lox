@@ -33,7 +33,7 @@ pub trait LoxError: Error + DisplayLoxError {
 pub mod diagnostic {
     use std::{error::Error, fmt::Display};
 
-    use crate::tree_walk::error::{DisplayLoxError, ErrorPos, LoxError, LoxPos};
+    use crate::tree_walk::error::{DisplayLoxError, ErrorPos, LoxError, LoxPos, runtime_err::RuntimeError};
 
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub enum ErrorTime {
@@ -41,9 +41,10 @@ pub mod diagnostic {
         Parser,
         Resolver,
         Runtime,
+        Input,
     }
 
-    pub trait IntoDiagnostic: LoxError {
+    pub(super) trait IntoDiagnostic: LoxError {
         fn into_diagnostic(&self) -> Diagnostic {
             Diagnostic {
                 pos: self.pos(),
@@ -93,6 +94,32 @@ pub mod diagnostic {
             }
         }
     }
+
+    impl From<std::io::Error> for Diagnostic {
+        fn from(value: std::io::Error) -> Self {
+            Self {
+                pos: ErrorPos::Outside,
+                time: ErrorTime::Input,
+                msg: value.to_string(),
+            }
+        }
+    }
+
+    impl From<RuntimeError> for Vec<Diagnostic> {
+        fn from(value: RuntimeError) -> Self {
+            vec![value.into_diagnostic()]
+        }
+    }
+
+    impl From<std::fmt::Error> for Diagnostic {
+        fn from(value: std::fmt::Error) -> Self {
+            Self {
+                pos: ErrorPos::Outside,
+                time: ErrorTime::Input,
+                msg: value.to_string(),
+            }
+        }
+    }
 }
 
 pub mod run_err {
@@ -108,6 +135,7 @@ pub mod run_err {
         IoError(std::io::Error),
         Diagnostics(Vec<Diagnostic>),
     }
+
     #[derive(Debug)]
     pub struct RunError {
         pub kind: RunErrorKind,
@@ -154,7 +182,7 @@ pub mod run_err {
     impl LoxPos for RunError {
         fn pos(&self) -> ErrorPos {
             match &self.kind {
-                RunErrorKind::IoError(_) => unimplemented!("IoError does not have a position"),
+                RunErrorKind::IoError(_) => ErrorPos::Outside,
                 RunErrorKind::Diagnostics(diags) => diags.pos(),
             }
         }
@@ -844,16 +872,19 @@ pub mod fn_err {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ErrorPos {
-    line: usize,
-    column: usize,
-    columns: usize,
-    lines: usize,
+pub enum ErrorPos {
+    InFile {
+        line: usize,
+        column: usize,
+        columns: usize,
+        lines: usize,
+    },
+    Outside,
 }
 
 impl ErrorPos {
     pub fn new(line: usize, column: usize, columns: usize, lines: usize) -> Self {
-        Self {
+        Self::InFile {
             line,
             column,
             columns,
@@ -862,44 +893,74 @@ impl ErrorPos {
     }
 
     pub fn end(&self) -> Self {
-        Self {
-            line: self.line + (self.lines - 1),
-            column: self.column + self.columns,
-            columns: 1,
-            lines: 1,
+        if let ErrorPos::InFile {
+            line,
+            column,
+            columns,
+            lines,
+        } = self
+        {
+            ErrorPos::InFile {
+                line: line + lines - 1,
+                column: column + columns,
+                columns: 1,
+                lines: 1,
+            }
+        } else {
+            ErrorPos::Outside
         }
     }
 
     /// # Panics
     /// Panics if to is less then from.
     pub fn span_to(&self, to: Self) -> Self {
-        assert!(
-            to.line >= self.line,
-            "The line of the second is before the first"
-        );
-        if self.line == to.line {
-            assert!(
-                to.column >= self.column,
-                "The column of the second is before the first"
-            );
-        }
+        match (self, to) {
+            (
+                ErrorPos::InFile {
+                    line,
+                    column,
+                    lines,
+                    ..
+                },
+                ErrorPos::InFile {
+                    line: to_line,
+                    column: to_column,
+                    columns: to_columns,
+                    lines: to_lines,
+                },
+            ) => {
+                assert!(
+                    *line < to_line,
+                    "The line of the second is before the first"
+                );
+                assert!(
+                    to_line > *line || (to_line == *line && to_column >= *column),
+                    "End position before first position"
+                );
 
-        Self {
-            line: self.line,
-            column: self.column,
-            columns: if self.line == to.line {
-                (to.column + to.columns) - self.column
-            } else {
-                to.column + to.columns
-            },
-            lines: self.lines + ((to.line + to.lines - 1) - self.line),
+                Self::InFile {
+                    line: *line,
+                    column: *column,
+                    columns: if *line == to_line {
+                        (to_column + to_columns) - column
+                    } else {
+                        to_column + to_columns
+                    },
+                    lines: *lines + ((to_line + to_lines - 1) - line),
+                }
+            }
+            _ => ErrorPos::Outside,
         }
     }
 }
 
 impl Display for ErrorPos {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[Line {}:{}]", self.line, self.column)
+        if let ErrorPos::InFile { line, column, .. } = self {
+            write!(f, "[Line {}:{}]", line, column)
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -911,69 +972,78 @@ impl LoxPos for ErrorPos {
 
 impl DisplayLoxError for ErrorPos {
     fn display_err(&self, source: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let lines = source.lines().collect::<Vec<&str>>()
-            [self.line - 1..(self.line + self.lines) - 1]
-            .to_vec();
+        if let ErrorPos::InFile {
+            line,
+            column,
+            columns,
+            lines: lines_num,
+        } = self
+        {
+            let lines =
+                source.lines().collect::<Vec<&str>>()[line - 1..(line + lines_num) - 1].to_vec();
 
-        match self.lines {
-            0 => Ok(()),
-            1 => {
-                write!(f, "\x1b[1;36m|\x1b[0m  {}", lines[0])?;
-                write!(
-                    f,
-                    "\n\x1b[1;36m|\x1b[0m {}\x1b[31m{}\x1b[0m",
-                    " ".repeat(self.column),
-                    "^".repeat(self.columns)
-                )
-            }
-            2 => {
-                write!(f, "\x1b[1;36m|\x1b[0m  {}", lines[0])?;
-                write!(
-                    f,
-                    "\n\x1b[1;36m|\x1b[0m{}\x1b[31m{}\x1b[0m",
-                    " ".repeat(self.column),
-                    "^".repeat(lines[0].len() - self.column)
-                )?;
+            match lines_num {
+                0 => Ok(()),
+                1 => {
+                    write!(f, "\x1b[1;36m|\x1b[0m  {}", lines[0])?;
+                    write!(
+                        f,
+                        "\n\x1b[1;36m|\x1b[0m {}\x1b[31m{}\x1b[0m",
+                        " ".repeat(*column),
+                        "^".repeat(*columns)
+                    )
+                }
+                2 => {
+                    write!(f, "\x1b[1;36m|\x1b[0m  {}", lines[0])?;
+                    write!(
+                        f,
+                        "\n\x1b[1;36m|\x1b[0m{}\x1b[31m{}\x1b[0m",
+                        " ".repeat(*column),
+                        "^".repeat(lines[0].len() - column)
+                    )?;
 
-                write!(f, "\n\x1b[1;36m|\x1b[0m  {}", lines[1])?;
-                write!(
-                    f,
-                    "\n\x1b[1;36m|\x1b[0m  \x1b[31m{}\x1b[0m",
-                    "^".repeat(self.columns)
-                )
-            }
-            _ => {
-                // > 2
-                write!(f, "\x1b[1;36m|\x1b[0m  {}", lines[0])?;
-                write!(
-                    f,
-                    "\n\x1b[1;36m|\x1b[0m{}\x1b[31m{}\x1b[0m",
-                    " ".repeat(self.column),
-                    "^".repeat(lines[0].len() - self.column)
-                )?;
-
-                for l in &lines[1..lines.len() - 2] {
-                    write!(f, "\n\x1b[1;36m|\x1b[0m  {}", l)?;
+                    write!(f, "\n\x1b[1;36m|\x1b[0m  {}", lines[1])?;
                     write!(
                         f,
                         "\n\x1b[1;36m|\x1b[0m  \x1b[31m{}\x1b[0m",
-                        "^".repeat(l.len())
-                    )?;
+                        "^".repeat(*columns)
+                    )
                 }
+                _ => {
+                    // > 2
+                    write!(f, "\x1b[1;36m|\x1b[0m  {}", lines[0])?;
+                    write!(
+                        f,
+                        "\n\x1b[1;36m|\x1b[0m{}\x1b[31m{}\x1b[0m",
+                        " ".repeat(*column),
+                        "^".repeat(lines[0].len() - column)
+                    )?;
 
-                write!(
-                    f,
-                    "\n\x1b[1;36m|\x1b[0m  {}",
-                    lines
-                        .last()
-                        .expect("This iterator must have at leat 3 elements")
-                )?;
-                write!(
-                    f,
-                    "\n\x1b[1;36m|\x1b[0m  \x1b[31m{}\x1b[0m",
-                    "^".repeat(self.columns)
-                )
+                    for l in &lines[1..lines.len() - 2] {
+                        write!(f, "\n\x1b[1;36m|\x1b[0m  {}", l)?;
+                        write!(
+                            f,
+                            "\n\x1b[1;36m|\x1b[0m  \x1b[31m{}\x1b[0m",
+                            "^".repeat(l.len())
+                        )?;
+                    }
+
+                    write!(
+                        f,
+                        "\n\x1b[1;36m|\x1b[0m  {}",
+                        lines
+                            .last()
+                            .expect("This iterator must have at leat 3 elements")
+                    )?;
+                    write!(
+                        f,
+                        "\n\x1b[1;36m|\x1b[0m  \x1b[31m{}\x1b[0m",
+                        "^".repeat(*columns)
+                    )
+                }
             }
+        } else {
+            Ok(())
         }
     }
 }
@@ -988,7 +1058,7 @@ impl LoxError for ErrorPos {
 impl From<&Token<'_>> for ErrorPos {
     fn from(value: &Token<'_>) -> Self {
         use super::token::TokenKind::*;
-        Self {
+        ErrorPos::InFile {
             line: value.line,
             column: if value.kind == String {
                 value.column - 1
@@ -1015,7 +1085,7 @@ impl From<&Token<'_>> for ErrorPos {
 impl From<Token<'_>> for ErrorPos {
     fn from(value: Token<'_>) -> Self {
         use super::token::TokenKind::*;
-        Self {
+        ErrorPos::InFile {
             line: value.line,
             column: if value.kind == String {
                 value.column - 1

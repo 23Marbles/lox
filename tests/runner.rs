@@ -8,7 +8,10 @@ use std::{
 };
 
 use libtest_with::{Failed, Measurement};
-use lox::{run_with_out, tree_walk::{error::diagnostic::Diagnostic, run_file_with_writer}};
+use lox::{
+    run_with_out,
+    tree_walk::{error::diagnostic::Diagnostic, run_file_with_writer},
+};
 use regex::Regex;
 
 use std::io::{self, Write};
@@ -52,7 +55,7 @@ fn main() {
                             let mut times = Vec::new();
 
                             for _ in 0..REPEAT_TIMES {
-                                let globals = lox::lib();
+                                let globals = lox::std_lib::default_lib();
                                 let start = Instant::now();
                                 run_file_with_writer(&path, globals, &mut NullWriter)?;
                                 times.push(start.elapsed().as_nanos() as u64);
@@ -154,9 +157,7 @@ fn check_expectation(source: String) -> Expectation {
         if let Some(cap) = expect_out.captures(line) {
             let exp = cap[1].trim();
             match expectations {
-                Expectation::None => {
-                    expectations = Expectation::Ok(vec![exp.to_string()])
-                }
+                Expectation::None => expectations = Expectation::Ok(vec![exp.to_string()]),
                 Expectation::Ok(ref mut items) => items.push(exp.to_string()),
                 Expectation::Err(..) => (),
             }
@@ -164,9 +165,7 @@ fn check_expectation(source: String) -> Expectation {
         if let Some(_cap) = expect_err_gen.captures(line) {
             //let exp = cap[1].trim();
             match expectations {
-                Expectation::None | Expectation::Ok(..) => {
-                    expectations = Expectation::Err(vec![])
-                }
+                Expectation::None | Expectation::Ok(..) => expectations = Expectation::Err(vec![]),
                 Expectation::Err(ref _diagnostics) => (),
             }
         }

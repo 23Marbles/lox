@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::tree_walk::error::{
-    ErrorPos,
+    self, ErrorPos,
     scan_err::{ScanError, ScanErrorKind},
 };
 
@@ -19,6 +19,26 @@ impl<'a> Scanner<'a> {
             start: 0,
             current: 0,
             eof: false,
+        }
+    }
+
+    pub fn scan_tokens(&mut self) -> Result<Vec<Token<'a>>, Vec<ScanError>> {
+        let mut errors: Vec<error::scan_err::ScanError> = Vec::new();
+
+        let tokens: Vec<Token<'_>> = self
+            .filter_map(|v| match v {
+                Ok(t) => Some(t),
+                Err(e) => {
+                    errors.push(e);
+                    None
+                }
+            })
+            .collect();
+
+        if errors.is_empty() {
+            Ok(tokens)
+        } else {
+            Err(errors)
         }
     }
 

@@ -42,7 +42,7 @@ pub fn main(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), Run
 pub fn run_file_with_writer(
     file_path: &Path,
     globals: Vec<(&'static str, Rc<dyn LoxCallable>)>,
-    writer: &mut impl Write
+    writer: &mut impl Write,
 ) -> Result<(), RunErrorSourced> {
     #[cfg(feature = "debug_print")]
     writeln!(writer, "script opened at {:?}", file_path)?;
@@ -133,71 +133,61 @@ fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), R
     }
 }
 
-fn run(source: &str, interpreter: &mut Interpreter, writer: &mut impl Write) -> Result<(), RunError> {
-    let scanner = Scanner::new(source);
+fn run(
+    source: &str,
+    interpreter: &mut Interpreter,
+    writer: &mut impl Write,
+) -> Result<(), RunError> {
+    let mut scanner = Scanner::new(source);
 
-    let mut errors: Vec<error::scan_err::ScanError> = Vec::new();
+    let tokens = scanner.scan_tokens()?;
 
-    let tokens: Vec<token::Token<'_>> = scanner
-        .filter_map(|v| match v {
-            Ok(t) => Some(t),
-            Err(e) => {
-                errors.push(e);
-                None
-            }
-        })
-        .collect();
-
-    if errors.is_empty() {
-        #[cfg(feature = "debug_print")]
-        {
-            writeln!(writer, "tokens:")?;
-            for t in tokens.iter() {
-                writeln!(writer, "{t:?}")?
-            }
+    #[cfg(feature = "debug_print")]
+    {
+        writeln!(writer, "tokens:")?;
+        for t in tokens.iter() {
+            writeln!(writer, "{t:?}")?
         }
-
-        let mut parser = Parser::new(tokens);
-        let mut parsed = parser.parse()?;
-
-        #[cfg(feature = "debug_print")]
-        {
-            writeln!(writer, "parsed:")?;
-            for t in parsed.iter() {
-                writeln!(writer, "{t}")?
-            }
-        }
-
-        let mut resolver = Resolver::new();
-        resolver.resolve_stmts(&mut parsed)?;
-
-        #[cfg(feature = "debug_print")]
-        {
-            writeln!(writer, "resolved:")?;
-            for t in parsed.iter() {
-                writeln!(writer, "{t:?}")?
-            }
-        }
-
-        interpreter.update_stmts(parsed);
-
-        for res in &mut *interpreter {
-            match res {
-                Ok(out) => {
-                    for l in out.lines() {
-                        writeln!(writer, "{l}")?
-                    }
-                }
-                Err(err) => {
-                    #[cfg(feature = "debug_print")]
-                    crate::tree_walk::interpreter::env::debug_print(&interpreter.env);
-                    return Err(err.into());
-                }
-            }
-        }
-
-        Ok(())
-    } else {
-        Err(errors.into())
     }
+
+    let mut parser = Parser::new(tokens);
+    let mut parsed = parser.parse()?;
+
+    #[cfg(feature = "debug_print")]
+    {
+        writeln!(writer, "parsed:")?;
+        for t in parsed.iter() {
+            writeln!(writer, "{t}")?
+        }
+    }
+
+    let mut resolver = Resolver::new();
+    resolver.resolve_stmts(&mut parsed)?;
+
+    #[cfg(feature = "debug_print")]
+    {
+        writeln!(writer, "resolved:")?;
+        for t in parsed.iter() {
+            writeln!(writer, "{t:?}")?
+        }
+    }
+
+    interpreter.update_stmts(parsed);
+
+    for res in &mut *interpreter {
+        match res {
+            Ok(out) => {
+                for l in out.lines() {
+                    writeln!(writer, "{l}")?
+                }
+            }
+            Err(err) => {
+                #[cfg(feature = "debug_print")]
+                crate::tree_walk::interpreter::env::debug_print(&interpreter.env);
+                return Err(err.into());
+            }
+        }
+    }
+
+    Ok(())
 }

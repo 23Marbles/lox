@@ -1,3 +1,5 @@
+//!
+
 use std::{
     rc::Rc,
     time::{SystemTime, UNIX_EPOCH},
@@ -9,7 +11,11 @@ use crate::tree_walk::{
     lox_var::{LoxVar, functions::LoxCallable},
 };
 
-pub fn lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
+/// The default library implemented in the crafting interpreters book.
+///
+/// # Returns
+/// Returns a Vec<(name, function)>.
+pub fn default_lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
     vec![(
         "clock",
         Rc::new(NativeFunc {
@@ -33,10 +39,25 @@ pub fn lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
     )]
 }
 
+/// Functions that can be implemented in rust and called in lox
 #[derive(Debug, Clone)]
 pub struct NativeFunc {
-    pub func: fn(&[LoxVar]) -> Result<LoxVar, FunctionError>,
-    pub signature: &'static str,
+    pub(crate) func: fn(&[LoxVar]) -> Result<LoxVar, FunctionError>,
+    pub(crate) signature: &'static str,
+}
+
+impl NativeFunc {
+    /// Creates a new native function that can then be passed as a global
+    /// The function must handle *ALL* errors including arity checks
+    pub fn new(
+        function: fn(&[LoxVar]) -> Result<LoxVar, FunctionError>,
+        signature: &'static str,
+    ) -> Self {
+        Self {
+            func: function,
+            signature,
+        }
+    }
 }
 
 impl LoxCallable for NativeFunc {
