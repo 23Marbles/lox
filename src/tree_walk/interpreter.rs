@@ -187,8 +187,6 @@ impl Interpreter {
                 super_class,
                 pos,
             } => {
-                self.env.borrow_mut().define(name.clone(), LoxVar::Nil);
-
                 let super_class = if let Some(expr) = super_class {
                     let var = self.evaluate_expr(expr.clone())?;
 
@@ -250,8 +248,7 @@ impl Interpreter {
 
                 self.env
                     .borrow_mut()
-                    .assign(&name, &LoxVar::Class(Rc::new(class)), None)
-                    .map_err(|k| EvaluateError::new(k, pos))?;
+                    .define(name, LoxVar::Class(Rc::new(class)));
 
                 Ok(ControlFlow::None)
             }

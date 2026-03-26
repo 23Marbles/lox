@@ -218,7 +218,7 @@ pub mod expr {
                 | Expr::Assign { distance, .. }
                 | Expr::This { distance, .. }
                 | Expr::Super { distance, .. } => *distance = Some(dist),
-                _ => {}
+                _ => panic!("Tried to resolve a non resolvable expression ({self:?}). This is a bug.")
             }
         }
 

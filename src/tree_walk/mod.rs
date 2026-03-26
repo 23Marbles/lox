@@ -45,7 +45,7 @@ pub fn run_file_with_writer(
     writer: &mut impl Write
 ) -> Result<(), RunErrorSourced> {
     #[cfg(feature = "debug_print")]
-    writeln!(writer, "script opened at {:?}", file_path);
+    writeln!(writer, "script opened at {:?}", file_path)?;
 
     let mut file = File::open(file_path)?;
     let mut contents = String::new();
@@ -151,9 +151,9 @@ fn run(source: &str, interpreter: &mut Interpreter, writer: &mut impl Write) -> 
     if errors.is_empty() {
         #[cfg(feature = "debug_print")]
         {
-            writeln!(writer, "tokens:");
+            writeln!(writer, "tokens:")?;
             for t in tokens.iter() {
-                writeln!(writer, "{t:?}")
+                writeln!(writer, "{t:?}")?
             }
         }
 
@@ -162,9 +162,9 @@ fn run(source: &str, interpreter: &mut Interpreter, writer: &mut impl Write) -> 
 
         #[cfg(feature = "debug_print")]
         {
-            writeln!(writer, "parsed:");
+            writeln!(writer, "parsed:")?;
             for t in parsed.iter() {
-                writeln!(writer, "{t}")
+                writeln!(writer, "{t}")?
             }
         }
 
@@ -173,9 +173,9 @@ fn run(source: &str, interpreter: &mut Interpreter, writer: &mut impl Write) -> 
 
         #[cfg(feature = "debug_print")]
         {
-            writeln!(writer, "reolved:");
+            writeln!(writer, "resolved:")?;
             for t in parsed.iter() {
-                writeln!(writer, "{t:?}")
+                writeln!(writer, "{t:?}")?
             }
         }
 
@@ -190,7 +190,7 @@ fn run(source: &str, interpreter: &mut Interpreter, writer: &mut impl Write) -> 
                 }
                 Err(err) => {
                     #[cfg(feature = "debug_print")]
-                    debug_print(&interpreter.env);
+                    crate::tree_walk::interpreter::env::debug_print(&interpreter.env);
                     return Err(err.into());
                 }
             }
