@@ -10,11 +10,11 @@ use crate::tree_walk::{
         eval_err::{EvaluateError, EvaluateErrorKind},
         runtime_err::{RuntimeError, RuntimeErrorKind},
     },
-    interpreter::env::{Env, EnvironmentImpl},
+    interpreter::env::{Env, EnvironmentImpl as _},
     lox_var::{
         LoxVar,
-        class::{InstanceImpl, LoxClass},
-        functions::{LoxCallable, LoxFunc},
+        class::{InstanceImpl as _, LoxClass},
+        functions::{LoxCallable as _, LoxFunc},
     },
 };
 
@@ -47,7 +47,7 @@ impl InterpOut {
 
     fn println(&mut self, value: impl ToString) {
         for s in value.to_string().lines() {
-            self.lines.push(s.to_string());
+            self.lines.push(s.to_owned());
         }
     }
 
@@ -213,7 +213,7 @@ impl Interpreter {
                     let new_env = Env::new_env(Some(self.env.clone()));
                     new_env
                         .borrow_mut()
-                        .define("super".to_string(), LoxVar::Class(super_class.clone()));
+                        .define("super".to_owned(), LoxVar::Class(super_class.clone()));
 
                     method_env = new_env;
                 }
@@ -258,7 +258,7 @@ impl Interpreter {
 
     pub fn evaluate_expr(&mut self, expr: Expr) -> Result<LoxVar, RuntimeError> {
         use crate::tree_walk::token::TokenKind;
-        use std::ops::{Add, Div, Mul, Sub};
+        use core::ops::{Add as _, Div as _, Mul as _, Sub as _};
         match expr {
             Expr::Literal(literal) => Ok(literal.into()),
             Expr::Unary {
@@ -298,7 +298,7 @@ impl Interpreter {
                 let right_var = self.evaluate_expr(*right)?;
 
                 use TokenKind::*;
-                use std::cmp::Ordering;
+                use core::cmp::Ordering;
 
                 match operator {
                     Greater => {
@@ -556,7 +556,7 @@ impl Interpreter {
 pub mod env {
     use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-    #[allow(unused)]
+    #[expect(unused)]
     pub fn debug_print(env: &Env) {
         println!("=== ENVIRONMENT DUMP ===");
 

@@ -1,6 +1,6 @@
 //#![warn(missing_docs)]
 #![warn(clippy::all)]
-#![warn(clippy::pedantic)]
+//#![warn(clippy::pedantic)]
 #![warn(clippy::restriction)]
 #![allow(clippy::implicit_return)]
 #![allow(clippy::module_name_repetitions)]
@@ -30,7 +30,7 @@
 //!
 //! ## Benchmarks
 
-use std::{fmt::Write, fs::File, io::Read, path::Path};
+use std::{fmt::Write, fs::File, io::Read as _, path::Path};
 
 use crate::tree_walk::{
     error::{
@@ -40,7 +40,7 @@ use crate::tree_walk::{
     },
     interpreter::{
         Interpreter, InterpreterConfig,
-        env::{Env, EnvironmentImpl},
+        env::{Env, EnvironmentImpl as _},
     },
     lox_var::{LoxVar},
     parser::Parser,

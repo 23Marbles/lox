@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use core::fmt::Display;
 
 use crate::tree_walk::error::{
     self, ErrorPos,
@@ -293,7 +293,7 @@ pub struct Token<'a> {
 }
 
 impl<'a> Display for Token<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self.kind {
             TokenKind::String => write!(f, "\"{}\"", self.lexeme),
             TokenKind::Eof => write!(f, "eof"),
@@ -356,7 +356,7 @@ pub enum TokenKind {
 }
 
 impl Display for TokenKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         use TokenKind::*;
         match self {
             And => write!(f, "and"),

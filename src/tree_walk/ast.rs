@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use core::fmt::Display;
 
 use crate::tree_walk::{
     ast::expr::Expr,
@@ -53,7 +53,7 @@ pub mod stmt {
     }
 
     impl Display for Stmt {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             match self {
                 Stmt::Expression(expr) => write!(f, "{expr}"),
                 Stmt::Print(expr) => write!(f, "(print {expr})"),
@@ -253,7 +253,7 @@ pub mod expr {
                     right,
                     ..
                 } => left.string() + " " + &operator.to_string() + " " + &right.string(),
-                Expr::Grouping(expr) => "(".to_string() + &expr.string() + ")",
+                Expr::Grouping(expr) => "(".to_owned() + &expr.string() + ")",
                 Expr::Variable { name, .. } => name.to_string(),
                 Expr::Assign { name, value, .. } => name.to_string() + " = " + &value.string(),
                 Expr::Logical {
@@ -288,7 +288,7 @@ pub mod expr {
     }
 
     impl Display for Expr {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             match self {
                 Expr::Literal(literal) => write!(f, "{literal}"),
                 Expr::Unary {
@@ -345,7 +345,7 @@ pub enum Literal {
 }
 
 impl Display for Literal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Literal::Number(n) => write!(f, "{n}"),
             Literal::String(s) => write!(f, "\"{s}\""),

@@ -20,7 +20,7 @@ pub mod functions {
         error::fn_err::{FunctionError, FunctionErrorKind},
         interpreter::{
             Interpreter,
-            env::{Env, EnvironmentImpl},
+            env::{Env, EnvironmentImpl as _},
         },
         lox_var::{InstanceRef, LoxVar},
     };
@@ -55,7 +55,7 @@ pub mod functions {
     }
 
     impl Debug for LoxFunc {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             f.debug_struct("LoxFunc")
                 .field("arity", &self.arity)
                 .field("name", &self.name)
@@ -81,7 +81,7 @@ pub mod functions {
                 body,
                 parameters,
                 name,
-                closure: closure,
+                closure,
                 is_init,
             }
         }
@@ -379,7 +379,7 @@ impl From<Literal> for LoxVar {
 }
 
 impl Display for LoxVar {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             LoxVar::Nil => write!(f, "nil"),
             LoxVar::Bool(b) => write!(f, "{b}"),
@@ -448,7 +448,7 @@ bin_num_op_impl!(Div, div);
 bin_num_op_impl!(Mul, mul);
 
 impl PartialOrd for LoxVar {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         match (self, other) {
             (LoxVar::Number(l), LoxVar::Number(r)) => l.partial_cmp(r),
             (_ls, _rs) => {

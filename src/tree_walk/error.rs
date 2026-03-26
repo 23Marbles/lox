@@ -1,4 +1,4 @@
-use std::{error::Error, fmt::Display};
+use core::{error::Error, fmt::Display};
 
 use crate::tree_walk::{error::diagnostic::ErrorTime, token::Token};
 
@@ -14,7 +14,7 @@ impl<T: LoxPos> LoxPos for Vec<T> {
 }
 
 pub trait DisplayLoxError: LoxPos + Display {
-    fn display_err(&self, source: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn display_err(&self, source: &str, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let pos = self.pos();
         writeln!(f, "\x1b[1;36m{pos} \x1b[39m{self}\x1b[0m")?;
         pos.display_err(source, f)?;
@@ -31,7 +31,7 @@ pub trait LoxError: Error + DisplayLoxError {
 }
 
 pub mod diagnostic {
-    use std::{error::Error, fmt::Display};
+    use core::{error::Error, fmt::Display};
 
     use crate::tree_walk::error::{DisplayLoxError, ErrorPos, LoxError, LoxPos, runtime_err::RuntimeError};
 
@@ -44,7 +44,7 @@ pub mod diagnostic {
         Input,
     }
 
-    pub(super) trait IntoDiagnostic: LoxError {
+    pub(in super) trait IntoDiagnostic: LoxError {
         fn into_diagnostic(&self) -> Diagnostic {
             Diagnostic {
                 pos: self.pos(),
@@ -64,7 +64,7 @@ pub mod diagnostic {
     }
 
     impl Display for Diagnostic {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             write!(f, "{}", self.msg)
         }
     }
@@ -111,8 +111,8 @@ pub mod diagnostic {
         }
     }
 
-    impl From<std::fmt::Error> for Diagnostic {
-        fn from(value: std::fmt::Error) -> Self {
+    impl From<core::fmt::Error> for Diagnostic {
+        fn from(value: core::fmt::Error) -> Self {
             Self {
                 pos: ErrorPos::Outside,
                 time: ErrorTime::Input,
@@ -123,7 +123,7 @@ pub mod diagnostic {
 }
 
 pub mod run_err {
-    use std::{error::Error, fmt::Display};
+    use core::{error::Error, fmt::Display};
 
     use crate::tree_walk::error::{
         DisplayLoxError, ErrorPos, LoxPos,
@@ -159,7 +159,7 @@ pub mod run_err {
     }
 
     impl Display for RunErrorSourced {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             self.err.display_err(&self.source, f)
         }
     }
@@ -189,11 +189,11 @@ pub mod run_err {
     }
 
     impl DisplayLoxError for RunError {
-        fn display_err(&self, source: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn display_err(&self, source: &str, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             match &self.kind {
                 RunErrorKind::IoError(err) => write!(f, "\x1b[1mIo Error: {err}\x1b[0m"),
                 RunErrorKind::Diagnostics(diagnostics) => {
-                    if let Some(diag) = diagnostics.get(0) {
+                    if let Some(diag) = diagnostics.first() {
                         diag.display_err(source, f)?;
 
                         for d in diagnostics.iter().skip(1) {
@@ -211,11 +211,11 @@ pub mod run_err {
     }
 
     impl Display for RunError {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             match &self.kind {
                 RunErrorKind::IoError(err) => write!(f, "\x1b[1mIo Error: {err}\x1b[0m"),
                 RunErrorKind::Diagnostics(diagnostics) => {
-                    if let Some(diag) = diagnostics.get(0) {
+                    if let Some(diag) = diagnostics.first() {
                         write!(f, "{diag}")?;
 
                         for d in diagnostics.iter().skip(1) {
@@ -262,7 +262,7 @@ pub mod run_err {
 }
 
 pub mod scan_err {
-    use std::{error::Error, fmt::Display};
+    use core::{error::Error, fmt::Display};
 
     use crate::tree_walk::error::{
         DisplayLoxError, ErrorPos, LoxError, LoxPos, diagnostic::ErrorTime,
@@ -281,7 +281,7 @@ pub mod scan_err {
     }
 
     impl Display for ScanError {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             write!(f, "{}", self.kind)
         }
     }
@@ -311,7 +311,7 @@ pub mod scan_err {
     }
 
     impl Display for ScanErrorKind {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             match self {
                 ScanErrorKind::UnexpectedCharacter(c) => write!(f, "Unexpected character '{c}'"),
                 ScanErrorKind::UnterminatedString => write!(f, "Unterminated string"),
@@ -323,7 +323,7 @@ pub mod scan_err {
 }
 
 pub mod parse_err {
-    use std::{error::Error, fmt::Display};
+    use core::{error::Error, fmt::Display};
 
     use crate::tree_walk::{
         error::{DisplayLoxError, ErrorPos, LoxError, LoxPos, diagnostic::ErrorTime},
@@ -342,7 +342,7 @@ pub mod parse_err {
     }
 
     impl Display for ParseError {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             write!(f, "{}", self.kind)
         }
     }
@@ -373,7 +373,7 @@ pub mod parse_err {
     }
 
     impl Display for ParseErrorKind {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             match self {
                 ParseErrorKind::UnexpectedTokenKind(token_kind) => {
                     write!(f, "Unexpected token kind: `{:?}`", token_kind)
@@ -405,7 +405,7 @@ pub mod parse_err {
     }
 
     impl Display for Named {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             match self {
                 Named::Function => write!(f, "function"),
                 Named::Parameter => write!(f, "parameter"),
@@ -419,7 +419,7 @@ pub mod parse_err {
 }
 
 pub mod anaylysis_err {
-    use std::{error::Error, fmt::Display};
+    use core::{error::Error, fmt::Display};
 
     use crate::tree_walk::error::{
         DisplayLoxError, ErrorPos, LoxError, LoxPos, diagnostic::ErrorTime,
@@ -438,7 +438,7 @@ pub mod anaylysis_err {
     }
 
     impl Display for ResolverErr {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             write!(f, "{}", self.kind)
         }
     }
@@ -471,7 +471,7 @@ pub mod anaylysis_err {
     }
 
     impl Display for ResolverErrKind {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             match self {
                 ResolverErrKind::ReadInOwnInitializer => {
                     write!(f, "Can't read variable in its own initializer")
@@ -500,7 +500,7 @@ pub mod anaylysis_err {
 }
 
 pub mod runtime_err {
-    use std::{error::Error, fmt::Display};
+    use core::{error::Error, fmt::Display};
 
     use crate::tree_walk::{
         error::{
@@ -522,7 +522,7 @@ pub mod runtime_err {
     }
 
     impl Display for RuntimeError {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             write!(f, "{}", self.kind)
         }
     }
@@ -540,7 +540,7 @@ pub mod runtime_err {
     }
 
     impl DisplayLoxError for RuntimeError {
-        fn display_err(&self, source: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn display_err(&self, source: &str, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             match &self.kind {
                 RuntimeErrorKind::EvaluateError(evaluate_error) => {
                     evaluate_error.display_err(source, f)
@@ -577,7 +577,7 @@ pub mod runtime_err {
     }
 
     impl Display for RuntimeErrorKind {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             match self {
                 RuntimeErrorKind::EvaluateError(err) => write!(f, "{err}"),
                 RuntimeErrorKind::FunctionError(err) => write!(f, "{err}"),
@@ -610,7 +610,7 @@ pub mod runtime_err {
 }
 
 pub mod eval_err {
-    use std::{error::Error, fmt::Display};
+    use core::{error::Error, fmt::Display};
 
     use crate::tree_walk::{
         error::{DisplayLoxError, ErrorPos, LoxError, LoxPos, diagnostic::ErrorTime},
@@ -663,7 +663,7 @@ pub mod eval_err {
     }
 
     impl Display for EvaluateError {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             write!(f, "{}", self.kind)
         }
     }
@@ -699,7 +699,7 @@ pub mod eval_err {
     }
 
     impl Display for EvaluateErrorKind {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             match &self {
                 EvaluateErrorKind::IncompatableUnaryOperator { operator, var_ty } => write!(
                     f,
@@ -750,7 +750,7 @@ pub mod eval_err {
 }
 
 pub mod fn_err {
-    use std::{error::Error, fmt::Display};
+    use core::{error::Error, fmt::Display};
 
     use crate::tree_walk::{
         error::{
@@ -792,7 +792,7 @@ pub mod fn_err {
     impl Error for FunctionError {}
 
     impl DisplayLoxError for FunctionError {
-        fn display_err(&self, source: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn display_err(&self, source: &str, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             let call_pos = *self
                 .call_pos
                 .clone()
@@ -836,7 +836,7 @@ pub mod fn_err {
     }
 
     impl Display for FunctionError {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             write!(f, "{}", self.kind)
         }
     }
@@ -848,7 +848,7 @@ pub mod fn_err {
     }
 
     impl Display for FunctionErrorKind {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             match self {
                 FunctionErrorKind::IncorrectArity { expected, got } => write!(
                     f,
@@ -955,7 +955,7 @@ impl ErrorPos {
 }
 
 impl Display for ErrorPos {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if let ErrorPos::InFile { line, column, .. } = self {
             write!(f, "[Line {}:{}]", line, column)
         } else {
@@ -971,7 +971,7 @@ impl LoxPos for ErrorPos {
 }
 
 impl DisplayLoxError for ErrorPos {
-    fn display_err(&self, source: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn display_err(&self, source: &str, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if let ErrorPos::InFile {
             line,
             column,

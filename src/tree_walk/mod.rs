@@ -1,7 +1,7 @@
 use std::{
     env,
     fs::File,
-    io::{Read, Write, stdin, stdout},
+    io::{Read as _, Write, stdin, stdout},
     path::Path,
     process::exit,
     rc::Rc,
@@ -11,7 +11,7 @@ use crate::tree_walk::{
     error::run_err::{RunError, RunErrorSourced},
     interpreter::{
         Interpreter, InterpreterConfig,
-        env::{Env, EnvironmentImpl},
+        env::{Env, EnvironmentImpl as _},
     },
     lox_var::{LoxVar, functions::LoxCallable},
     parser::Parser,
