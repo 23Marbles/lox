@@ -43,7 +43,7 @@ impl<'a> Parser<'a> {
     #[must_use]
     fn error(&mut self, kind: ParseErrorKind) -> ParseError {
         let errored_pos: ErrorPos = match kind {
-            ParseErrorKind::UnexpectedTokenKind(_) | ParseErrorKind::InvalidAssignTarget(_) => {
+            ParseErrorKind::UnexpectedTokenKind(_) | ParseErrorKind::InvalidAssignTarget(_) | ParseErrorKind::ExpectedNumber {..} => {
                 // The current tokens full position
                 self.peek().into()
             }
@@ -575,15 +575,14 @@ impl<'a> Parser<'a> {
                 Ok(Expr::Literal(Literal::Nil))
             }
             Number => {
-                self.advance();
+                let token = self.advance();
                 Ok(Expr::Literal(Literal::Number(
-                    self.previous().lexeme.parse().unwrap(),
+                    token.lexeme.parse().map_err(|_| {self.error(ParseErrorKind::ExpectedNumber { input: token.lexeme.to_owned() })})?,
                 )))
             }
             String => {
-                self.advance();
                 Ok(Expr::Literal(Literal::String(
-                    self.previous().lexeme.to_owned(),
+                    self.advance().lexeme.to_owned(),
                 )))
             }
             LeftParen => {

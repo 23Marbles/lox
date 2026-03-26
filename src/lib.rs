@@ -1,28 +1,19 @@
 //#![warn(missing_docs)]
-#![warn(clippy::all)]
 //#![warn(clippy::pedantic)]
-#![warn(clippy::restriction)]
-#![allow(clippy::implicit_return)]
-#![allow(clippy::module_name_repetitions)]
-#![allow(clippy::missing_panics_doc)]
-#![allow(clippy::missing_errors_doc)]
-#![allow(clippy::must_use_candidate)]
-/*#![deny(clippy::panic_in_result_fn)]
-#![deny(clippy::unnecessary_to_owned)]
-#![deny(clippy::redundant_clone)]
-#![deny(clippy::unwrap_used)]
-#![warn(clippy::all)]
-#![warn(clippy::pedantic)]
+//#![warn(clippy::restriction)]
+#![warn(clippy::panic_in_result_fn)]
+#![warn(clippy::unnecessary_to_owned)]
+#![warn(clippy::redundant_clone)]
+#![warn(clippy::unwrap_used)]
+//#![warn(clippy::pedantic)]
 #![warn(clippy::cfg_not_test)]
 #![warn(clippy::copy_iterator)]
 #![warn(clippy::trivially_copy_pass_by_ref)]
-#![warn(clippy::missing_trait_methods)]
 #![warn(clippy::new_without_default)]
 #![warn(clippy::should_implement_trait)]
 #![warn(clippy::ptr_arg)]
 #![warn(clippy::needless_lifetimes)]
-#![warn(clippy::wrong_self_convention)]
-*/
+
 //! # Lox
 //! This my implementation of Lox in Rust.
 //! Currently it only has the treewalk interpreter.
@@ -33,16 +24,12 @@
 use std::{fmt::Write, fs::File, io::Read as _, path::Path};
 
 use crate::tree_walk::{
-    error::{
-        diagnostic::Diagnostic,
-        run_err::{RunError},
-        scan_err::ScanError,
-    },
+    error::{diagnostic::Diagnostic, run_err::RunError, scan_err::ScanError},
     interpreter::{
         Interpreter, InterpreterConfig,
         env::{Env, EnvironmentImpl as _},
     },
-    lox_var::{LoxVar},
+    lox_var::LoxVar,
     parser::Parser,
     static_analysis::Resolver,
     token::{self, Scanner},
@@ -71,7 +58,8 @@ impl Runner {
     pub fn run_file(&mut self, path: &Path) -> Result<(), Vec<Diagnostic>> {
         let mut file = File::open(path).map_err(|e| vec![e.into()])?;
         let mut content = String::new();
-        file.read_to_string(&mut content).map_err(|e| vec![e.into()])?;
+        file.read_to_string(&mut content)
+            .map_err(|e| vec![e.into()])?;
 
         self.run_source(&content)
     }

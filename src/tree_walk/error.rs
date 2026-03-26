@@ -9,7 +9,7 @@ pub trait LoxPos {
 impl<T: LoxPos> LoxPos for Vec<T> {
     fn pos(&self) -> ErrorPos {
         assert!(!self.is_empty(), "Cannot find the pos of an empty vector");
-        self[0].pos().span_to(self.last().unwrap().pos())
+        self[0].pos().span_to(self.last().expect("Already checked the len is greater than 1").pos())
     }
 }
 
@@ -33,7 +33,9 @@ pub trait LoxError: Error + DisplayLoxError {
 pub mod diagnostic {
     use core::{error::Error, fmt::Display};
 
-    use crate::tree_walk::error::{DisplayLoxError, ErrorPos, LoxError, LoxPos, runtime_err::RuntimeError};
+    use crate::tree_walk::error::{
+        DisplayLoxError, ErrorPos, LoxError, LoxPos, runtime_err::RuntimeError,
+    };
 
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub enum ErrorTime {
@@ -44,8 +46,8 @@ pub mod diagnostic {
         Input,
     }
 
-    pub(in super) trait IntoDiagnostic: LoxError {
-        fn into_diagnostic(&self) -> Diagnostic {
+    pub(super) trait IntoDiagnostic: LoxError {
+        fn as_diagnostic(&self) -> Diagnostic {
             Diagnostic {
                 pos: self.pos(),
                 time: self.time(),
@@ -107,7 +109,7 @@ pub mod diagnostic {
 
     impl From<RuntimeError> for Vec<Diagnostic> {
         fn from(value: RuntimeError) -> Self {
-            vec![value.into_diagnostic()]
+            vec![value.as_diagnostic()]
         }
     }
 
@@ -246,7 +248,7 @@ pub mod run_err {
         fn from(value: Vec<T>) -> Self {
             Self {
                 kind: RunErrorKind::Diagnostics(
-                    value.iter().map(|t| t.into_diagnostic()).collect(),
+                    value.iter().map(|t| t.as_diagnostic()).collect(),
                 ),
             }
         }
@@ -255,7 +257,7 @@ pub mod run_err {
     impl<T: IntoDiagnostic> From<T> for RunError {
         fn from(value: T) -> Self {
             Self {
-                kind: RunErrorKind::Diagnostics(vec![value.into_diagnostic()]),
+                kind: RunErrorKind::Diagnostics(vec![value.as_diagnostic()]),
             }
         }
     }
@@ -370,6 +372,7 @@ pub mod parse_err {
         InvalidAssignTarget(String),
         TooManyArguments,
         ExpectedName { name: Named, after: TokenKind },
+        ExpectedNumber { input: String }
     }
 
     impl Display for ParseErrorKind {
@@ -390,6 +393,7 @@ pub mod parse_err {
                 ParseErrorKind::ExpectedName { name, after } => {
                     write!(f, "Expected {name} name after token `{after}`")
                 }
+                ParseErrorKind::ExpectedNumber { input } => write!(f, "Could not parse `{input}` as a number"),
             }
         }
     }

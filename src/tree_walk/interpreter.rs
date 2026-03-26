@@ -114,7 +114,7 @@ impl Interpreter {
                 };
                 self.env
                     .borrow_mut()
-                    .define(name.to_string(), value.clone());
+                    .define(name, value);
                 Ok(ControlFlow::None)
             }
             Stmt::Block(stmts) => {
@@ -165,14 +165,14 @@ impl Interpreter {
                 pos,
             } => {
                 self.env.borrow_mut().define(
-                    name.to_string(),
+                    name.to_owned(),
                     LoxVar::Callable(Rc::new(LoxFunc::new(
                         parameters.len().try_into().map_err(|_| {
                             RuntimeError::new(RuntimeErrorKind::TooManyArguments(pos))
                         })?,
-                        body.clone(),
-                        parameters.clone(),
-                        name.to_string(),
+                        body,
+                        parameters,
+                        name,
                         self.env.clone(),
                         false,
                     ))),
@@ -491,7 +491,7 @@ impl Interpreter {
                         Ok(LoxVar::Callable(method))
                     } else {
                         Err(EvaluateError::new(
-                            EvaluateErrorKind::UndefinedProperty(name.to_owned()),
+                            EvaluateErrorKind::UndefinedProperty(name),
                             pos,
                         )
                         .into())
@@ -511,7 +511,7 @@ impl Interpreter {
                 if let LoxVar::Instance(mut inst) = obj {
                     let val = self.evaluate_expr(*value)?;
 
-                    inst.set(name.clone(), val.clone());
+                    inst.set(name, val.clone());
 
                     Ok(val)
                 } else {
@@ -556,44 +556,12 @@ impl Interpreter {
 pub mod env {
     use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-    #[expect(unused)]
-    pub fn debug_print(env: &Env) {
-        println!("=== ENVIRONMENT DUMP ===");
-
-        let mut current = Some(env.clone());
-        let mut depth = 0;
-
-        while let Some(env_rc) = current {
-            let env_ref = env_rc.borrow();
-
-            println!(
-                "\nScope {} {}:",
-                depth,
-                if depth == 0 {
-                    "(current)"
-                } else if env_ref.enclosing.is_none() {
-                    "(global)"
-                } else {
-                    ""
-                }
-            );
-
-            for (k, v) in &env_ref.values {
-                println!("  {} = {:?}", k, v);
-            }
-
-            current = env_ref.enclosing.clone();
-            depth += 1;
-        }
-
-        println!("\n========================");
-    }
-
     use crate::tree_walk::{error::eval_err::EvaluateErrorKind, lox_var::LoxVar};
     pub trait EnvironmentImpl
     where
         Self: Sized,
     {
+        fn debug_print(&self);
         fn new_env(enclosing: Option<Self>) -> Self;
         fn new_with_globals(globals: Vec<(&'static str, LoxVar)>) -> Self;
     }
@@ -607,6 +575,38 @@ pub mod env {
 
         fn new_with_globals(globals: Vec<(&'static str, LoxVar)>) -> Self {
             Rc::new(RefCell::new(Environment::new_with_globals(globals)))
+        }
+
+        fn debug_print(&self) {
+            println!("=== ENVIRONMENT DUMP ===");
+
+            let mut current = Some(self.clone());
+            let mut depth = 0;
+
+            while let Some(env_rc) = current {
+                let env_ref = env_rc.borrow();
+
+                println!(
+                    "\nScope {} {}:",
+                    depth,
+                    if depth == 0 {
+                        "(current)"
+                    } else if env_ref.enclosing.is_none() {
+                        "(global)"
+                    } else {
+                        ""
+                    }
+                );
+
+                for (k, v) in &env_ref.values {
+                    println!("  {} = {:?}", k, v);
+                }
+
+                current = env_ref.enclosing.clone();
+                depth += 1;
+            }
+
+            println!("\n========================");
         }
     }
 

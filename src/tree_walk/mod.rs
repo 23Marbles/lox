@@ -1,3 +1,5 @@
+#![allow(clippy::single_call_fn)]
+
 use std::{
     env,
     fs::File,

@@ -1,4 +1,4 @@
-//!
+//! The way you create native functions for lox
 
 use std::{
     rc::Rc,
