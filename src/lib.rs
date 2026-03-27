@@ -1,10 +1,13 @@
 //#![warn(missing_docs)]
 //#![warn(clippy::pedantic)]
-//#![warn(clippy::restriction)]
+#![warn(clippy::restriction)]
 #![warn(clippy::panic_in_result_fn)]
 #![warn(clippy::unnecessary_to_owned)]
 #![warn(clippy::redundant_clone)]
 #![warn(clippy::unwrap_used)]
+#![allow(clippy::question_mark_used)]
+#![allow(clippy::min_ident_chars)]
+#![allow(clippy::implicit_return)]
 //#![warn(clippy::pedantic)]
 #![warn(clippy::cfg_not_test)]
 #![warn(clippy::copy_iterator)]
@@ -39,119 +42,79 @@ pub mod std_lib;
 #[cfg(feature = "ast")]
 pub mod tree_walk;
 
-/// The backend type for the Runner struct
+/// The backend type for the Runner struct.
+#[non_exhaustive]
 pub enum Backend {
-    /// Use the treewalk interpreter
+    /// Use the bytecode VM.
+    ByteCode,
+    /// Use the treewalk interpreter.
     TreeWalk,
     /// Use the bytecode VM
     ByteCode,
 }
 
-/// Used to construct and run a file
+/// Used to construct and run a file.
 pub struct Runner {
-    writer: Box<dyn Write>,
-    _backend: Backend,
+    out: Box<dyn io::Write + Send>,
+    files: SimpleFiles<String, String>,
     interpreter: Interpreter,
 }
 
-impl Runner {
-    pub fn run_file(&mut self, path: &Path) -> Result<(), Vec<Diagnostic>> {
-        let mut file = File::open(path).map_err(|e| vec![e.into()])?;
-        let mut content = String::new();
-        file.read_to_string(&mut content)
-            .map_err(|e| vec![e.into()])?;
+type Result<T> = std::result::Result<T, Vec<Diagnostic<usize>>>;
 
-        self.run_source(&content)
+impl<'a> Runner {
+    pub fn new() -> Self {
+        Self {
+            out: Box::new(io::stdout()),
+            files: SimpleFiles::new(),
+            interpreter: Interpreter::default(),
+        }
     }
 
-    pub fn run_source(&mut self, source: &str) -> Result<(), Vec<Diagnostic>> {
-        let tokens = match Scanner::new(source).scan_tokens() {
-            Ok(t) => t,
-            Err(errs) => return Err(errs.iter().map(|err| err.into()).collect::<Vec<_>>()),
-        };
-
-        let mut parsed = match Parser::new(tokens).parse() {
-            Ok(stmts) => stmts,
-            Err(errs) => return Err(errs.iter().map(|err| err.into()).collect::<Vec<_>>()),
-        };
-
-        match Resolver::new().resolve_stmts(&mut parsed) {
-            Ok(_) => (),
-            Err(errs) => return Err(errs.iter().map(|err| err.into()).collect::<Vec<_>>()),
-        };
-
-        self.interpreter.update_stmts(parsed);
-
-        for res in &mut self.interpreter {
-            match res {
-                Ok(out) => {
-                    for l in out.lines() {
-                        writeln!(self.writer, "{l}").map_err(|err| vec![err.into()])?
-                    }
-                }
-                Err(err) => {
-                    return Err(err.into());
-                }
-            }
+    pub fn with_writer(writer: Box<dyn io::Write + Send>) -> Self {
+        Self {
+            out: writer,
+            files: SimpleFiles::new(),
+            interpreter: Interpreter::default(),
         }
-
-        Ok(())
     }
-}
 
-pub fn run_with_out(source: &str) -> Result<Vec<String>, RunError> {
-    let mut interpreter = Interpreter::new(
-        Vec::new(),
-        Env::new_with_globals(
-            std_lib::default_lib()
-                .iter()
-                .cloned()
-                .map(|(name, func)| (name, LoxVar::Callable(func)))
-                .collect(),
-        ),
-        InterpreterConfig::default(),
-    );
+    pub fn run_file(&mut self, path: &Path) -> Result<()> {
+        let content = fs::read_to_string(path).map_err(|e| vec![e.into()])?;
 
-    let scanner = Scanner::new(source);
+        self.write_source_output(&content)
+    }
 
-    let mut errors: Vec<ScanError> = Vec::new();
+    pub fn get_tokens(&self, source: &'a str) -> Result<Vec<Token<'a>>> {
+        Scanner::new(source).scan_tokens()
+    }
 
-    let tokens: Vec<token::Token<'_>> = scanner
-        .filter_map(|v| match v {
-            Ok(t) => Some(t),
-            Err(e) => {
-                errors.push(e);
-                None
-            }
-        })
-        .collect();
+    pub fn get_stmts(&self, source: &'a str) -> Result<Vec<Stmt>> {
+        Parser::new(self.get_tokens(source)?).parse()
+    }
 
-    if errors.is_empty() {
-        let mut parser = Parser::new(tokens);
-        let mut parsed = parser.parse()?;
+    pub fn get_resolved_stmts(&self, source: &'a str) -> Result<Vec<Stmt>> {
+        let mut stmts = self.get_stmts(source)?;
+        Resolver::new().resolve_stmts(&mut stmts)?;
+        Ok(stmts)
+    }
 
-        let mut resolver = Resolver::new();
-        resolver.resolve_stmts(&mut parsed)?;
+    fn get_output(&mut self, source: &str) -> Result<Vec<InterpOut>> {
+        self.interpreter
+            .update_stmts(&self.get_resolved_stmts(source)?);
+        self.interpreter.run()
+    }
 
-        interpreter.update_stmts(parsed);
-
-        let mut out = Vec::new();
-
-        for res in interpreter {
-            match res {
-                Ok(i_out) => {
-                    for l in i_out.lines() {
-                        out.push(l);
-                    }
-                }
-                Err(err) => {
-                    return Err(err.into());
-                }
-            }
+    pub fn write_source_output(&mut self, source: &str) -> Result<()> {
+        match self.get_output(source) {
+            Ok(out) => {
+                for line in out.iter().map(|o| o.lines()).flatten() {
+                    writeln!(self.out, "{}", line).map_err(|e| vec![e.into()])?
         }
 
-        Ok(out)
-    } else {
-        Err(errors.into())
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
     }
 }
