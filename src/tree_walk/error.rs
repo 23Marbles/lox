@@ -1,20 +1,38 @@
 use core::{error::Error, fmt::Display};
 
+use codespan_reporting::diagnostic::{Diagnostic, Severity};
+
 use crate::tree_walk::{error::diagnostic::ErrorTime, token::Token};
 
 pub trait LoxPos {
     fn pos(&self) -> ErrorPos;
 }
 
+pub trait ErrorCode {
+    fn error_code(&self) -> &'static str;
+}
+
+pub trait ErrorLevel {
+    fn severity(&self) -> Severity;
+}
+
 impl<T: LoxPos> LoxPos for Vec<T> {
     fn pos(&self) -> ErrorPos {
         assert!(!self.is_empty(), "Cannot find the pos of an empty vector");
-        self[0].pos().span_to(self.last().expect("Already checked the len is greater than 1").pos())
+        self[0].pos().span_to(
+            self.last()
+                .expect("Already checked the len is greater than 1")
+                .pos(),
+        )
     }
 }
 
-pub trait DisplayLoxError: LoxPos + Display {
-    fn display_err(&self, source: &str, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+pub trait ToCodespan: ErrorLevel {
+    fn to_codespan(&self) -> Diagnostic<usize>;
+}
+
+pub trait DisplayLoxError: LoxPos + Display + ToCodespan {
+    fn display_err(&self, source: &str, f: &mut impl std::io::Write) -> std::io::Result<()> {
         let pos = self.pos();
         writeln!(f, "\x1b[1;36m{pos} \x1b[39m{self}\x1b[0m")?;
         pos.display_err(source, f)?;
@@ -26,7 +44,7 @@ pub trait DisplayLoxError: LoxPos + Display {
     }
 }
 
-pub trait LoxError: Error + DisplayLoxError {
+pub trait LoxError: Error + DisplayLoxError + ErrorCode {
     fn time(&self) -> ErrorTime;
 }
 
@@ -154,33 +172,6 @@ pub mod run_err {
         }
     }
 
-    #[derive(Debug)]
-    pub struct RunErrorSourced {
-        source: String,
-        err: RunError,
-    }
-
-    impl Display for RunErrorSourced {
-        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            self.err.display_err(&self.source, f)
-        }
-    }
-
-    impl From<std::io::Error> for RunErrorSourced {
-        fn from(value: std::io::Error) -> Self {
-            Self {
-                source: "".to_owned(),
-                err: RunError::from(value),
-            }
-        }
-    }
-
-    impl RunError {
-        pub fn with_source(self, source: String) -> RunErrorSourced {
-            RunErrorSourced { source, err: self }
-        }
-    }
-
     impl LoxPos for RunError {
         fn pos(&self) -> ErrorPos {
             match &self.kind {
@@ -191,7 +182,7 @@ pub mod run_err {
     }
 
     impl DisplayLoxError for RunError {
-        fn display_err(&self, source: &str, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        fn display_err(&self, source: &str, f: &mut impl std::io::Write) -> std::io::Result<()> {
             match &self.kind {
                 RunErrorKind::IoError(err) => write!(f, "\x1b[1mIo Error: {err}\x1b[0m"),
                 RunErrorKind::Diagnostics(diagnostics) => {
@@ -247,9 +238,7 @@ pub mod run_err {
     impl<T: IntoDiagnostic> From<Vec<T>> for RunError {
         fn from(value: Vec<T>) -> Self {
             Self {
-                kind: RunErrorKind::Diagnostics(
-                    value.iter().map(|t| t.as_diagnostic()).collect(),
-                ),
+                kind: RunErrorKind::Diagnostics(value.iter().map(|t| t.as_diagnostic()).collect()),
             }
         }
     }
@@ -267,7 +256,8 @@ pub mod scan_err {
     use core::{error::Error, fmt::Display};
 
     use crate::tree_walk::error::{
-        DisplayLoxError, ErrorPos, LoxError, LoxPos, diagnostic::ErrorTime,
+        DisplayLoxError, ErrorCode, ErrorLevel, ErrorPos, LoxError, LoxPos, ToCodespan,
+        diagnostic::ErrorTime,
     };
 
     #[derive(Debug, Clone, Copy)]
@@ -288,11 +278,31 @@ pub mod scan_err {
         }
     }
 
+    impl ErrorLevel for ScanError {
+        fn severity(&self) -> Severity {
+            self.kind.severity()
+        }
+    }
+
+    impl ToCodespan for ScanError {
+        fn to_codespan(&self) -> codespan_reporting::diagnostic::Diagnostic<usize> {
+            Diagnostic::new(self.severity())
+                .with_code(self.error_code())
+                .with_message(message)
+        }
+    }
+
     impl DisplayLoxError for ScanError {}
 
     impl LoxPos for ScanError {
         fn pos(&self) -> ErrorPos {
             self.pos
+        }
+    }
+
+    impl ErrorCode for ScanError {
+        fn error_code(&self) -> &'static str {
+            self.kind.error_code()
         }
     }
 
@@ -312,6 +322,30 @@ pub mod scan_err {
         UnterminatedComment,
     }
 
+    use codespan_reporting::diagnostic::{Diagnostic, Severity};
+
+    impl ErrorLevel for ScanErrorKind {
+        fn severity(&self) -> Severity {
+            match self {
+                ScanErrorKind::UnexpectedCharacter(_) => Severity::Error,
+                ScanErrorKind::UnterminatedString => Severity::Error,
+                #[cfg(feature = "inline_comments")]
+                ScanErrorKind::UnterminatedComment => Severity::Error,
+            }
+        }
+    }
+
+    impl ErrorCode for ScanErrorKind {
+        fn error_code(&self) -> &'static str {
+            match self {
+                ScanErrorKind::UnexpectedCharacter(_) => "SE0001",
+                ScanErrorKind::UnterminatedString => "SE0002",
+                #[cfg(feature = "inline_comments")]
+                ScanErrorKind::UnterminatedComment => "SE0003",
+            }
+        }
+    }
+
     impl Display for ScanErrorKind {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             match self {
@@ -327,8 +361,10 @@ pub mod scan_err {
 pub mod parse_err {
     use core::{error::Error, fmt::Display};
 
+    use codespan_reporting::diagnostic::Severity;
+
     use crate::tree_walk::{
-        error::{DisplayLoxError, ErrorPos, LoxError, LoxPos, diagnostic::ErrorTime},
+        error::{DisplayLoxError, ErrorCode, ErrorLevel, ErrorPos, LoxError, LoxPos, diagnostic::ErrorTime},
         token::TokenKind,
     };
     #[derive(Debug, Clone)]
@@ -372,7 +408,33 @@ pub mod parse_err {
         InvalidAssignTarget(String),
         TooManyArguments,
         ExpectedName { name: Named, after: TokenKind },
-        ExpectedNumber { input: String }
+        ExpectedNumber { input: String },
+    }
+
+    impl ErrorCode for ParseErrorKind {
+        fn error_code(&self) -> &'static str {
+            match self {
+                ParseErrorKind::UnexpectedTokenKind(..) => "PE0001",
+                ParseErrorKind::ExpectedTokenKind(..) => "PE0002",
+                ParseErrorKind::InvalidAssignTarget(_) => "PE0003",
+                ParseErrorKind::TooManyArguments => "PE0004",
+                ParseErrorKind::ExpectedName { .. } => "PE0005",
+                ParseErrorKind::ExpectedNumber { .. } => "PE0006",
+            }
+        }
+    }
+
+    impl ErrorLevel for ParseErrorKind {
+        fn severity(&self) -> Severity {
+            match self {
+                ParseErrorKind::UnexpectedTokenKind(..) => Severity::Error,
+                ParseErrorKind::ExpectedTokenKind(..) => Severity::Error,
+                ParseErrorKind::InvalidAssignTarget(_) => Severity::Error,
+                ParseErrorKind::TooManyArguments => Severity::Error,
+                ParseErrorKind::ExpectedName { .. } => Severity::Error,
+                ParseErrorKind::ExpectedNumber { .. } => Severity::Error,
+            }
+        }
     }
 
     impl Display for ParseErrorKind {
@@ -393,7 +455,9 @@ pub mod parse_err {
                 ParseErrorKind::ExpectedName { name, after } => {
                     write!(f, "Expected {name} name after token `{after}`")
                 }
-                ParseErrorKind::ExpectedNumber { input } => write!(f, "Could not parse `{input}` as a number"),
+                ParseErrorKind::ExpectedNumber { input } => {
+                    write!(f, "Could not parse `{input}` as a number")
+                }
             }
         }
     }
@@ -425,8 +489,10 @@ pub mod parse_err {
 pub mod anaylysis_err {
     use core::{error::Error, fmt::Display};
 
+    use codespan_reporting::diagnostic::Severity;
+
     use crate::tree_walk::error::{
-        DisplayLoxError, ErrorPos, LoxError, LoxPos, diagnostic::ErrorTime,
+        DisplayLoxError, ErrorCode, ErrorLevel, ErrorPos, LoxError, LoxPos, diagnostic::ErrorTime
     };
 
     #[derive(Debug, Clone)]
@@ -472,6 +538,34 @@ pub mod anaylysis_err {
         ThisOutsideClass,
         SelfReferentialInheritance,
         SuperOutsideSubclass,
+    }
+
+    impl ErrorCode for ResolverErrKind {
+        fn error_code(&self) -> &'static str {
+            match self {
+                ResolverErrKind::ReadInOwnInitializer => "AE0001",
+                ResolverErrKind::DefinedMultipleTimes(_) => "AE0002",
+                ResolverErrKind::ReturnFromTop => "AE0003",
+                ResolverErrKind::ReturnValueFromInit => "AE0004",
+                ResolverErrKind::ThisOutsideClass => "AE0005",
+                ResolverErrKind::SelfReferentialInheritance => "AE0006",
+                ResolverErrKind::SuperOutsideSubclass => "AE0007",
+            }
+        }
+    }
+
+    impl ErrorLevel for ResolverErrKind {
+        fn severity(&self) -> Severity {
+            match self {
+                ResolverErrKind::ReadInOwnInitializer => Severity::Error,
+                ResolverErrKind::DefinedMultipleTimes(_) => Severity::Error,
+                ResolverErrKind::ReturnFromTop => Severity::Error,
+                ResolverErrKind::ReturnValueFromInit => Severity::Error,
+                ResolverErrKind::ThisOutsideClass => Severity::Error,
+                ResolverErrKind::SelfReferentialInheritance => Severity::Error,
+                ResolverErrKind::SuperOutsideSubclass => Severity::Error,
+            }
+        }
     }
 
     impl Display for ResolverErrKind {
@@ -544,7 +638,7 @@ pub mod runtime_err {
     }
 
     impl DisplayLoxError for RuntimeError {
-        fn display_err(&self, source: &str, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        fn display_err(&self, source: &str, f: &mut impl std::io::Write) -> std::io::Result<()> {
             match &self.kind {
                 RuntimeErrorKind::EvaluateError(evaluate_error) => {
                     evaluate_error.display_err(source, f)
@@ -756,9 +850,11 @@ pub mod eval_err {
 pub mod fn_err {
     use core::{error::Error, fmt::Display};
 
+    use codespan_reporting::diagnostic::Diagnostic;
+
     use crate::tree_walk::{
         error::{
-            DisplayLoxError, ErrorPos, LoxError, LoxPos,
+            DisplayLoxError, ErrorPos, LoxError, LoxPos, ToCodespan,
             diagnostic::ErrorTime,
             runtime_err::{RuntimeError, RuntimeErrorKind},
         },
@@ -796,7 +892,7 @@ pub mod fn_err {
     impl Error for FunctionError {}
 
     impl DisplayLoxError for FunctionError {
-        fn display_err(&self, source: &str, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        fn display_err(&self, source: &str, f: &mut impl std::io::Write) -> std::io::Result<()> {
             let call_pos = *self
                 .call_pos
                 .clone()
@@ -831,6 +927,10 @@ pub mod fn_err {
 
             write!(f, "\n\x1b[1;36m\\\x1b[0m")
         }
+    }
+
+    impl ToCodespan for FunctionError {
+        fn to_codespan(&self) -> codespan_reporting::diagnostic::Diagnostic<usize> {}
     }
 
     impl LoxError for FunctionError {
@@ -884,6 +984,12 @@ pub enum ErrorPos {
         lines: usize,
     },
     Outside,
+}
+
+impl ToCodespan for ErrorPos {
+    fn to_codespan(&self) -> Diagnostic<usize> {
+        todo!()
+    }
 }
 
 impl ErrorPos {
@@ -975,7 +1081,7 @@ impl LoxPos for ErrorPos {
 }
 
 impl DisplayLoxError for ErrorPos {
-    fn display_err(&self, source: &str, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn display_err(&self, source: &str, f: &mut impl std::io::Write) -> std::io::Result<()> {
         if let ErrorPos::InFile {
             line,
             column,

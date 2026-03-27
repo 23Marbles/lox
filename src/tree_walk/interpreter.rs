@@ -30,6 +30,19 @@ pub struct Interpreter {
     call_depth: usize,
 }
 
+impl Default for Interpreter {
+    fn default() -> Self {
+        Self {
+            cfg: Default::default(),
+            statements: Default::default(),
+            ip: Default::default(),
+            out_buf: Default::default(),
+            env: Env::new_env(None),
+            call_depth: Default::default(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct InterpreterConfig {
     _print_expr: bool,
@@ -90,8 +103,14 @@ impl Interpreter {
         }
     }
 
-    pub fn update_stmts(&mut self, new_statements: Vec<Stmt>) {
-        self.statements = new_statements
+    pub fn update_stmts(&mut self, new_statements: &[Stmt]) {
+        self.statements = new_statements.to_vec()
+    }
+
+    pub fn run(&mut self) -> crate::Result<Vec<InterpOut>> {
+        self.into_iter()
+            .map(|r: Result<InterpOut, RuntimeError>| r.map_err(|e: RuntimeError| e.into()))
+            .collect()
     }
 
     pub fn run_stmt(&mut self, stmt: Stmt) -> Result<ControlFlow, RuntimeError> {
@@ -112,9 +131,7 @@ impl Interpreter {
                     Some(value) => self.evaluate_expr(value)?,
                     None => LoxVar::Nil,
                 };
-                self.env
-                    .borrow_mut()
-                    .define(name, value);
+                self.env.borrow_mut().define(name, value);
                 Ok(ControlFlow::None)
             }
             Stmt::Block(stmts) => {
@@ -490,11 +507,10 @@ impl Interpreter {
                     } else if let Some(method) = inst.borrow().class.find_method(&name) {
                         Ok(LoxVar::Callable(method))
                     } else {
-                        Err(EvaluateError::new(
-                            EvaluateErrorKind::UndefinedProperty(name),
-                            pos,
+                        Err(
+                            EvaluateError::new(EvaluateErrorKind::UndefinedProperty(name), pos)
+                                .into(),
                         )
-                        .into())
                     }
                 } else {
                     Err(EvaluateError::new(EvaluateErrorKind::NotInstance(obj.into()), pos).into())

@@ -2,12 +2,13 @@ use core::fmt::Display;
 
 use crate::tree_walk::{
     ast::expr::Expr,
-    error::ErrorPos,
     lox_var::LoxVar,
     token::{Token, TokenKind},
 };
 
 pub mod stmt {
+    use std::ops::Range;
+
     use super::*;
     #[derive(Debug, Clone, PartialEq)]
     pub enum Stmt {
@@ -16,7 +17,7 @@ pub mod stmt {
         Var {
             name: String,
             initializer: Option<Expr>,
-            position: ErrorPos,
+            span: Range<usize>,
         },
         Block(Vec<Stmt>),
         If {
@@ -32,17 +33,17 @@ pub mod stmt {
             name: String,
             parameters: Vec<String>,
             body: Vec<Stmt>,
-            pos: ErrorPos,
+            span: Range<usize>,
         },
         Return {
             value: Option<Expr>,
-            pos: ErrorPos,
+            span: Range<usize>,
         },
         Class {
             name: String,
             super_class: Option<Expr>,
             methods: Vec<Stmt>,
-            pos: ErrorPos,
+            span: Range<usize>,
         },
     }
 
@@ -141,6 +142,8 @@ pub mod stmt {
 }
 
 pub mod expr {
+    use std::ops::Range;
+
     use super::*;
     #[derive(Debug, Clone, PartialEq)]
     pub enum Expr {
@@ -148,7 +151,7 @@ pub mod expr {
 
         Unary {
             operator: TokenKind,
-            position: ErrorPos,
+            span: Range<usize>,
             right: Box<Expr>,
         },
 
@@ -156,7 +159,7 @@ pub mod expr {
             left: Box<Expr>,
             operator: TokenKind,
             right: Box<Expr>,
-            position: ErrorPos,
+            span: Range<usize>,
         },
 
         Grouping(Box<Expr>),
@@ -164,13 +167,13 @@ pub mod expr {
         Variable {
             name: String,
             distance: Option<usize>,
-            position: ErrorPos,
+            span: Range<usize>,
         },
 
         Assign {
             name: String,
             distance: Option<usize>,
-            position: ErrorPos,
+            span: Range<usize>,
             value: Box<Expr>,
         },
 
@@ -183,31 +186,31 @@ pub mod expr {
         Call {
             callee: Box<Expr>,
             args: Vec<Expr>,
-            position: ErrorPos,
+            span: Range<usize>,
         },
 
         Get {
             object: Box<Expr>,
             name: String,
-            pos: ErrorPos,
+            span: Range<usize>,
         },
 
         Set {
             object: Box<Expr>,
             name: String,
             value: Box<Expr>,
-            pos: ErrorPos,
+            span: Range<usize>,
         },
 
         Super {
             method_name: String,
             distance: Option<usize>,
-            pos: ErrorPos,
+            span: Range<usize>,
         },
 
         This {
             distance: Option<usize>,
-            pos: ErrorPos,
+            span: Range<usize>,
         },
     }
 
@@ -229,7 +232,7 @@ pub mod expr {
                 left: Box::new(left),
                 operator: operator.kind,
                 right: Box::new(right),
-                position: operator.into(),
+                span: operator.span,
             }
         }
 
@@ -237,7 +240,7 @@ pub mod expr {
             Self::Unary {
                 operator: operator.kind,
                 right: Box::new(right),
-                position: operator.into(),
+                span: operator.span,
             }
         }
 

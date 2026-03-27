@@ -1,16 +1,15 @@
 #![allow(clippy::single_call_fn)]
 
 use std::{
-    env,
-    fs::File,
-    io::{Read as _, Write, stdin, stdout},
+    env, fs,
+    io::{Write, stdin, stdout},
     path::Path,
     process::exit,
     rc::Rc,
 };
 
 use crate::tree_walk::{
-    error::run_err::{RunError, RunErrorSourced},
+    error::{DisplayLoxError, diagnostic::Diagnostic},
     interpreter::{
         Interpreter, InterpreterConfig,
         env::{Env, EnvironmentImpl as _},
@@ -28,7 +27,7 @@ pub mod parser;
 pub mod static_analysis;
 pub mod token;
 
-pub fn main(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), RunErrorSourced> {
+pub fn main(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> crate::Result<()> {
     let args: Vec<String> = env::args().collect();
 
     if args.len() > 2 {
@@ -45,13 +44,11 @@ pub fn run_file_with_writer(
     file_path: &Path,
     globals: Vec<(&'static str, Rc<dyn LoxCallable>)>,
     writer: &mut impl Write,
-) -> Result<(), RunErrorSourced> {
+) -> crate::Result<()> {
     #[cfg(feature = "debug_print")]
     writeln!(writer, "script opened at {:?}", file_path)?;
 
-    let mut file = File::open(file_path)?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)?;
+    let contents = fs::read_to_string(file_path).map_err(|e| vec![e.into()])?;
 
     let env = Env::new_with_globals(
         globals
@@ -63,19 +60,17 @@ pub fn run_file_with_writer(
 
     let mut interpreter = Interpreter::new(Vec::new(), env, InterpreterConfig::new(false));
 
-    run(&contents, &mut interpreter, writer).map_err(|err| err.with_source(contents))
+    run(&contents, &mut interpreter, writer)
 }
 
 pub fn run_file(
     file_path: &Path,
     globals: Vec<(&'static str, Rc<dyn LoxCallable>)>,
-) -> Result<(), RunErrorSourced> {
+) -> crate::Result<()> {
     #[cfg(feature = "debug_print")]
     println!("script opened at {:?}", file_path);
 
-    let mut file = File::open(file_path)?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)?;
+    let contents = fs::read_to_string(file_path).map_err(|e| vec![e.into()])?;
 
     let env = Env::new_with_globals(
         globals
@@ -87,10 +82,10 @@ pub fn run_file(
 
     let mut interpreter = Interpreter::new(Vec::new(), env, InterpreterConfig::new(false));
 
-    run(&contents, &mut interpreter, &mut stdout()).map_err(|err| err.with_source(contents))
+    run(&contents, &mut interpreter, &mut stdout())
 }
 
-fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), RunErrorSourced> {
+fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> crate::Result<()> {
     let mut line_buf = String::new();
 
     let env = Env::new_with_globals(
@@ -108,8 +103,12 @@ fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), R
 
     loop {
         print!("> ");
-        stdout().flush()?;
-        if stdin().read_line(&mut line_buf)? == 0 {
+        stdout().flush().map_err(|e| vec![e.into()])?;
+        if stdin()
+            .read_line(&mut line_buf)
+            .map_err(|e| vec![e.into()])?
+            == 0
+        {
             break Ok(());
         }
 
@@ -125,21 +124,21 @@ fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Result<(), R
             line_buf.insert(line_buf.len() - 2, ';');
         }
 
-        let out = run(line_buf.trim_end(), &mut interpreter, &mut stdout());
+        let out: Result<(), Vec<Diagnostic>> =
+            run(line_buf.trim_end(), &mut interpreter, &mut stdout());
 
-        if let Err(err) = out {
-            println!("{}", err.with_source(line_buf.clone()));
+        if let Err(errs) = out {
+            for err in errs {
+                <Diagnostic as DisplayLoxError>::display_err(&err, &line_buf, &mut stdout())
+                    .map_err(|e| vec![e.into()])?;
+            }
         }
 
         line_buf.clear();
     }
 }
 
-fn run(
-    source: &str,
-    interpreter: &mut Interpreter,
-    writer: &mut impl Write,
-) -> Result<(), RunError> {
+fn run(source: &str, interpreter: &mut Interpreter, writer: &mut impl Write) -> crate::Result<()> {
     let mut scanner = Scanner::new(source);
 
     let tokens = scanner.scan_tokens()?;
@@ -174,13 +173,13 @@ fn run(
         }
     }
 
-    interpreter.update_stmts(parsed);
+    interpreter.update_stmts(&parsed);
 
     for res in &mut *interpreter {
         match res {
             Ok(out) => {
                 for l in out.lines() {
-                    writeln!(writer, "{l}")?
+                    writeln!(writer, "{l}").map_err(|e| vec![e.into()])?
                 }
             }
             Err(err) => {

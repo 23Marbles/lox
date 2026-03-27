@@ -1,11 +1,12 @@
 use core::fmt::Display;
+use std::ops::Range;
 
-use crate::tree_walk::error::{
-    self, ErrorPos,
-    scan_err::{ScanError, ScanErrorKind},
-};
+use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
+
+use crate::tree_walk::error::{ErrorCode, ErrorPos, scan_err::ScanErrorKind};
 
 pub struct Scanner<'a> {
+    file_id: usize,
     source: &'a str,
     start: usize,
     current: usize,
@@ -13,8 +14,9 @@ pub struct Scanner<'a> {
 }
 
 impl<'a> Scanner<'a> {
-    pub fn new(source: &'a str) -> Self {
+    pub fn new(source: &'a str, file_id: usize) -> Self {
         Self {
+            file_id,
             source,
             start: 0,
             current: 0,
@@ -22,8 +24,8 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn scan_tokens(&mut self) -> Result<Vec<Token<'a>>, Vec<ScanError>> {
-        let mut errors: Vec<error::scan_err::ScanError> = Vec::new();
+    pub fn scan_tokens(&mut self) -> Result<Vec<Token<'a>>, Vec<Diagnostic<usize>>> {
+        let mut errors: Vec<Diagnostic<usize>> = Vec::new();
 
         let tokens: Vec<Token<'_>> = self
             .filter_map(|v| match v {
@@ -54,13 +56,22 @@ impl<'a> Scanner<'a> {
         Token {
             kind,
             lexeme: self.lexeme_with_bounds(start, end),
-            line: self.line(self.current),
-            column: self.column(start) + 1,
+            span: Range {
+                start: start,
+                end: end,
+            },
         }
     }
 
-    fn error(&self, kind: ScanErrorKind, pos: Option<ErrorPos>) -> ScanError {
-        ScanError::new(kind, pos.unwrap_or(self.pos(self.current)))
+    fn error(&self, kind: ScanErrorKind) -> Diagnostic<usize> {
+        Diagnostic::error()
+            .with_code(kind.error_code())
+            .with_message(kind.to_string())
+            .with_label(Label::new(
+                LabelStyle::Primary,
+                self.file_id,
+                self.start + 1..self.current,
+            ))
     }
 
     fn advance(&mut self) -> char {
@@ -133,7 +144,7 @@ impl<'a> Scanner<'a> {
 }
 
 impl<'a> Iterator for Scanner<'a> {
-    type Item = Result<Token<'a>, ScanError>;
+    type Item = Result<Token<'a>, Diagnostic<usize>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.eof {
@@ -143,8 +154,10 @@ impl<'a> Iterator for Scanner<'a> {
             return Some(Ok(Token {
                 kind: TokenKind::Eof,
                 lexeme: "\0",
-                line: self.line(self.current),
-                column: self.column(self.current),
+                span: Range {
+                    start: self.start,
+                    end: self.current,
+                },
             }));
         }
 
@@ -198,7 +211,7 @@ impl<'a> Iterator for Scanner<'a> {
 
                     break 'scan self.make_token(TokenKind::Number);
                 }
-                x => return Some(Err(self.error(ScanErrorKind::UnexpectedCharacter(x), None))),
+                x => return Some(Err(self.error(ScanErrorKind::UnexpectedCharacter(x)))),
             };
 
             match current_token_type {
@@ -207,13 +220,7 @@ impl<'a> Iterator for Scanner<'a> {
                         self.advance();
                     }
                     if self.is_at_end() {
-                        return Some(
-                            Err(self.error(
-                                ScanErrorKind::UnterminatedString,
-                                Some(self.pos(self.start + 1/* trying to find first char but advance at the start */)
-                                    .span_to(self.pos(self.current)))
-                            ))
-                        );
+                        return Some(Err(self.error(ScanErrorKind::UnterminatedString)));
                     }
                     self.advance();
 
@@ -284,12 +291,11 @@ impl<'a> Iterator for Scanner<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Token<'a> {
     pub kind: TokenKind,
     pub lexeme: &'a str,
-    pub line: usize,
-    pub column: usize,
+    pub span: Range<usize>,
 }
 
 impl<'a> Display for Token<'a> {

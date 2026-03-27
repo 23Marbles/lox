@@ -8,10 +8,7 @@ use std::{
 };
 
 use libtest_with::{Failed, Measurement};
-use lox::{
-    run_with_out,
-    tree_walk::{error::diagnostic::Diagnostic, run_file_with_writer},
-};
+use lox::tree_walk::{error::diagnostic::Diagnostic, run_file_with_writer};
 use regex::Regex;
 
 use std::io::{self, Write};
@@ -43,11 +40,6 @@ fn main() {
                 Trial::bench(test_name, move |test_mode| {
                     match std::panic::catch_unwind(|| {
                         if test_mode {
-                            /*println!("Test mode");
-                            let mut file = File::open(path)?;
-                            let mut contents = String::new();
-                            file.read_to_string(&mut contents)?;
-                            let _ = run_with_out(&contents);*/
                             Ok(None)
                         } else {
                             const REPEAT_TIMES: u64 = 100;
@@ -57,7 +49,11 @@ fn main() {
                             for _ in 0..REPEAT_TIMES {
                                 let globals = lox::std_lib::default_lib();
                                 let start = Instant::now();
-                                run_file_with_writer(&path, globals, &mut NullWriter)?;
+                                run_file_with_writer(&path, globals, &mut NullWriter).map_err(
+                                    |errs| {
+                                        errs.iter().map(|err| err.to_string()).collect::<String>()
+                                    },
+                                )?;
                                 times.push(start.elapsed().as_nanos() as u64);
                             }
 
@@ -173,7 +169,7 @@ fn check_expectation(source: String) -> Expectation {
 
     expectations
 }
-
+/*
 fn check_file(path: &Path, expectation: Expectation) -> Result<(), Failed> {
     let mut file = File::open(path)?;
     let mut contents = String::new();
@@ -235,3 +231,4 @@ fn check_file(path: &Path, expectation: Expectation) -> Result<(), Failed> {
         },
     }
 }
+*/

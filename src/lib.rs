@@ -24,18 +24,19 @@
 //!
 //! ## Benchmarks
 
-use std::{fmt::Write, fs::File, io::Read as _, path::Path};
+use std::{fs, io, path::Path};
+
+use codespan_reporting::{
+    diagnostic::Diagnostic, files::SimpleFiles, term::termcolor::StandardStream,
+};
 
 use crate::tree_walk::{
-    error::{diagnostic::Diagnostic, run_err::RunError, scan_err::ScanError},
-    interpreter::{
-        Interpreter, InterpreterConfig,
-        env::{Env, EnvironmentImpl as _},
-    },
-    lox_var::LoxVar,
+    ast::stmt::Stmt,
+    error::diagnostic::Diagnostic,
+    interpreter::{InterpOut, Interpreter},
     parser::Parser,
     static_analysis::Resolver,
-    token::{self, Scanner},
+    token::{Scanner, Token},
 };
 
 pub mod std_lib;
@@ -49,8 +50,6 @@ pub enum Backend {
     ByteCode,
     /// Use the treewalk interpreter.
     TreeWalk,
-    /// Use the bytecode VM
-    ByteCode,
 }
 
 /// Used to construct and run a file.
@@ -110,7 +109,7 @@ impl<'a> Runner {
             Ok(out) => {
                 for line in out.iter().map(|o| o.lines()).flatten() {
                     writeln!(self.out, "{}", line).map_err(|e| vec![e.into()])?
-        }
+                }
 
                 Ok(())
             }

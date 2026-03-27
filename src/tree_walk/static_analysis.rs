@@ -1,18 +1,20 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Range};
+
+use codespan_reporting::diagnostic::{Diagnostic, Label};
 
 use crate::tree_walk::{
     ast::{expr::Expr, stmt::Stmt},
     error::{
-        ErrorPos,
-        anaylysis_err::{ResolverErr, ResolverErrKind},
+        ErrorCode, ErrorLevel, ErrorPos, anaylysis_err::{ResolverErrKind}
     },
 };
 
 pub struct Resolver {
     scopes: Vec<HashMap<String, bool>>,
-    errors: Vec<ResolverErr>,
+    errors: Vec<Diagnostic<usize>>,
     func_path: Vec<FunctionKind>,
     class_path: Vec<ClassKind>,
+    file_id: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,14 +32,8 @@ enum ClassKind {
     SubClass,
 }
 
-impl Default for Resolver {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Resolver {
-    pub fn new() -> Self {
+    pub fn new(file_id: usize) -> Self {
         Self {
             scopes: Vec::new(),
             errors: Vec::new(),
@@ -51,10 +47,11 @@ impl Resolver {
                 vec.push(ClassKind::None);
                 vec
             },
+            file_id: file_id,
         }
     }
 
-    pub fn resolve_stmts(&mut self, stmts: &mut [Stmt]) -> Result<(), Vec<ResolverErr>> {
+    pub fn resolve_stmts(&mut self, stmts: &mut [Stmt]) -> crate::Result<()> {
         for s in stmts.iter_mut() {
             self.resolve_stmt(s);
         }
@@ -66,8 +63,9 @@ impl Resolver {
         }
     }
 
-    fn error(&mut self, kind: ResolverErrKind, pos: ErrorPos) {
-        self.errors.push(ResolverErr::new(kind, pos));
+    fn error(&mut self, kind: ResolverErrKind, span: Range<usize>) {
+        self.errors.push(Diagnostic::new(kind.severity()).with_message(kind.to_string()).with_code(kind.error_code()).with_label(Label::new(
+            codespan_reporting::diagnostic::LabelStyle::Primary, self.file_id, span)));
     }
 
     fn begin_scope(&mut self) {
@@ -78,7 +76,7 @@ impl Resolver {
         self.scopes.pop();
     }
 
-    fn decalare(&mut self, name: String, pos: ErrorPos) {
+    fn decalare(&mut self, name: String, span: Range<usize>) {
         let error;
         if let Some(scope) = self.scopes.iter_mut().last() {
             if scope.contains_key(&name) {
@@ -92,7 +90,7 @@ impl Resolver {
         }
 
         if let Some(kind) = error {
-            self.error(kind, pos);
+            self.error(kind, span);
         }
     }
 
@@ -109,7 +107,7 @@ impl Resolver {
     fn resolve_function(
         &mut self,
         parameters: &Vec<String>,
-        pos: ErrorPos,
+        span: Range<usize>,
         body: &mut [Stmt],
         kind: FunctionKind,
     ) {
@@ -117,7 +115,7 @@ impl Resolver {
         self.begin_scope();
 
         for param in parameters {
-            self.decalare(param.clone(), pos);
+            self.decalare(param.clone(), span.clone());
             self.define(param.clone());
         }
         let _ = self.resolve_stmts(body);
@@ -132,11 +130,11 @@ impl Resolver {
                 name,
                 parameters,
                 body,
-                pos,
+                span,
             } => {
-                self.decalare(name.clone(), *pos);
+                self.decalare(name.clone(), *span);
                 self.define(name.clone());
-                self.resolve_function(parameters, *pos, body, FunctionKind::Function);
+                self.resolve_function(parameters, *span, body, FunctionKind::Function);
             }
             Stmt::Block(stmts) => {
                 self.begin_scope();
@@ -146,9 +144,9 @@ impl Resolver {
             Stmt::Var {
                 name,
                 initializer,
-                position,
+                span,
             } => {
-                self.decalare(name.to_owned(), *position);
+                self.decalare(name.to_owned(), *span);
                 if let Some(initializer) = initializer {
                     self.resolve_expr(initializer);
                 }
@@ -167,15 +165,15 @@ impl Resolver {
                 }
             }
             Stmt::Print(expr) => self.resolve_expr(expr),
-            Stmt::Return { value, pos } => {
+            Stmt::Return { value, span } => {
                 match self.func_path.last().expect(
                     "Only ever descends and ascends in parralel so should never pop the top",
                 ) {
-                    FunctionKind::None => self.error(ResolverErrKind::ReturnFromTop, *pos),
+                    FunctionKind::None => self.error(ResolverErrKind::ReturnFromTop, *span),
 
                     FunctionKind::Initializer => {
                         if value.is_some() {
-                            self.error(ResolverErrKind::ReturnValueFromInit, *pos)
+                            self.error(ResolverErrKind::ReturnValueFromInit, *span)
                         }
                     }
                     _ => (),
@@ -193,22 +191,22 @@ impl Resolver {
                 name,
                 super_class,
                 methods,
-                pos,
+                span,
             } => {
-                self.decalare(name.to_owned(), *pos);
+                self.decalare(name.to_owned(), *span);
                 self.define(name.to_owned());
 
                 if let Some(s_class) = super_class {
                     if let Expr::Variable {
                         name: s_name,
-                        position: s_pos,
+                        span: s_span,
                         ..
                     } = s_class
                         && name == s_name
                     {
                         self.error(
                             ResolverErrKind::SelfReferentialInheritance,
-                            pos.span_to(*s_pos),
+                            Range { start: span.start, end: s_span.end },
                         );
                     }
 
@@ -239,13 +237,13 @@ impl Resolver {
                     if let Stmt::Function {
                         parameters,
                         body,
-                        pos,
+                        span,
                         name,
                     } = method
                     {
                         self.resolve_function(
                             parameters,
-                            *pos,
+                            *span,
                             body,
                             if name == "init" {
                                 FunctionKind::Initializer

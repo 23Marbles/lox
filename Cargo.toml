@@ -35,3 +35,4 @@ path = "tests/runner.rs"
 harness = false
 
 [dependencies]
+codespan-reporting = "0.13.1"
