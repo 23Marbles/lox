@@ -3,7 +3,7 @@ use std::ops::Range;
 
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 
-use crate::tree_walk::error::{ErrorCode, ErrorPos, scan_err::ScanErrorKind};
+use crate::tree_walk::error::{ErrorCode, scan_err::ScanErrorKind};
 
 pub struct Scanner<'a> {
     file_id: usize,
@@ -129,17 +129,6 @@ impl<'a> Scanner<'a> {
 
     fn line(&self, index: usize) -> usize {
         self.source[..index].chars().filter(|c| *c == '\n').count() + 1
-    }
-
-    /// # Panics
-    /// Panics if the index is out of range
-    fn pos(&self, index: usize) -> ErrorPos {
-        assert!(
-            self.source.len() > index - 1,
-            "Cannot find pos of out of range index"
-        );
-
-        ErrorPos::new(self.line(index), self.column(index), 1, 1)
     }
 }
 

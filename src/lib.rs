@@ -26,13 +26,10 @@
 
 use std::{fs, io, path::Path};
 
-use codespan_reporting::{
-    diagnostic::Diagnostic, files::SimpleFiles, term::termcolor::StandardStream,
-};
+use codespan_reporting::{diagnostic::Diagnostic, files::SimpleFiles};
 
 use crate::tree_walk::{
     ast::stmt::Stmt,
-    error::diagnostic::Diagnostic,
     interpreter::{InterpOut, Interpreter},
     parser::Parser,
     static_analysis::Resolver,
@@ -56,6 +53,7 @@ pub enum Backend {
 pub struct Runner {
     out: Box<dyn io::Write + Send>,
     files: SimpleFiles<String, String>,
+    current_id: usize,
     interpreter: Interpreter,
 }
 
@@ -67,6 +65,7 @@ impl<'a> Runner {
             out: Box::new(io::stdout()),
             files: SimpleFiles::new(),
             interpreter: Interpreter::default(),
+            current_id: 0,
         }
     }
 
@@ -75,26 +74,35 @@ impl<'a> Runner {
             out: writer,
             files: SimpleFiles::new(),
             interpreter: Interpreter::default(),
+            current_id: 0,
         }
     }
 
     pub fn run_file(&mut self, path: &Path) -> Result<()> {
         let content = fs::read_to_string(path).map_err(|e| vec![e.into()])?;
 
+        self.files.add(
+            path.file_name()
+                .map(|n| n.to_string_lossy())
+                .unwrap_or_default()
+                .into_owned(),
+            content,
+        );
+
         self.write_source_output(&content)
     }
 
     pub fn get_tokens(&self, source: &'a str) -> Result<Vec<Token<'a>>> {
-        Scanner::new(source).scan_tokens()
+        Scanner::new(source, self.current_id).scan_tokens()
     }
 
     pub fn get_stmts(&self, source: &'a str) -> Result<Vec<Stmt>> {
-        Parser::new(self.get_tokens(source)?).parse()
+        Parser::new(self.get_tokens(source)?, self.current_id).parse()
     }
 
     pub fn get_resolved_stmts(&self, source: &'a str) -> Result<Vec<Stmt>> {
         let mut stmts = self.get_stmts(source)?;
-        Resolver::new().resolve_stmts(&mut stmts)?;
+        Resolver::new(self.current_id).resolve_stmts(&mut stmts)?;
         Ok(stmts)
     }
 

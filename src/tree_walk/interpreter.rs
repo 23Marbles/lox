@@ -6,9 +6,7 @@ use crate::tree_walk::{
         expr::Expr,
         stmt::{ControlFlow, Stmt},
     },
-    error::{
-        eval_err::{EvaluateError, EvaluateErrorKind},
-        runtime_err::{RuntimeError, RuntimeErrorKind},
+    error::{ToCodespan, eval_err::{EvaluateError, EvaluateErrorKind}, runtime_err::RuntimeError
     },
     interpreter::env::{Env, EnvironmentImpl as _},
     lox_var::{
@@ -28,19 +26,7 @@ pub struct Interpreter {
     out_buf: InterpOut,
     pub env: Env,
     call_depth: usize,
-}
-
-impl Default for Interpreter {
-    fn default() -> Self {
-        Self {
-            cfg: Default::default(),
-            statements: Default::default(),
-            ip: Default::default(),
-            out_buf: Default::default(),
-            env: Env::new_env(None),
-            call_depth: Default::default(),
-        }
-    }
+    file_id: usize,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -92,25 +78,36 @@ impl InterpreterConfig {
 }
 
 impl Interpreter {
-    pub fn new(statements: Vec<Stmt>, env: Env, cfg: InterpreterConfig) -> Self {
+    pub fn new(file_id: usize) -> Self {
         Self {
-            statements,
-            env,
-            cfg,
+            statements: Vec::new(),
+            env: Env::new_env(None),
+            cfg: InterpreterConfig::default(),
             ip: 0,
             out_buf: InterpOut::default(),
             call_depth: 0,
+            file_id,
         }
     }
 
-    pub fn update_stmts(&mut self, new_statements: &[Stmt]) {
-        self.statements = new_statements.to_vec()
+    pub fn with_stmts(mut self, statements: &[Stmt]) -> Self {
+        self.statements = statements.to_vec();
+        self
+    }
+
+    pub fn with_env(mut self, env: Env) -> Self {
+        self.env = env;
+        self
+    }
+
+    pub fn with_cfg(mut self, cfg: InterpreterConfig) -> Self {
+        self.cfg = cfg;
+        self
     }
 
     pub fn run(&mut self) -> crate::Result<Vec<InterpOut>> {
-        self.into_iter()
-            .map(|r: Result<InterpOut, RuntimeError>| r.map_err(|e: RuntimeError| e.into()))
-            .collect()
+        let id = self.file_id;
+        self.into_iter().map(|r| r.map_err(|e| vec![e.to_codespan(id)])).collect::<Result<Vec<_>, _>>()
     }
 
     pub fn run_stmt(&mut self, stmt: Stmt) -> Result<ControlFlow, RuntimeError> {
@@ -179,13 +176,12 @@ impl Interpreter {
                 name,
                 parameters,
                 body,
-                pos,
+                span,
             } => {
                 self.env.borrow_mut().define(
                     name.to_owned(),
                     LoxVar::Callable(Rc::new(LoxFunc::new(
-                        parameters.len().try_into().map_err(|_| {
-                            RuntimeError::new(RuntimeErrorKind::TooManyArguments(pos))
+                        parameters.len().try_into().map_err(|_| {RuntimeError::TooManyArguments(parameters.len(), span)
                         })?,
                         body,
                         parameters,
@@ -203,7 +199,7 @@ impl Interpreter {
                 name,
                 methods,
                 super_class,
-                pos,
+                span,
             } => {
                 let super_class = if let Some(expr) = super_class {
                     let var = self.evaluate_expr(expr.clone())?;
@@ -211,14 +207,7 @@ impl Interpreter {
                     if let LoxVar::Class(s_class) = var {
                         Some(s_class)
                     } else {
-                        return Err(RuntimeError::new(RuntimeErrorKind::SuperClassIsNotAClass(
-                            var,
-                            if let Expr::Variable { position, .. } = expr {
-                                position
-                            } else {
-                                pos
-                            },
-                        )));
+                        return Err(RuntimeError::SuperClassIsNotAClass(var, span));
                     }
                 } else {
                     None
@@ -281,7 +270,7 @@ impl Interpreter {
             Expr::Unary {
                 operator,
                 right,
-                position,
+                span,
             } => {
                 let right_var = self.evaluate_expr(*right)?;
                 match operator {
@@ -289,14 +278,13 @@ impl Interpreter {
                         if let LoxVar::Number(n) = right_var {
                             Ok(LoxVar::Number(-n))
                         } else {
-                            Err(EvaluateError::new(
-                                EvaluateErrorKind::IncompatableUnaryOperator {
+                            Err(
+                                EvaluateError::new(EvaluateErrorKind::IncompatableUnaryOperator {
                                     operator: TokenKind::Minus,
                                     var_ty: right_var.into(),
-                                },
-                                position,
+                                }, span)
+                                .into()
                             )
-                            .into())
                         }
                     }
                     TokenKind::Bang => Ok(LoxVar::Bool(!right_var.is_truthy())),
@@ -309,7 +297,7 @@ impl Interpreter {
                 left,
                 operator,
                 right,
-                position,
+                span,
             } => {
                 let left_var = self.evaluate_expr(*left)?;
                 let right_var = self.evaluate_expr(*right)?;
@@ -322,10 +310,10 @@ impl Interpreter {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord == Ordering::Greater))
                         } else {
-                            Err(EvaluateError::bin_eval_error(
-                                position, Greater, &left_var, &right_var,
+                            Err(
+                                EvaluateError::bin_eval_error(span, Greater, &left_var, &right_var)
+                                    .into(),
                             )
-                            .into())
                         }
                     }
                     GreaterEqual => {
@@ -333,7 +321,7 @@ impl Interpreter {
                             Ok(LoxVar::Bool(ord != Ordering::Less))
                         } else {
                             Err(EvaluateError::bin_eval_error(
-                                position,
+                                span,
                                 GreaterEqual,
                                 &left_var,
                                 &right_var,
@@ -345,10 +333,10 @@ impl Interpreter {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord == Ordering::Less))
                         } else {
-                            Err(EvaluateError::bin_eval_error(
-                                position, Less, &left_var, &right_var,
+                            Err(
+                                EvaluateError::bin_eval_error(span, Less, &left_var, &right_var)
+                                    .into(),
                             )
-                            .into())
                         }
                     }
                     LessEqual => {
@@ -356,34 +344,31 @@ impl Interpreter {
                             Ok(LoxVar::Bool(ord != Ordering::Greater))
                         } else {
                             Err(EvaluateError::bin_eval_error(
-                                position, LessEqual, &left_var, &right_var,
+                                span, LessEqual, &left_var, &right_var,
                             )
                             .into())
                         }
                     }
                     EqualEqual => Ok(LoxVar::Bool(left_var.eq(&right_var))),
                     BangEqual => Ok(LoxVar::Bool(left_var.ne(&right_var))),
-                    Minus => left_var.sub(&right_var).map_err(|(l, r)| {
-                        EvaluateError::bin_eval_error(position, Minus, l, r).into()
-                    }),
+                    Minus => left_var
+                        .sub(&right_var)
+                        .map_err(|(l, r)| EvaluateError::bin_eval_error(span, Minus, l, r).into()),
                     Slash => {
                         if right_var == LoxVar::Number(0.) {
-                            Err(
-                                EvaluateError::new(EvaluateErrorKind::DivisionByZero, position)
-                                    .into(),
-                            )
+                            Err(EvaluateError::new(EvaluateErrorKind::DivisionByZero, span).into())
                         } else {
                             left_var.div(&right_var).map_err(|(l, r)| {
-                                EvaluateError::bin_eval_error(position, Slash, l, r).into()
+                                EvaluateError::bin_eval_error(span, Slash, l, r).into()
                             })
                         }
                     }
-                    Star => left_var.mul(&right_var).map_err(|(l, r)| {
-                        EvaluateError::bin_eval_error(position, Star, l, r).into()
-                    }),
-                    Plus => left_var.add(&right_var).map_err(|(l, r)| {
-                        EvaluateError::bin_eval_error(position, Plus, l, r).into()
-                    }),
+                    Star => left_var
+                        .mul(&right_var)
+                        .map_err(|(l, r)| EvaluateError::bin_eval_error(span, Star, l, r).into()),
+                    Plus => left_var
+                        .add(&right_var)
+                        .map_err(|(l, r)| EvaluateError::bin_eval_error(span, Plus, l, r).into()),
                     _ => unreachable!(
                         "only tokens with kind gt, ge, lt, le, ne, eq, minus, plus, slash and star can be binary operators"
                     ),
@@ -392,20 +377,20 @@ impl Interpreter {
             Expr::Grouping(expr) => self.evaluate_expr(*expr),
             Expr::Variable {
                 name,
-                position,
+                span,
                 distance,
             } => self.env.borrow().get(&name, distance).ok_or(
                 EvaluateError::new(
                     EvaluateErrorKind::UndeclaredVariable {
                         name: name.to_owned(),
                     },
-                    position,
+                    span,
                 )
                 .into(),
             ),
             Expr::Assign {
                 name,
-                position,
+                span,
                 value,
                 distance,
             } => {
@@ -413,7 +398,7 @@ impl Interpreter {
                 self.env
                     .borrow_mut()
                     .assign(&name, &value, distance)
-                    .map_err(|err| EvaluateError::new(err, position))?;
+                    .map_err(|err| EvaluateError::new(err, span))?;
                 Ok(value)
             }
             Expr::Logical {
@@ -441,11 +426,7 @@ impl Interpreter {
                     _ => unreachable!("Logical expr can only have operators Or or And"),
                 }
             }
-            Expr::Call {
-                callee,
-                args,
-                position,
-            } => {
+            Expr::Call { callee, args, span } => {
                 self.call_depth += 1;
 
                 let arguments: Vec<LoxVar> = args
@@ -455,16 +436,14 @@ impl Interpreter {
                 match self.evaluate_expr(*callee)? {
                     LoxVar::Callable(func) => {
                         let ret = func.call(self, &arguments).map_err(|mut err| {
-                            err.call_pos = Some(Box::new(position));
+                            err.call_span = Some(Box::new(span));
                             err.input_args = arguments;
 
                             err
                         })?;
 
                         if self.call_depth > MAX_CALL_DEPTH {
-                            return Err(RuntimeError::new(RuntimeErrorKind::StackOverflow(
-                                position,
-                            )));
+                            return Err(RuntimeError::StackOverflow);
                         }
 
                         self.call_depth -= 1;
@@ -473,16 +452,14 @@ impl Interpreter {
                     }
                     LoxVar::Class(class) => {
                         let ret = class.call(self, &arguments).map_err(|mut err| {
-                            err.call_pos = Some(Box::new(position));
+                            err.call_span = Some(Box::new(span));
                             err.input_args = arguments;
 
                             err
                         })?;
 
                         if self.call_depth > MAX_CALL_DEPTH {
-                            return Err(RuntimeError::new(RuntimeErrorKind::StackOverflow(
-                                position,
-                            )));
+                            return Err(RuntimeError::StackOverflow);
                         }
 
                         self.call_depth -= 1;
@@ -493,12 +470,12 @@ impl Interpreter {
                         EvaluateErrorKind::NonCallable {
                             name: other.to_string(),
                         },
-                        position,
+                        span,
                     )
                     .into()),
                 }
             }
-            Expr::Get { object, name, pos } => {
+            Expr::Get { object, name, span } => {
                 let obj = self.evaluate_expr(*object)?;
 
                 if let LoxVar::Instance(inst) = obj {
@@ -508,19 +485,19 @@ impl Interpreter {
                         Ok(LoxVar::Callable(method))
                     } else {
                         Err(
-                            EvaluateError::new(EvaluateErrorKind::UndefinedProperty(name), pos)
+                            EvaluateError::new(EvaluateErrorKind::UndefinedProperty(name), span)
                                 .into(),
                         )
                     }
                 } else {
-                    Err(EvaluateError::new(EvaluateErrorKind::NotInstance(obj.into()), pos).into())
+                    Err(EvaluateError::new(EvaluateErrorKind::NotInstance(obj.into()), span).into())
                 }
             }
             Expr::Set {
                 object,
                 name,
                 value,
-                pos,
+                span,
             } => {
                 let obj = self.evaluate_expr(*object)?;
 
@@ -531,7 +508,7 @@ impl Interpreter {
 
                     Ok(val)
                 } else {
-                    Err(EvaluateError::new(EvaluateErrorKind::NotInstance(obj.into()), pos).into())
+                    Err(EvaluateError::new(EvaluateErrorKind::NotInstance(obj.into()), span).into())
                 }
             }
             Expr::This { distance, .. } => Ok(self
@@ -542,7 +519,7 @@ impl Interpreter {
             Expr::Super {
                 distance,
                 method_name,
-                pos,
+                span,
             } => {
                 let dist = distance.expect("super must be resolved");
 
@@ -560,7 +537,7 @@ impl Interpreter {
                     .find_method(&method_name)
                     .ok_or(EvaluateError::new(
                         EvaluateErrorKind::UndefinedProperty(method_name.to_owned()),
-                        pos,
+                        span,
                     ))?;
 
                 Ok(LoxVar::Callable(method.bind(instance)))

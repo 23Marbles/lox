@@ -1,12 +1,7 @@
-use core::{error::Error, fmt::Display};
+use core::fmt::Display;
+use std::ops::Range;
 
-use codespan_reporting::diagnostic::{Diagnostic, Severity};
-
-use crate::tree_walk::{error::diagnostic::ErrorTime, token::Token};
-
-pub trait LoxPos {
-    fn pos(&self) -> ErrorPos;
-}
+use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle, Severity};
 
 pub trait ErrorCode {
     fn error_code(&self) -> &'static str;
@@ -16,303 +11,44 @@ pub trait ErrorLevel {
     fn severity(&self) -> Severity;
 }
 
-impl<T: LoxPos> LoxPos for Vec<T> {
-    fn pos(&self) -> ErrorPos {
-        assert!(!self.is_empty(), "Cannot find the pos of an empty vector");
-        self[0].pos().span_to(
-            self.last()
-                .expect("Already checked the len is greater than 1")
-                .pos(),
+pub trait ToCodespan: ErrorCode + ErrorLevel + Display {
+    #[allow(unused)]
+    fn to_codespan<I: Copy>(&self, file_id: I) -> Diagnostic<I> {
+        Diagnostic::new(self.severity())
+            .with_message(self.to_string())
+            .with_code(self.error_code())
+    }
+}
+
+fn to_codespan<
+    T: Display + ErrorLevel + ErrorCode,
+    K: IntoIterator<Item = (LabelStyle, Range<usize>, Option<impl Display>)>,
+    I: Copy,
+>(
+    from: &T,
+    file_id: I,
+    labels: K,
+) -> Diagnostic<I> {
+    Diagnostic::new(from.severity())
+        .with_message(from.to_string())
+        .with_code(from.error_code())
+        .with_labels(
+            labels
+                .into_iter()
+                .map(|(s, r, m)| Label {
+                    style: s,
+                    file_id,
+                    range: r,
+                    message: m.map(|d| d.to_string()).unwrap_or(String::new()),
+                })
+                .collect(),
         )
-    }
-}
-
-pub trait ToCodespan: ErrorLevel {
-    fn to_codespan(&self) -> Diagnostic<usize>;
-}
-
-pub trait DisplayLoxError: LoxPos + Display + ToCodespan {
-    fn display_err(&self, source: &str, f: &mut impl std::io::Write) -> std::io::Result<()> {
-        let pos = self.pos();
-        writeln!(f, "\x1b[1;36m{pos} \x1b[39m{self}\x1b[0m")?;
-        pos.display_err(source, f)?;
-        write!(f, "\n\x1b[1;36m\\\x1b[0m")
-    }
-
-    fn lox_msg(&self) -> String {
-        self.to_string()
-    }
-}
-
-pub trait LoxError: Error + DisplayLoxError + ErrorCode {
-    fn time(&self) -> ErrorTime;
-}
-
-pub mod diagnostic {
-    use core::{error::Error, fmt::Display};
-
-    use crate::tree_walk::error::{
-        DisplayLoxError, ErrorPos, LoxError, LoxPos, runtime_err::RuntimeError,
-    };
-
-    #[derive(Debug, Clone, Copy, PartialEq)]
-    pub enum ErrorTime {
-        Scanner,
-        Parser,
-        Resolver,
-        Runtime,
-        Input,
-    }
-
-    pub(super) trait IntoDiagnostic: LoxError {
-        fn as_diagnostic(&self) -> Diagnostic {
-            Diagnostic {
-                pos: self.pos(),
-                time: self.time(),
-                msg: self.to_string(),
-            }
-        }
-    }
-
-    impl<T: LoxError> IntoDiagnostic for T {}
-
-    #[derive(Debug, Clone, PartialEq)]
-    pub struct Diagnostic {
-        pos: ErrorPos,
-        time: ErrorTime,
-        msg: String,
-    }
-
-    impl Display for Diagnostic {
-        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            write!(f, "{}", self.msg)
-        }
-    }
-
-    impl DisplayLoxError for Diagnostic {}
-
-    impl Error for Diagnostic {}
-
-    impl LoxError for Diagnostic {
-        fn time(&self) -> ErrorTime {
-            self.time
-        }
-    }
-
-    impl LoxPos for Diagnostic {
-        fn pos(&self) -> ErrorPos {
-            self.pos
-        }
-    }
-
-    impl<T: LoxError> From<&T> for Diagnostic {
-        fn from(value: &T) -> Self {
-            Self {
-                pos: value.pos(),
-                msg: value.lox_msg(),
-                time: value.time(),
-            }
-        }
-    }
-
-    impl From<std::io::Error> for Diagnostic {
-        fn from(value: std::io::Error) -> Self {
-            Self {
-                pos: ErrorPos::Outside,
-                time: ErrorTime::Input,
-                msg: value.to_string(),
-            }
-        }
-    }
-
-    impl From<RuntimeError> for Vec<Diagnostic> {
-        fn from(value: RuntimeError) -> Self {
-            vec![value.as_diagnostic()]
-        }
-    }
-
-    impl From<core::fmt::Error> for Diagnostic {
-        fn from(value: core::fmt::Error) -> Self {
-            Self {
-                pos: ErrorPos::Outside,
-                time: ErrorTime::Input,
-                msg: value.to_string(),
-            }
-        }
-    }
-}
-
-pub mod run_err {
-    use core::{error::Error, fmt::Display};
-
-    use crate::tree_walk::error::{
-        DisplayLoxError, ErrorPos, LoxPos,
-        diagnostic::{Diagnostic, IntoDiagnostic},
-    };
-
-    #[derive(Debug)]
-    pub enum RunErrorKind {
-        IoError(std::io::Error),
-        Diagnostics(Vec<Diagnostic>),
-    }
-
-    #[derive(Debug)]
-    pub struct RunError {
-        pub kind: RunErrorKind,
-    }
-
-    impl PartialEq<Vec<Diagnostic>> for RunError {
-        fn eq(&self, other: &Vec<Diagnostic>) -> bool {
-            if let RunErrorKind::Diagnostics(diagnostics) = &self.kind {
-                diagnostics.len() == other.len()
-                    && diagnostics.iter().zip(other).all(|(s, o)| s == o)
-            } else {
-                false
-            }
-        }
-    }
-
-    impl LoxPos for RunError {
-        fn pos(&self) -> ErrorPos {
-            match &self.kind {
-                RunErrorKind::IoError(_) => ErrorPos::Outside,
-                RunErrorKind::Diagnostics(diags) => diags.pos(),
-            }
-        }
-    }
-
-    impl DisplayLoxError for RunError {
-        fn display_err(&self, source: &str, f: &mut impl std::io::Write) -> std::io::Result<()> {
-            match &self.kind {
-                RunErrorKind::IoError(err) => write!(f, "\x1b[1mIo Error: {err}\x1b[0m"),
-                RunErrorKind::Diagnostics(diagnostics) => {
-                    if let Some(diag) = diagnostics.first() {
-                        diag.display_err(source, f)?;
-
-                        for d in diagnostics.iter().skip(1) {
-                            writeln!(f)?;
-                            d.display_err(source, f)?;
-                        }
-
-                        Ok(())
-                    } else {
-                        Ok(())
-                    }
-                }
-            }
-        }
-    }
-
-    impl Display for RunError {
-        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            match &self.kind {
-                RunErrorKind::IoError(err) => write!(f, "\x1b[1mIo Error: {err}\x1b[0m"),
-                RunErrorKind::Diagnostics(diagnostics) => {
-                    if let Some(diag) = diagnostics.first() {
-                        write!(f, "{diag}")?;
-
-                        for d in diagnostics.iter().skip(1) {
-                            writeln!(f)?;
-                            write!(f, "{d}")?;
-                        }
-
-                        Ok(())
-                    } else {
-                        Ok(())
-                    }
-                }
-            }
-        }
-    }
-
-    impl Error for RunError {}
-
-    impl From<std::io::Error> for RunError {
-        fn from(value: std::io::Error) -> Self {
-            Self {
-                kind: RunErrorKind::IoError(value),
-            }
-        }
-    }
-
-    impl<T: IntoDiagnostic> From<Vec<T>> for RunError {
-        fn from(value: Vec<T>) -> Self {
-            Self {
-                kind: RunErrorKind::Diagnostics(value.iter().map(|t| t.as_diagnostic()).collect()),
-            }
-        }
-    }
-
-    impl<T: IntoDiagnostic> From<T> for RunError {
-        fn from(value: T) -> Self {
-            Self {
-                kind: RunErrorKind::Diagnostics(vec![value.as_diagnostic()]),
-            }
-        }
-    }
 }
 
 pub mod scan_err {
-    use core::{error::Error, fmt::Display};
+    use core::fmt::Display;
 
-    use crate::tree_walk::error::{
-        DisplayLoxError, ErrorCode, ErrorLevel, ErrorPos, LoxError, LoxPos, ToCodespan,
-        diagnostic::ErrorTime,
-    };
-
-    #[derive(Debug, Clone, Copy)]
-    pub struct ScanError {
-        kind: ScanErrorKind,
-        pos: ErrorPos,
-    }
-
-    impl ScanError {
-        pub fn new(kind: ScanErrorKind, pos: ErrorPos) -> Self {
-            Self { kind, pos }
-        }
-    }
-
-    impl Display for ScanError {
-        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            write!(f, "{}", self.kind)
-        }
-    }
-
-    impl ErrorLevel for ScanError {
-        fn severity(&self) -> Severity {
-            self.kind.severity()
-        }
-    }
-
-    impl ToCodespan for ScanError {
-        fn to_codespan(&self) -> codespan_reporting::diagnostic::Diagnostic<usize> {
-            Diagnostic::new(self.severity())
-                .with_code(self.error_code())
-                .with_message(message)
-        }
-    }
-
-    impl DisplayLoxError for ScanError {}
-
-    impl LoxPos for ScanError {
-        fn pos(&self) -> ErrorPos {
-            self.pos
-        }
-    }
-
-    impl ErrorCode for ScanError {
-        fn error_code(&self) -> &'static str {
-            self.kind.error_code()
-        }
-    }
-
-    impl LoxError for ScanError {
-        fn time(&self) -> ErrorTime {
-            ErrorTime::Scanner
-        }
-    }
-
-    impl Error for ScanError {}
+    use crate::tree_walk::error::{ErrorCode, ErrorLevel};
 
     #[derive(Debug, Clone, Copy)]
     pub enum ScanErrorKind {
@@ -322,7 +58,7 @@ pub mod scan_err {
         UnterminatedComment,
     }
 
-    use codespan_reporting::diagnostic::{Diagnostic, Severity};
+    use codespan_reporting::diagnostic::Severity;
 
     impl ErrorLevel for ScanErrorKind {
         fn severity(&self) -> Severity {
@@ -359,103 +95,135 @@ pub mod scan_err {
 }
 
 pub mod parse_err {
-    use core::{error::Error, fmt::Display};
+    use core::fmt::Display;
+    use std::ops::Range;
 
-    use codespan_reporting::diagnostic::Severity;
+    use codespan_reporting::diagnostic::{Label, LabelStyle, Severity};
 
     use crate::tree_walk::{
-        error::{DisplayLoxError, ErrorCode, ErrorLevel, ErrorPos, LoxError, LoxPos, diagnostic::ErrorTime},
+        error::{ErrorCode, ErrorLevel, ToCodespan},
         token::TokenKind,
     };
+
     #[derive(Debug, Clone)]
-    pub struct ParseError {
-        pub kind: ParseErrorKind,
-        pos: ErrorPos,
+    pub enum ParseError {
+        UnexpectedTokenKind {
+            got: TokenKind,
+            expected: Vec<TokenKind>,
+            span: Range<usize>,
+        },
+        ExpectedTokenKind {
+            got: TokenKind,
+            expected: TokenKind,
+            span: Range<usize>,
+        },
+        InvalidAssignTarget {
+            target: String,
+            span: Range<usize>,
+        },
+        TooManyArguments {
+            got: usize,
+            spans: Vec<Range<usize>>,
+        },
+        ExpectedName {
+            name: Named,
+            after: TokenKind,
+            prev_span: Range<usize>,
+            span: Range<usize>,
+        },
+        ExpectedNumber {
+            input: String,
+            span: Range<usize>,
+        },
     }
 
-    impl ParseError {
-        pub fn new(kind: ParseErrorKind, pos: ErrorPos) -> Self {
-            Self { kind, pos }
+    impl ErrorCode for ParseError {
+        fn error_code(&self) -> &'static str {
+            match self {
+                ParseError::UnexpectedTokenKind { .. } => "PE0001",
+                ParseError::ExpectedTokenKind { .. } => "PE0002",
+                ParseError::InvalidAssignTarget { .. } => "PE0003",
+                ParseError::TooManyArguments { .. } => "PE0004",
+                ParseError::ExpectedName { .. } => "PE0005",
+                ParseError::ExpectedNumber { .. } => "PE0006",
+            }
+        }
+    }
+
+    impl ErrorLevel for ParseError {
+        fn severity(&self) -> Severity {
+            match self {
+                ParseError::UnexpectedTokenKind { .. } => Severity::Error,
+                ParseError::ExpectedTokenKind { .. } => Severity::Error,
+                ParseError::InvalidAssignTarget { .. } => Severity::Error,
+                ParseError::TooManyArguments { .. } => Severity::Warning,
+                ParseError::ExpectedName { .. } => Severity::Error,
+                ParseError::ExpectedNumber { .. } => Severity::Error,
+            }
+        }
+    }
+
+    impl ToCodespan for ParseError {
+        fn to_codespan<I: Copy>(
+            &self,
+            file_id: I,
+        ) -> codespan_reporting::diagnostic::Diagnostic<I> {
+            match self {
+                ParseError::UnexpectedTokenKind {
+                    span,
+                    expected,
+                    ..
+                } => {
+                    codespan_reporting::diagnostic::Diagnostic::new(self.severity())
+                        .with_message(self.to_string())
+                        .with_code(self.error_code())
+                        .with_label(Label::new(LabelStyle::Primary, file_id, span.clone()))
+                        .with_note(format!("Expected one of [{}]", expected.iter().map(|token_kind| token_kind.to_string()).collect::<Vec<String>>().join(", ")))
+                },
+                ParseError::TooManyArguments { spans, .. } => {
+                    codespan_reporting::diagnostic::Diagnostic::new(self.severity())
+                        .with_message(self.to_string())
+                        .with_code(self.error_code())
+                        .with_labels_iter(spans.iter().map(|span| Label::new(LabelStyle::Secondary, file_id, span.clone())))
+                }
+                | ParseError::ExpectedName { span, prev_span, after, ..  } => {
+                    codespan_reporting::diagnostic::Diagnostic::new(self.severity())
+                        .with_message(self.to_string())
+                        .with_code(self.error_code())
+                        .with_label(Label::new(LabelStyle::Primary, file_id, span.clone()))
+                        .with_label(Label::new(LabelStyle::Secondary, file_id, prev_span.clone()).with_message(format!("Expected after `{after:?}`")))
+                }
+                ParseError::ExpectedTokenKind { span, .. }
+                | ParseError::InvalidAssignTarget { span, .. }
+                | ParseError::ExpectedNumber { span, .. } => {
+                    codespan_reporting::diagnostic::Diagnostic::new(self.severity())
+                        .with_message(self.to_string())
+                        .with_code(self.error_code())
+                        .with_label(Label::new(LabelStyle::Primary, file_id, span.clone()))
+                }
+            }
         }
     }
 
     impl Display for ParseError {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            write!(f, "{}", self.kind)
-        }
-    }
-
-    impl DisplayLoxError for ParseError {}
-
-    impl LoxPos for ParseError {
-        fn pos(&self) -> ErrorPos {
-            self.pos
-        }
-    }
-
-    impl LoxError for ParseError {
-        fn time(&self) -> ErrorTime {
-            ErrorTime::Parser
-        }
-    }
-
-    impl Error for ParseError {}
-
-    #[derive(Debug, Clone)]
-    pub enum ParseErrorKind {
-        UnexpectedTokenKind(TokenKind),
-        ExpectedTokenKind(TokenKind),
-        InvalidAssignTarget(String),
-        TooManyArguments,
-        ExpectedName { name: Named, after: TokenKind },
-        ExpectedNumber { input: String },
-    }
-
-    impl ErrorCode for ParseErrorKind {
-        fn error_code(&self) -> &'static str {
             match self {
-                ParseErrorKind::UnexpectedTokenKind(..) => "PE0001",
-                ParseErrorKind::ExpectedTokenKind(..) => "PE0002",
-                ParseErrorKind::InvalidAssignTarget(_) => "PE0003",
-                ParseErrorKind::TooManyArguments => "PE0004",
-                ParseErrorKind::ExpectedName { .. } => "PE0005",
-                ParseErrorKind::ExpectedNumber { .. } => "PE0006",
-            }
-        }
-    }
-
-    impl ErrorLevel for ParseErrorKind {
-        fn severity(&self) -> Severity {
-            match self {
-                ParseErrorKind::UnexpectedTokenKind(..) => Severity::Error,
-                ParseErrorKind::ExpectedTokenKind(..) => Severity::Error,
-                ParseErrorKind::InvalidAssignTarget(_) => Severity::Error,
-                ParseErrorKind::TooManyArguments => Severity::Error,
-                ParseErrorKind::ExpectedName { .. } => Severity::Error,
-                ParseErrorKind::ExpectedNumber { .. } => Severity::Error,
-            }
-        }
-    }
-
-    impl Display for ParseErrorKind {
-        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            match self {
-                ParseErrorKind::UnexpectedTokenKind(token_kind) => {
-                    write!(f, "Unexpected token kind: `{:?}`", token_kind)
+                ParseError::UnexpectedTokenKind { got, .. } => {
+                    write!(f, "Unexpected token kind: `{:?}`", got)
                 }
-                ParseErrorKind::ExpectedTokenKind(token_kind) => {
-                    write!(f, "Expected token kind: `{:?}`", token_kind)
+                ParseError::ExpectedTokenKind{ got, expected, .. } => {
+                    write!(f, "Expected token kind: `{:?}`, got: `{:?}`", expected, got)
                 }
-                ParseErrorKind::InvalidAssignTarget(s) => {
-                    write!(f, "Invalid assignment target `{s}`")
+                ParseError::InvalidAssignTarget{ target, .. } => {
+                    write!(f, "Cannot assign to `{target}`")
                 }
-                ParseErrorKind::TooManyArguments => {
+                ParseError::TooManyArguments{..} => {
                     write!(f, "Function can't have over 255 arguments")
                 }
-                ParseErrorKind::ExpectedName { name, after } => {
+                ParseError::ExpectedName { name, after, .. } => {
                     write!(f, "Expected {name} name after token `{after}`")
                 }
-                ParseErrorKind::ExpectedNumber { input } => {
+                ParseError::ExpectedNumber { input, .. } => {
                     write!(f, "Could not parse `{input}` as a number")
                 }
             }
@@ -487,109 +255,131 @@ pub mod parse_err {
 }
 
 pub mod anaylysis_err {
-    use core::{error::Error, fmt::Display};
+    use core::fmt::Display;
+    use std::ops::Range;
 
-    use codespan_reporting::diagnostic::Severity;
+    use codespan_reporting::diagnostic::{LabelStyle, Severity};
 
-    use crate::tree_walk::error::{
-        DisplayLoxError, ErrorCode, ErrorLevel, ErrorPos, LoxError, LoxPos, diagnostic::ErrorTime
-    };
+    use crate::tree_walk::error::{ErrorCode, ErrorLevel, ToCodespan, to_codespan};
 
     #[derive(Debug, Clone)]
-    pub struct ResolverErr {
-        pos: ErrorPos,
-        kind: ResolverErrKind,
+    pub enum ResolverErr {
+        ReadInOwnInitializer(Range<usize>),
+        DefinedMultipleTimes(String, Vec<Range<usize>>),
+        ReturnFromTop(Range<usize>),
+        /// [Return pos, Init pos]
+        ReturnValueFromInit([Range<usize>; 2]),
+        ThisOutsideClass(Range<usize>),
+        SelfReferentialInheritance(Range<usize>),
+        SuperOutsideSubclass(Range<usize>),
     }
 
-    impl ResolverErr {
-        pub fn new(kind: ResolverErrKind, pos: ErrorPos) -> Self {
-            Self { pos, kind }
+    impl ErrorCode for ResolverErr {
+        fn error_code(&self) -> &'static str {
+            match self {
+                ResolverErr::ReadInOwnInitializer(_) => "AE0001",
+                ResolverErr::DefinedMultipleTimes { .. } => "AE0002",
+                ResolverErr::ReturnFromTop(_) => "AE0003",
+                ResolverErr::ReturnValueFromInit(_) => "AE0004",
+                ResolverErr::ThisOutsideClass(_) => "AE0005",
+                ResolverErr::SelfReferentialInheritance(_) => "AE0006",
+                ResolverErr::SuperOutsideSubclass(_) => "AE0007",
+            }
+        }
+    }
+
+    impl ErrorLevel for ResolverErr {
+        fn severity(&self) -> Severity {
+            match self {
+                ResolverErr::ReadInOwnInitializer(_) => Severity::Error,
+                ResolverErr::DefinedMultipleTimes { .. } => Severity::Warning,
+                ResolverErr::ReturnFromTop(_) => Severity::Error,
+                ResolverErr::ReturnValueFromInit(_) => Severity::Error,
+                ResolverErr::ThisOutsideClass(_) => Severity::Error,
+                ResolverErr::SelfReferentialInheritance(_) => Severity::Error,
+                ResolverErr::SuperOutsideSubclass(_) => Severity::Error,
+            }
+        }
+    }
+
+    impl ToCodespan for ResolverErr {
+        fn to_codespan<I: Copy>(
+            &self,
+            file_id: I,
+        ) -> codespan_reporting::diagnostic::Diagnostic<I> {
+            match self {
+                ResolverErr::DefinedMultipleTimes(_, ranges) => {
+                    let labels = std::iter::once((
+                        LabelStyle::Primary,
+                        ranges.first().unwrap().clone(),
+                        Some("First defined here".to_owned()),
+                    ))
+                    .chain(std::iter::once((
+                        LabelStyle::Secondary,
+                        ranges.get(1).unwrap().clone(),
+                        Some("Redefined here".to_owned()),
+                    )))
+                    .chain(ranges.iter().skip(2).map(|span| {
+                        (
+                            LabelStyle::Secondary,
+                            span.clone(),
+                            Some("And here".to_owned()),
+                        )
+                    }));
+
+                    to_codespan(self, file_id, labels)
+                }
+                ResolverErr::ReturnValueFromInit([return_range, init_range]) => to_codespan(
+                    self,
+                    file_id,
+                    [
+                        (
+                            LabelStyle::Primary,
+                            return_range.clone(),
+                            Some("Tried to return here".to_owned()),
+                        ),
+                        (
+                            LabelStyle::Secondary,
+                            init_range.clone(),
+                            Some("Initializer defined here".to_owned()),
+                        ),
+                    ],
+                ),
+                ResolverErr::ReadInOwnInitializer(range)
+                | ResolverErr::ReturnFromTop(range)
+                | ResolverErr::ThisOutsideClass(range)
+                | ResolverErr::SelfReferentialInheritance(range)
+                | ResolverErr::SuperOutsideSubclass(range) => to_codespan(
+                    self,
+                    file_id,
+                    [(LabelStyle::Primary, range.clone(), None::<String>)],
+                ),
+            }
         }
     }
 
     impl Display for ResolverErr {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            write!(f, "{}", self.kind)
-        }
-    }
-
-    impl LoxPos for ResolverErr {
-        fn pos(&self) -> ErrorPos {
-            self.pos
-        }
-    }
-
-    impl DisplayLoxError for ResolverErr {}
-
-    impl Error for ResolverErr {}
-
-    impl LoxError for ResolverErr {
-        fn time(&self) -> ErrorTime {
-            ErrorTime::Resolver
-        }
-    }
-
-    #[derive(Debug, Clone)]
-    pub enum ResolverErrKind {
-        ReadInOwnInitializer,
-        DefinedMultipleTimes(String),
-        ReturnFromTop,
-        ReturnValueFromInit,
-        ThisOutsideClass,
-        SelfReferentialInheritance,
-        SuperOutsideSubclass,
-    }
-
-    impl ErrorCode for ResolverErrKind {
-        fn error_code(&self) -> &'static str {
             match self {
-                ResolverErrKind::ReadInOwnInitializer => "AE0001",
-                ResolverErrKind::DefinedMultipleTimes(_) => "AE0002",
-                ResolverErrKind::ReturnFromTop => "AE0003",
-                ResolverErrKind::ReturnValueFromInit => "AE0004",
-                ResolverErrKind::ThisOutsideClass => "AE0005",
-                ResolverErrKind::SelfReferentialInheritance => "AE0006",
-                ResolverErrKind::SuperOutsideSubclass => "AE0007",
-            }
-        }
-    }
-
-    impl ErrorLevel for ResolverErrKind {
-        fn severity(&self) -> Severity {
-            match self {
-                ResolverErrKind::ReadInOwnInitializer => Severity::Error,
-                ResolverErrKind::DefinedMultipleTimes(_) => Severity::Error,
-                ResolverErrKind::ReturnFromTop => Severity::Error,
-                ResolverErrKind::ReturnValueFromInit => Severity::Error,
-                ResolverErrKind::ThisOutsideClass => Severity::Error,
-                ResolverErrKind::SelfReferentialInheritance => Severity::Error,
-                ResolverErrKind::SuperOutsideSubclass => Severity::Error,
-            }
-        }
-    }
-
-    impl Display for ResolverErrKind {
-        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            match self {
-                ResolverErrKind::ReadInOwnInitializer => {
+                ResolverErr::ReadInOwnInitializer(_) => {
                     write!(f, "Can't read variable in its own initializer")
                 }
-                ResolverErrKind::DefinedMultipleTimes(name) => {
-                    write!(f, "Already a variablw with this name in scope: {name}")
+                ResolverErr::DefinedMultipleTimes(name, ..) => {
+                    write!(f, "Already a variable with name `{name}` in scope")
                 }
-                ResolverErrKind::ReturnFromTop => {
+                ResolverErr::ReturnFromTop(_) => {
                     write!(f, "Can't return outside of a function")
                 }
-                ResolverErrKind::ThisOutsideClass => {
+                ResolverErr::ThisOutsideClass(_) => {
                     write!(f, "Can't use `this` outside a class method")
                 }
-                ResolverErrKind::ReturnValueFromInit => {
+                ResolverErr::ReturnValueFromInit(_) => {
                     write!(f, "Can't return a value from an initializer")
                 }
-                ResolverErrKind::SelfReferentialInheritance => {
+                ResolverErr::SelfReferentialInheritance(_) => {
                     write!(f, "Classes cannot inherit from themselves")
                 }
-                ResolverErrKind::SuperOutsideSubclass => {
+                ResolverErr::SuperOutsideSubclass(_) => {
                     write!(f, "Can't use super outside a subclass")
                 }
             }
@@ -598,110 +388,91 @@ pub mod anaylysis_err {
 }
 
 pub mod runtime_err {
-    use core::{error::Error, fmt::Display};
+    use core::fmt::Display;
+    use std::ops::Range;
+
+    use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle, Severity};
 
     use crate::tree_walk::{
         error::{
-            DisplayLoxError, ErrorPos, LoxError, LoxPos, diagnostic::ErrorTime,
-            eval_err::EvaluateError, fn_err::FunctionError,
+            ErrorCode, ErrorLevel, ToCodespan, eval_err::EvaluateError, fn_err::FunctionError,
         },
         lox_var::LoxVar,
     };
 
     #[derive(Debug, Clone)]
-    pub struct RuntimeError {
-        pub kind: RuntimeErrorKind,
-    }
-
-    impl RuntimeError {
-        pub fn new(kind: RuntimeErrorKind) -> Self {
-            Self { kind }
-        }
-    }
-
-    impl Display for RuntimeError {
-        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            write!(f, "{}", self.kind)
-        }
-    }
-
-    impl LoxPos for RuntimeError {
-        fn pos(&self) -> ErrorPos {
-            match &self.kind {
-                RuntimeErrorKind::EvaluateError(evaluate_error) => evaluate_error.pos(),
-                RuntimeErrorKind::FunctionError(function_error) => function_error.pos(),
-                RuntimeErrorKind::TooManyArguments(error_pos)
-                | RuntimeErrorKind::SuperClassIsNotAClass(.., error_pos)
-                | RuntimeErrorKind::StackOverflow(error_pos) => *error_pos,
-            }
-        }
-    }
-
-    impl DisplayLoxError for RuntimeError {
-        fn display_err(&self, source: &str, f: &mut impl std::io::Write) -> std::io::Result<()> {
-            match &self.kind {
-                RuntimeErrorKind::EvaluateError(evaluate_error) => {
-                    evaluate_error.display_err(source, f)
-                }
-                RuntimeErrorKind::FunctionError(function_error) => {
-                    function_error.display_err(source, f)
-                }
-                RuntimeErrorKind::TooManyArguments(error_pos)
-                | RuntimeErrorKind::SuperClassIsNotAClass(.., error_pos)
-                | RuntimeErrorKind::StackOverflow(error_pos) => {
-                    writeln!(f, "\x1b[1;36m{error_pos} \x1b[39m{self}\x1b[0m")?;
-                    error_pos.display_err(source, f)?;
-                    write!(f, "\n\x1b[1;36m\\\x1b[0m")
-                }
-            }
-        }
-    }
-
-    impl LoxError for RuntimeError {
-        fn time(&self) -> ErrorTime {
-            ErrorTime::Runtime
-        }
-    }
-
-    impl Error for RuntimeError {}
-
-    #[derive(Debug, Clone)]
-    pub enum RuntimeErrorKind {
+    pub enum RuntimeError {
         EvaluateError(EvaluateError),
         FunctionError(FunctionError),
-        TooManyArguments(ErrorPos),
-        SuperClassIsNotAClass(LoxVar, ErrorPos),
-        StackOverflow(ErrorPos),
-    }
-
-    impl Display for RuntimeErrorKind {
-        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            match self {
-                RuntimeErrorKind::EvaluateError(err) => write!(f, "{err}"),
-                RuntimeErrorKind::FunctionError(err) => write!(f, "{err}"),
-                RuntimeErrorKind::TooManyArguments(..) => {
-                    write!(f, "Too many arguments for function, expected at most 255")
-                }
-                RuntimeErrorKind::SuperClassIsNotAClass(not_class, ..) => {
-                    write!(f, "The super class `{not_class}` must be a class")
-                }
-                RuntimeErrorKind::StackOverflow(..) => write!(f, "Max call depth reached"),
-            }
-        }
+        TooManyArguments(usize, Range<usize>),
+        SuperClassIsNotAClass(LoxVar, Range<usize>),
+        StackOverflow,
     }
 
     impl From<EvaluateError> for RuntimeError {
         fn from(value: EvaluateError) -> Self {
-            Self {
-                kind: RuntimeErrorKind::EvaluateError(value),
-            }
+            RuntimeError::EvaluateError(value)
         }
     }
 
     impl From<FunctionError> for RuntimeError {
         fn from(value: FunctionError) -> Self {
-            Self {
-                kind: RuntimeErrorKind::FunctionError(value),
+            RuntimeError::FunctionError(value)
+        }
+    }
+
+    impl ErrorCode for RuntimeError {
+        fn error_code(&self) -> &'static str {
+            match self {
+                RuntimeError::EvaluateError(evaluate_error) => evaluate_error.error_code(),
+                RuntimeError::FunctionError(function_error) => function_error.error_code(),
+                RuntimeError::TooManyArguments(..) => "RE0001",
+                RuntimeError::SuperClassIsNotAClass(..) => "RE0002",
+                RuntimeError::StackOverflow => "RE0003",
+            }
+        }
+    }
+
+    impl ErrorLevel for RuntimeError {
+        fn severity(&self) -> codespan_reporting::diagnostic::Severity {
+            match self {
+                RuntimeError::EvaluateError(evaluate_error) => evaluate_error.severity(),
+                RuntimeError::FunctionError(function_error) => function_error.severity(),
+                RuntimeError::TooManyArguments(..) => Severity::Warning,
+                RuntimeError::SuperClassIsNotAClass(..) => Severity::Error,
+                RuntimeError::StackOverflow => Severity::Error,
+            }
+        }
+    }
+
+    impl ToCodespan for RuntimeError {
+        fn to_codespan<I: Copy>(&self, file_id: I) -> codespan_reporting::diagnostic::Diagnostic<I> {
+            match self {
+                RuntimeError::EvaluateError(evaluate_error) => evaluate_error.to_codespan(file_id),
+                RuntimeError::FunctionError(function_error) => function_error.to_codespan(file_id),
+                RuntimeError::TooManyArguments(_, range) |
+                RuntimeError::SuperClassIsNotAClass(_, range) => Diagnostic::new(self.severity()).with_code(self.error_code()).with_message(self.to_string())
+                .with_label(Label::new(LabelStyle::Primary, file_id, range.clone())),
+                RuntimeError::StackOverflow => Diagnostic::new(self.severity()).with_code(self.error_code()).with_message(self.to_string()),
+            }
+        }
+    }
+
+    impl Display for RuntimeError {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            match self {
+                RuntimeError::EvaluateError(err) => write!(f, "{err}"),
+                RuntimeError::FunctionError(err) => write!(f, "{err}"),
+                RuntimeError::TooManyArguments(got, ..) => {
+                    write!(
+                        f,
+                        "Too many arguments for function, expected at most 255, got {got}"
+                    )
+                }
+                RuntimeError::SuperClassIsNotAClass(not_class, ..) => {
+                    write!(f, "The super class `{not_class}` must be a class")
+                }
+                RuntimeError::StackOverflow => write!(f, "Max call depth reached"),
             }
         }
     }
@@ -709,9 +480,12 @@ pub mod runtime_err {
 
 pub mod eval_err {
     use core::{error::Error, fmt::Display};
+    use std::ops::Range;
+
+    use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle, Severity};
 
     use crate::tree_walk::{
-        error::{DisplayLoxError, ErrorPos, LoxError, LoxPos, diagnostic::ErrorTime},
+        error::{ErrorCode, ErrorLevel, ToCodespan},
         lox_var::{LoxVar, LoxVarKind},
         token::TokenKind,
     };
@@ -719,16 +493,16 @@ pub mod eval_err {
     #[derive(Debug, Clone)]
     pub struct EvaluateError {
         kind: EvaluateErrorKind,
-        pos: ErrorPos,
+        span: Range<usize>,
     }
 
     impl EvaluateError {
-        pub fn new(kind: EvaluateErrorKind, pos: ErrorPos) -> Self {
-            Self { kind, pos }
+        pub fn new(kind: EvaluateErrorKind, pos: Range<usize>) -> Self {
+            Self { kind, span: pos }
         }
 
         pub fn bin_eval_error(
-            pos: ErrorPos,
+            pos: Range<usize>,
             kind: TokenKind,
             left_var: &LoxVar,
             right_var: &LoxVar,
@@ -739,26 +513,12 @@ pub mod eval_err {
                     left_ty: left_var.into(),
                     right_ty: right_var.into(),
                 },
-                pos,
+                span: pos,
             }
         }
     }
 
-    impl LoxPos for EvaluateError {
-        fn pos(&self) -> ErrorPos {
-            self.pos
-        }
-    }
-
     impl Error for EvaluateError {}
-
-    impl DisplayLoxError for EvaluateError {}
-
-    impl LoxError for EvaluateError {
-        fn time(&self) -> ErrorTime {
-            ErrorTime::Runtime
-        }
-    }
 
     impl Display for EvaluateError {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -796,6 +556,47 @@ pub mod eval_err {
         NotInstance(LoxVarKind),
     }
 
+    impl ErrorCode for EvaluateError {
+        fn error_code(&self) -> &'static str {
+            match self.kind {
+                EvaluateErrorKind::IncompatableUnaryOperator { .. } => "EE0001",
+                EvaluateErrorKind::IncompatableBinaryOperator { .. } => "EE0002",
+                EvaluateErrorKind::UndeclaredVariable { .. } => "EE0003",
+                EvaluateErrorKind::NonCallable { .. } => "EE0004",
+                EvaluateErrorKind::IncorrectArity { .. } => "EE0005",
+                EvaluateErrorKind::IncompatableConversion { .. } => "EE0006",
+                EvaluateErrorKind::DivisionByZero => "EE0007",
+                EvaluateErrorKind::UndefinedProperty(_) => "EE0008",
+                EvaluateErrorKind::NotInstance(_) => "EE0009",
+            }
+        }
+    }
+
+    impl ErrorLevel for EvaluateError {
+        fn severity(&self) -> codespan_reporting::diagnostic::Severity {
+            match self.kind {
+                EvaluateErrorKind::IncompatableUnaryOperator { .. } => Severity::Error,
+                EvaluateErrorKind::IncompatableBinaryOperator { .. } => Severity::Error,
+                EvaluateErrorKind::UndeclaredVariable { .. } => Severity::Error,
+                EvaluateErrorKind::NonCallable { .. } => Severity::Error,
+                EvaluateErrorKind::IncorrectArity { .. } => Severity::Error,
+                EvaluateErrorKind::IncompatableConversion { .. } => Severity::Error,
+                EvaluateErrorKind::DivisionByZero => Severity::Warning,
+                EvaluateErrorKind::UndefinedProperty(_) => Severity::Error,
+                EvaluateErrorKind::NotInstance(_) => Severity::Error,
+            }
+        }
+    }
+
+    impl ToCodespan for EvaluateError {
+        fn to_codespan<I: Copy>(&self, file_id: I) -> Diagnostic<I> {
+            Diagnostic::new(self.severity())
+                .with_message(self.to_string())
+                .with_code(self.error_code())
+                .with_label(Label::new(LabelStyle::Primary, file_id, self.span.clone()))
+        }
+    }
+
     impl Display for EvaluateErrorKind {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             match &self {
@@ -824,7 +625,7 @@ pub mod eval_err {
                     )
                 }
                 EvaluateErrorKind::IncompatableConversion { from, to } => {
-                    write!(f, "Could not convert from `{from:?}` to `{to:?}`")
+                    write!(f, "Cannot coerce `{from:?}` to `{to:?}`")
                 }
                 EvaluateErrorKind::DivisionByZero => write!(f, "Tried to divide by zero"),
                 EvaluateErrorKind::UndefinedProperty(name) => {
@@ -839,32 +640,22 @@ pub mod eval_err {
             }
         }
     }
-
-    impl From<EvaluateError> for EvaluateErrorKind {
-        fn from(value: EvaluateError) -> Self {
-            value.kind
-        }
-    }
 }
 
 pub mod fn_err {
     use core::{error::Error, fmt::Display};
+    use std::ops::Range;
 
-    use codespan_reporting::diagnostic::Diagnostic;
+    use codespan_reporting::diagnostic::{Label, LabelStyle, Severity};
 
     use crate::tree_walk::{
-        error::{
-            DisplayLoxError, ErrorPos, LoxError, LoxPos, ToCodespan,
-            diagnostic::ErrorTime,
-            runtime_err::{RuntimeError, RuntimeErrorKind},
-        },
+        error::{ErrorCode, ErrorLevel, ToCodespan, runtime_err::RuntimeError},
         lox_var::LoxVar,
     };
 
     #[derive(Debug, Clone)]
     pub struct FunctionError {
-        pub call_pos: Option<Box<ErrorPos>>,
-        pub sub_pos: Option<Box<ErrorPos>>,
+        pub call_span: Option<Box<Range<usize>>>,
         pub input_args: Vec<LoxVar>,
         kind: FunctionErrorKind,
     }
@@ -873,71 +664,13 @@ pub mod fn_err {
         pub fn new(kind: FunctionErrorKind) -> Self {
             Self {
                 kind,
-                call_pos: None,
-                sub_pos: None,
+                call_span: None,
                 input_args: Vec::new(),
             }
         }
     }
 
-    impl LoxPos for FunctionError {
-        fn pos(&self) -> ErrorPos {
-            *self
-                .call_pos
-                .clone()
-                .expect("Call pos needs to be set for function error")
-        }
-    }
-
     impl Error for FunctionError {}
-
-    impl DisplayLoxError for FunctionError {
-        fn display_err(&self, source: &str, f: &mut impl std::io::Write) -> std::io::Result<()> {
-            let call_pos = *self
-                .call_pos
-                .clone()
-                .expect("Call pos needs to be inserted to produce errors");
-
-            writeln!(
-                f,
-                "\x1b[1;36m{call_pos} \x1b[39mFunction errored with error: {self}\x1b[0m"
-            )?;
-            writeln!(
-                f,
-                "\x1b[1;36m|\x1b[0m \x1b[1mFunction called here with arguments ({})\x1b[0m",
-                self.input_args
-                    .iter()
-                    .enumerate()
-                    .map(|(i, v)| if i == 0 {
-                        v.to_string()
-                    } else {
-                        ", ".to_owned() + &v.to_string()
-                    })
-                    .collect::<String>()
-            )?;
-            call_pos.display_err(source, f)?;
-
-            if let Some(sub_pos) = self.sub_pos.as_ref() {
-                write!(
-                    f,
-                    "\n\x1b[1;36m{sub_pos}\x1b[0m \x1b[1mActual error occured here\x1b[0m\n"
-                )?;
-                sub_pos.display_err(source, f)?;
-            }
-
-            write!(f, "\n\x1b[1;36m\\\x1b[0m")
-        }
-    }
-
-    impl ToCodespan for FunctionError {
-        fn to_codespan(&self) -> codespan_reporting::diagnostic::Diagnostic<usize> {}
-    }
-
-    impl LoxError for FunctionError {
-        fn time(&self) -> ErrorTime {
-            ErrorTime::Runtime
-        }
-    }
 
     impl Display for FunctionError {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -945,10 +678,58 @@ pub mod fn_err {
         }
     }
 
+    impl ErrorLevel for FunctionError {
+        fn severity(&self) -> codespan_reporting::diagnostic::Severity {
+            match &self.kind {
+                FunctionErrorKind::IncorrectArity { .. } => Severity::Error,
+                FunctionErrorKind::SubError(sub_error) => sub_error.severity(),
+            }
+        }
+    }
+
+    impl ErrorCode for FunctionError {
+        fn error_code(&self) -> &'static str {
+            match &self.kind {
+                FunctionErrorKind::IncorrectArity { .. } => "FE0001",
+                FunctionErrorKind::SubError(runtime_error) => runtime_error.error_code(),
+            }
+        }
+    }
+
+    impl ToCodespan for FunctionError {
+        fn to_codespan<I: Copy>(
+            &self,
+            file_id: I,
+        ) -> codespan_reporting::diagnostic::Diagnostic<I> {
+            match &self.kind {
+                FunctionErrorKind::IncorrectArity { .. } => {
+                    let err = codespan_reporting::diagnostic::Diagnostic::new(self.severity())
+                        .with_message(self.to_string())
+                        .with_code(self.error_code());
+
+                    if let Some(span) = &self.call_span {
+                        err.with_label(Label::new(LabelStyle::Primary, file_id, *span.clone()))
+                    } else {
+                        err
+                    }
+                }
+                FunctionErrorKind::SubError(runtime_error) => {
+                    let err = runtime_error.to_codespan(file_id);
+
+                    if let Some(span) = &self.call_span {
+                        err.with_label(Label::new(LabelStyle::Secondary, file_id, *span.clone()))
+                    } else {
+                        err
+                    }
+                }
+            }.with_note(format!("Called with args: [{}]", self.input_args.iter().map(|arg| arg.to_string()).collect::<Vec<String>>().join(", ")))
+        }
+    }
+
     #[derive(Debug, Clone)]
     pub enum FunctionErrorKind {
         IncorrectArity { expected: u8, got: usize },
-        SubError(Box<RuntimeErrorKind>),
+        SubError(Box<RuntimeError>),
     }
 
     impl Display for FunctionErrorKind {
@@ -962,261 +743,4 @@ pub mod fn_err {
             }
         }
     }
-
-    impl From<RuntimeError> for FunctionError {
-        fn from(value: RuntimeError) -> Self {
-            Self {
-                call_pos: None,
-                sub_pos: Some(Box::new(value.pos())),
-                input_args: Vec::new(),
-                kind: FunctionErrorKind::SubError(Box::new(value.kind)),
-            }
-        }
-    }
 }
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ErrorPos {
-    InFile {
-        line: usize,
-        column: usize,
-        columns: usize,
-        lines: usize,
-    },
-    Outside,
-}
-
-impl ToCodespan for ErrorPos {
-    fn to_codespan(&self) -> Diagnostic<usize> {
-        todo!()
-    }
-}
-
-impl ErrorPos {
-    pub fn new(line: usize, column: usize, columns: usize, lines: usize) -> Self {
-        Self::InFile {
-            line,
-            column,
-            columns,
-            lines,
-        }
-    }
-
-    pub fn end(&self) -> Self {
-        if let ErrorPos::InFile {
-            line,
-            column,
-            columns,
-            lines,
-        } = self
-        {
-            ErrorPos::InFile {
-                line: line + lines - 1,
-                column: column + columns,
-                columns: 1,
-                lines: 1,
-            }
-        } else {
-            ErrorPos::Outside
-        }
-    }
-
-    /// # Panics
-    /// Panics if to is less then from.
-    pub fn span_to(&self, to: Self) -> Self {
-        match (self, to) {
-            (
-                ErrorPos::InFile {
-                    line,
-                    column,
-                    lines,
-                    ..
-                },
-                ErrorPos::InFile {
-                    line: to_line,
-                    column: to_column,
-                    columns: to_columns,
-                    lines: to_lines,
-                },
-            ) => {
-                assert!(
-                    *line < to_line,
-                    "The line of the second is before the first"
-                );
-                assert!(
-                    to_line > *line || (to_line == *line && to_column >= *column),
-                    "End position before first position"
-                );
-
-                Self::InFile {
-                    line: *line,
-                    column: *column,
-                    columns: if *line == to_line {
-                        (to_column + to_columns) - column
-                    } else {
-                        to_column + to_columns
-                    },
-                    lines: *lines + ((to_line + to_lines - 1) - line),
-                }
-            }
-            _ => ErrorPos::Outside,
-        }
-    }
-}
-
-impl Display for ErrorPos {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        if let ErrorPos::InFile { line, column, .. } = self {
-            write!(f, "[Line {}:{}]", line, column)
-        } else {
-            Ok(())
-        }
-    }
-}
-
-impl LoxPos for ErrorPos {
-    fn pos(&self) -> ErrorPos {
-        *self
-    }
-}
-
-impl DisplayLoxError for ErrorPos {
-    fn display_err(&self, source: &str, f: &mut impl std::io::Write) -> std::io::Result<()> {
-        if let ErrorPos::InFile {
-            line,
-            column,
-            columns,
-            lines: lines_num,
-        } = self
-        {
-            let lines =
-                source.lines().collect::<Vec<&str>>()[line - 1..(line + lines_num) - 1].to_vec();
-
-            match lines_num {
-                0 => Ok(()),
-                1 => {
-                    write!(f, "\x1b[1;36m|\x1b[0m  {}", lines[0])?;
-                    write!(
-                        f,
-                        "\n\x1b[1;36m|\x1b[0m {}\x1b[31m{}\x1b[0m",
-                        " ".repeat(*column),
-                        "^".repeat(*columns)
-                    )
-                }
-                2 => {
-                    write!(f, "\x1b[1;36m|\x1b[0m  {}", lines[0])?;
-                    write!(
-                        f,
-                        "\n\x1b[1;36m|\x1b[0m{}\x1b[31m{}\x1b[0m",
-                        " ".repeat(*column),
-                        "^".repeat(lines[0].len() - column)
-                    )?;
-
-                    write!(f, "\n\x1b[1;36m|\x1b[0m  {}", lines[1])?;
-                    write!(
-                        f,
-                        "\n\x1b[1;36m|\x1b[0m  \x1b[31m{}\x1b[0m",
-                        "^".repeat(*columns)
-                    )
-                }
-                _ => {
-                    // > 2
-                    write!(f, "\x1b[1;36m|\x1b[0m  {}", lines[0])?;
-                    write!(
-                        f,
-                        "\n\x1b[1;36m|\x1b[0m{}\x1b[31m{}\x1b[0m",
-                        " ".repeat(*column),
-                        "^".repeat(lines[0].len() - column)
-                    )?;
-
-                    for l in &lines[1..lines.len() - 2] {
-                        write!(f, "\n\x1b[1;36m|\x1b[0m  {}", l)?;
-                        write!(
-                            f,
-                            "\n\x1b[1;36m|\x1b[0m  \x1b[31m{}\x1b[0m",
-                            "^".repeat(l.len())
-                        )?;
-                    }
-
-                    write!(
-                        f,
-                        "\n\x1b[1;36m|\x1b[0m  {}",
-                        lines
-                            .last()
-                            .expect("This iterator must have at leat 3 elements")
-                    )?;
-                    write!(
-                        f,
-                        "\n\x1b[1;36m|\x1b[0m  \x1b[31m{}\x1b[0m",
-                        "^".repeat(*columns)
-                    )
-                }
-            }
-        } else {
-            Ok(())
-        }
-    }
-}
-
-impl LoxError for ErrorPos {
-    /// # Not to be used
-    fn time(&self) -> ErrorTime {
-        unimplemented!("Time cannot be called on ErrorPos")
-    }
-}
-
-impl From<&Token<'_>> for ErrorPos {
-    fn from(value: &Token<'_>) -> Self {
-        use super::token::TokenKind::*;
-        ErrorPos::InFile {
-            line: value.line,
-            column: if value.kind == String {
-                value.column - 1
-            } else {
-                value.column
-            },
-            columns: match value.kind {
-                BangEqual | EqualEqual | GreaterEqual | LessEqual => 2,
-                Or | If => 2,
-                And | Var | Fun | For | Nil => 3,
-                Else | This | True => 4,
-                Class | False | Print | Super | While => 5,
-                Return => 6,
-                Identifier => value.lexeme.len(),
-                String => value.lexeme.len() + 2,
-                Number => value.lexeme.len(),
-                _ => 1,
-            },
-            lines: 1,
-        }
-    }
-}
-
-impl From<Token<'_>> for ErrorPos {
-    fn from(value: Token<'_>) -> Self {
-        use super::token::TokenKind::*;
-        ErrorPos::InFile {
-            line: value.line,
-            column: if value.kind == String {
-                value.column - 1
-            } else {
-                value.column
-            },
-            columns: match value.kind {
-                BangEqual | EqualEqual | GreaterEqual | LessEqual => 2,
-                Or | If => 2,
-                And | Var | Fun | For | Nil => 3,
-                Else | This | True => 4,
-                Class | False | Print | Super | While => 5,
-                Return => 6,
-                Identifier => value.lexeme.len(),
-                String => value.lexeme.len() + 2,
-                Number => value.lexeme.len(),
-                _ => 1,
-            },
-            lines: 1,
-        }
-    }
-}
-
-impl Error for ErrorPos {}
