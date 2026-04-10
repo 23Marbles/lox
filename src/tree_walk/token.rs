@@ -13,6 +13,16 @@ pub struct Scanner<'source> {
     eof: bool,
 }
 
+fn normalize_char(c: char) -> char {
+    match c {
+        '（' => '(',
+        '）' => ')',
+        '｛' => '{',
+        '｝' => '}',
+        _ => c,
+    }
+}
+
 impl<'source> Scanner<'source> {
     pub fn new(source: &'source str, file_id: usize) -> Self {
         Self {
@@ -74,26 +84,24 @@ impl<'source> Scanner<'source> {
             ))
     }
 
-    fn advance(&mut self) -> char {
-        let c = self.source.as_bytes()[self.current] as char;
-        self.current += 1;
-        c
+    fn advance(&mut self) -> Option<char> {
+        let ch = self.source[self.current..].chars().next()?;
+        self.current += ch.len_utf8(); // IMPORTANT for UTF-8
+        Some(normalize_char(ch))
     }
 
     fn peek(&self) -> char {
-        if self.is_at_end() {
-            '\0'
-        } else {
-            self.source.as_bytes()[self.current] as char
-        }
+        self.source[self.current..]
+            .chars()
+            .next()
+            .map(|c| normalize_char(c))
+            .unwrap_or('\0')
     }
 
     fn peek_next(&self) -> char {
-        if self.current + 1 >= self.source.len() {
-            '\0'
-        } else {
-            self.source.as_bytes()[self.current + 1] as char
-        }
+        let mut iter = self.source[self.current..].chars();
+        iter.next();
+        iter.next().map(|c| normalize_char(c)).unwrap_or('\0')
     }
 
     fn advance_if(&mut self, func: impl FnOnce(/*next_char*/ char) -> bool) -> bool {
@@ -150,7 +158,7 @@ impl<'source> Iterator for Scanner<'source> {
         Some(Ok('scan: {
             let c = self.advance();
 
-            let current_token_type = match c {
+            let current_token_type = match c? {
                 '(' => break 'scan self.make_token(TokenKind::LeftParen),
                 ')' => break 'scan self.make_token(TokenKind::RightParen),
                 '{' => break 'scan self.make_token(TokenKind::LeftBrace),
@@ -172,7 +180,11 @@ impl<'source> Iterator for Scanner<'source> {
                     let mut string = String::new();
                     string.push(x);
                     while self.peek().is_alphanumeric() || self.peek() == '_' {
-                        string.push(self.advance());
+                        string.push(
+                            self.advance()
+                                .ok_or(self.error(ScanErrorKind::UnterminatedString))
+                                .ok()?,
+                        );
                     }
                     if let Some(key) = TokenKind::search_keyword_str(&string) {
                         break 'scan self.make_token(key);

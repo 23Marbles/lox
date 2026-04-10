@@ -109,6 +109,7 @@ impl Interpreter {
 
     pub fn run(&mut self) -> crate::Result<Vec<InterpOut>> {
         let id = self.file_id;
+        dbg!(&self.statements);
         self.into_iter()
             .map(|r| r.map_err(|e| vec![e.to_codespan(id)]))
             .collect::<Result<Vec<_>, _>>()
@@ -122,6 +123,7 @@ impl Interpreter {
             }
             Stmt::Print(expr) => {
                 let value = self.evaluate_expr(expr)?;
+                dbg!(&value);
                 self.out_buf.println(value);
                 Ok(ControlFlow::None)
             }
@@ -140,7 +142,15 @@ impl Interpreter {
                 self.env = Env::new_env(Some(previous.clone()));
 
                 for stmt in stmts {
-                    match self.run_stmt(stmt)? {
+                    match {
+                        match self.run_stmt(stmt) {
+                            Ok(c) => c,
+                            Err(e) => {
+                                self.env = previous;
+                                return Err(e);
+                            }
+                        }
+                    } {
                         ControlFlow::None => {}
                         ControlFlow::Return(v) => {
                             self.env = previous;
@@ -440,7 +450,7 @@ impl Interpreter {
                     .iter()
                     .map(|expr| self.evaluate_expr(expr.clone()))
                     .collect::<Result<_, _>>()?;
-                match self.evaluate_expr(*callee)? {
+                let res = match self.evaluate_expr(*callee)? {
                     LoxVar::Callable(func) => {
                         let ret = func.call(self, &arguments).map_err(|mut err| {
                             err.call_span = Some(Box::new(span));
@@ -452,8 +462,6 @@ impl Interpreter {
                         if self.call_depth > MAX_CALL_DEPTH {
                             return Err(RuntimeError::StackOverflow);
                         }
-
-                        self.call_depth -= 1;
 
                         Ok(ret)
                     }
@@ -469,8 +477,6 @@ impl Interpreter {
                             return Err(RuntimeError::StackOverflow);
                         }
 
-                        self.call_depth -= 1;
-
                         Ok(ret)
                     }
                     other => Err(EvaluateError::new(
@@ -480,7 +486,11 @@ impl Interpreter {
                         span,
                     )
                     .into()),
-                }
+                };
+
+                self.call_depth -= 1;
+
+                return res;
             }
             Expr::Get { object, name, span } => {
                 let obj = self.evaluate_expr(*object)?;

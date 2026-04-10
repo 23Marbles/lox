@@ -55,22 +55,23 @@ pub fn run_file_with_writer<W: Write + Send + 'static>(
     }
 }
 
-fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> crate::Result<()> {
+fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) {
     let mut line_buf = String::new();
 
-    let mut runner = Runner::with_writer(Box::new(stdout()))
+    let mut runner = Runner::new()
         .with_globals(globals)
         .with_print_exprs(cfg!(feature = "repl_expr_print"));
 
     loop {
         print!("> ");
-        stdout().flush().map_err(|e| vec![diag_from_io(e)])?;
-        if stdin()
-            .read_line(&mut line_buf)
-            .map_err(|e| vec![diag_from_io(e)])?
-            == 0
-        {
-            break Ok(());
+        if let Err(errs) = stdout().flush().map_err(|e| vec![diag_from_io(e)]) {
+            runner.write_errors(errs);
+            continue;
+        }
+        match stdin().read_line(&mut line_buf) {
+            Ok(0) => return,
+            Err(err) => runner.write_errors([diag_from_io(err)]),
+            _ => {}
         }
 
         #[cfg(feature = "implicit_semicolons")]
