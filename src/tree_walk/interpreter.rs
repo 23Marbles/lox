@@ -6,13 +6,16 @@ use crate::tree_walk::{
         expr::Expr,
         stmt::{ControlFlow, Stmt},
     },
-    error::{ToCodespan, eval_err::{EvaluateError, EvaluateErrorKind}, runtime_err::RuntimeError
+    error::{
+        ToCodespan,
+        eval_err::{EvaluateError, EvaluateErrorKind},
+        runtime_err::RuntimeError,
     },
     interpreter::env::{Env, EnvironmentImpl as _},
     lox_var::{
         LoxVar,
         class::{InstanceImpl as _, LoxClass},
-        functions::{LoxCallable as _, LoxFunc},
+        functions::{LoxCallable, LoxFunc},
     },
 };
 
@@ -20,18 +23,12 @@ const MAX_CALL_DEPTH: usize = 1024;
 
 #[derive(Debug, Clone)]
 pub struct Interpreter {
-    pub cfg: InterpreterConfig,
     statements: Vec<Stmt>,
     ip: usize,
     out_buf: InterpOut,
     pub env: Env,
     call_depth: usize,
     file_id: usize,
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct InterpreterConfig {
-    _print_expr: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -69,20 +66,11 @@ impl Iterator for Interpreter {
     }
 }
 
-impl InterpreterConfig {
-    pub fn new(print_expr: bool) -> Self {
-        Self {
-            _print_expr: print_expr,
-        }
-    }
-}
-
 impl Interpreter {
     pub fn new(file_id: usize) -> Self {
         Self {
             statements: Vec::new(),
             env: Env::new_env(None),
-            cfg: InterpreterConfig::default(),
             ip: 0,
             out_buf: InterpOut::default(),
             call_depth: 0,
@@ -95,19 +83,35 @@ impl Interpreter {
         self
     }
 
+    pub fn set_stmts(&mut self, statements: &[Stmt]) {
+        self.statements = statements.to_vec();
+    }
+
     pub fn with_env(mut self, env: Env) -> Self {
         self.env = env;
         self
     }
 
-    pub fn with_cfg(mut self, cfg: InterpreterConfig) -> Self {
-        self.cfg = cfg;
+    pub fn set_env(&mut self, env: Env) {
+        self.env = env;
+    }
+
+    pub fn with_globals(mut self, globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Self {
+        self.env = Env::new_env(Some(Env::new_with_globals(
+            globals
+                .iter()
+                .cloned()
+                .map(|(name, func)| (name, LoxVar::Callable(func)))
+                .collect(),
+        )));
         self
     }
 
     pub fn run(&mut self) -> crate::Result<Vec<InterpOut>> {
         let id = self.file_id;
-        self.into_iter().map(|r| r.map_err(|e| vec![e.to_codespan(id)])).collect::<Result<Vec<_>, _>>()
+        self.into_iter()
+            .map(|r| r.map_err(|e| vec![e.to_codespan(id)]))
+            .collect::<Result<Vec<_>, _>>()
     }
 
     pub fn run_stmt(&mut self, stmt: Stmt) -> Result<ControlFlow, RuntimeError> {
@@ -181,8 +185,10 @@ impl Interpreter {
                 self.env.borrow_mut().define(
                     name.to_owned(),
                     LoxVar::Callable(Rc::new(LoxFunc::new(
-                        parameters.len().try_into().map_err(|_| {RuntimeError::TooManyArguments(parameters.len(), span)
-                        })?,
+                        parameters
+                            .len()
+                            .try_into()
+                            .map_err(|_| RuntimeError::TooManyArguments(parameters.len(), span))?,
                         body,
                         parameters,
                         name,
@@ -278,13 +284,14 @@ impl Interpreter {
                         if let LoxVar::Number(n) = right_var {
                             Ok(LoxVar::Number(-n))
                         } else {
-                            Err(
-                                EvaluateError::new(EvaluateErrorKind::IncompatableUnaryOperator {
+                            Err(EvaluateError::new(
+                                EvaluateErrorKind::IncompatableUnaryOperator {
                                     operator: TokenKind::Minus,
                                     var_ty: right_var.into(),
-                                }, span)
-                                .into()
+                                },
+                                span,
                             )
+                            .into())
                         }
                     }
                     TokenKind::Bang => Ok(LoxVar::Bool(!right_var.is_truthy())),

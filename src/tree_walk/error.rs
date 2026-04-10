@@ -1,5 +1,5 @@
 use core::fmt::Display;
-use std::ops::Range;
+use std::{io, ops::Range};
 
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle, Severity};
 
@@ -18,6 +18,13 @@ pub trait ToCodespan: ErrorCode + ErrorLevel + Display {
             .with_message(self.to_string())
             .with_code(self.error_code())
     }
+}
+
+pub fn diag_from_io<T>(from: io::Error) -> Diagnostic<T> {
+    Diagnostic::new(Severity::Bug)
+        .with_message(from.to_string())
+        // Core Error 0001
+        .with_code("CE0001")
 }
 
 fn to_codespan<
@@ -169,30 +176,43 @@ pub mod parse_err {
             file_id: I,
         ) -> codespan_reporting::diagnostic::Diagnostic<I> {
             match self {
-                ParseError::UnexpectedTokenKind {
-                    span,
-                    expected,
-                    ..
-                } => {
+                ParseError::UnexpectedTokenKind { span, expected, .. } => {
                     codespan_reporting::diagnostic::Diagnostic::new(self.severity())
                         .with_message(self.to_string())
                         .with_code(self.error_code())
                         .with_label(Label::new(LabelStyle::Primary, file_id, span.clone()))
-                        .with_note(format!("Expected one of [{}]", expected.iter().map(|token_kind| token_kind.to_string()).collect::<Vec<String>>().join(", ")))
-                },
+                        .with_note(format!(
+                            "Expected one of [{}]",
+                            expected
+                                .iter()
+                                .map(|token_kind| token_kind.to_string())
+                                .collect::<Vec<String>>()
+                                .join(", ")
+                        ))
+                }
                 ParseError::TooManyArguments { spans, .. } => {
                     codespan_reporting::diagnostic::Diagnostic::new(self.severity())
                         .with_message(self.to_string())
                         .with_code(self.error_code())
-                        .with_labels_iter(spans.iter().map(|span| Label::new(LabelStyle::Secondary, file_id, span.clone())))
+                        .with_labels_iter(
+                            spans.iter().map(|span| {
+                                Label::new(LabelStyle::Secondary, file_id, span.clone())
+                            }),
+                        )
                 }
-                | ParseError::ExpectedName { span, prev_span, after, ..  } => {
-                    codespan_reporting::diagnostic::Diagnostic::new(self.severity())
-                        .with_message(self.to_string())
-                        .with_code(self.error_code())
-                        .with_label(Label::new(LabelStyle::Primary, file_id, span.clone()))
-                        .with_label(Label::new(LabelStyle::Secondary, file_id, prev_span.clone()).with_message(format!("Expected after `{after:?}`")))
-                }
+                ParseError::ExpectedName {
+                    span,
+                    prev_span,
+                    after,
+                    ..
+                } => codespan_reporting::diagnostic::Diagnostic::new(self.severity())
+                    .with_message(self.to_string())
+                    .with_code(self.error_code())
+                    .with_label(Label::new(LabelStyle::Primary, file_id, span.clone()))
+                    .with_label(
+                        Label::new(LabelStyle::Secondary, file_id, prev_span.clone())
+                            .with_message(format!("Expected after `{after:?}`")),
+                    ),
                 ParseError::ExpectedTokenKind { span, .. }
                 | ParseError::InvalidAssignTarget { span, .. }
                 | ParseError::ExpectedNumber { span, .. } => {
@@ -211,13 +231,13 @@ pub mod parse_err {
                 ParseError::UnexpectedTokenKind { got, .. } => {
                     write!(f, "Unexpected token kind: `{:?}`", got)
                 }
-                ParseError::ExpectedTokenKind{ got, expected, .. } => {
+                ParseError::ExpectedTokenKind { got, expected, .. } => {
                     write!(f, "Expected token kind: `{:?}`, got: `{:?}`", expected, got)
                 }
-                ParseError::InvalidAssignTarget{ target, .. } => {
+                ParseError::InvalidAssignTarget { target, .. } => {
                     write!(f, "Cannot assign to `{target}`")
                 }
-                ParseError::TooManyArguments{..} => {
+                ParseError::TooManyArguments { .. } => {
                     write!(f, "Function can't have over 255 arguments")
                 }
                 ParseError::ExpectedName { name, after, .. } => {
@@ -446,14 +466,21 @@ pub mod runtime_err {
     }
 
     impl ToCodespan for RuntimeError {
-        fn to_codespan<I: Copy>(&self, file_id: I) -> codespan_reporting::diagnostic::Diagnostic<I> {
+        fn to_codespan<I: Copy>(
+            &self,
+            file_id: I,
+        ) -> codespan_reporting::diagnostic::Diagnostic<I> {
             match self {
                 RuntimeError::EvaluateError(evaluate_error) => evaluate_error.to_codespan(file_id),
                 RuntimeError::FunctionError(function_error) => function_error.to_codespan(file_id),
-                RuntimeError::TooManyArguments(_, range) |
-                RuntimeError::SuperClassIsNotAClass(_, range) => Diagnostic::new(self.severity()).with_code(self.error_code()).with_message(self.to_string())
-                .with_label(Label::new(LabelStyle::Primary, file_id, range.clone())),
-                RuntimeError::StackOverflow => Diagnostic::new(self.severity()).with_code(self.error_code()).with_message(self.to_string()),
+                RuntimeError::TooManyArguments(_, range)
+                | RuntimeError::SuperClassIsNotAClass(_, range) => Diagnostic::new(self.severity())
+                    .with_code(self.error_code())
+                    .with_message(self.to_string())
+                    .with_label(Label::new(LabelStyle::Primary, file_id, range.clone())),
+                RuntimeError::StackOverflow => Diagnostic::new(self.severity())
+                    .with_code(self.error_code())
+                    .with_message(self.to_string()),
             }
         }
     }
@@ -493,7 +520,7 @@ pub mod eval_err {
     #[derive(Debug, Clone)]
     pub struct EvaluateError {
         kind: EvaluateErrorKind,
-        span: Range<usize>,
+        pub(super) span: Range<usize>,
     }
 
     impl EvaluateError {
@@ -722,7 +749,33 @@ pub mod fn_err {
                         err
                     }
                 }
-            }.with_note(format!("Called with args: [{}]", self.input_args.iter().map(|arg| arg.to_string()).collect::<Vec<String>>().join(", ")))
+            }
+            .with_note(format!(
+                "Called with args: [{}]",
+                self.input_args
+                    .iter()
+                    .map(|arg| arg.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ))
+        }
+    }
+
+    impl From<RuntimeError> for FunctionError {
+        fn from(runtime_error: RuntimeError) -> Self {
+            Self {
+                call_span: match &runtime_error {
+                    RuntimeError::EvaluateError(evaluate_error) => {
+                        Some(Box::new(evaluate_error.span.clone()))
+                    }
+                    RuntimeError::FunctionError(function_error) => function_error.call_span.clone(),
+                    RuntimeError::TooManyArguments(_, span) => Some(Box::new(span.clone())),
+                    RuntimeError::SuperClassIsNotAClass(_, span) => Some(Box::new(span.clone())),
+                    RuntimeError::StackOverflow => None,
+                },
+                input_args: Vec::new(),
+                kind: FunctionErrorKind::SubError(Box::new(runtime_error)),
+            }
         }
     }
 

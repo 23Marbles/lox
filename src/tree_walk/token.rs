@@ -5,16 +5,16 @@ use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 
 use crate::tree_walk::error::{ErrorCode, scan_err::ScanErrorKind};
 
-pub struct Scanner<'a> {
+pub struct Scanner<'source> {
     file_id: usize,
-    source: &'a str,
+    source: &'source str,
     start: usize,
     current: usize,
     eof: bool,
 }
 
-impl<'a> Scanner<'a> {
-    pub fn new(source: &'a str, file_id: usize) -> Self {
+impl<'source> Scanner<'source> {
+    pub fn new(source: &'source str, file_id: usize) -> Self {
         Self {
             file_id,
             source,
@@ -24,7 +24,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn scan_tokens(&mut self) -> Result<Vec<Token<'a>>, Vec<Diagnostic<usize>>> {
+    pub fn scan_tokens(&mut self) -> Result<Vec<Token<'source>>, Vec<Diagnostic<usize>>> {
         let mut errors: Vec<Diagnostic<usize>> = Vec::new();
 
         let tokens: Vec<Token<'_>> = self
@@ -44,15 +44,15 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn lexeme_with_bounds(&self, start: usize, end: usize) -> &'a str {
+    fn lexeme_with_bounds(&self, start: usize, end: usize) -> &'source str {
         &self.source[start..end]
     }
 
-    fn make_token(&self, kind: TokenKind) -> Token<'a> {
+    fn make_token(&self, kind: TokenKind) -> Token<'source> {
         self.make_token_with_slice(kind, self.start, self.current)
     }
 
-    fn make_token_with_slice(&self, kind: TokenKind, start: usize, end: usize) -> Token<'a> {
+    fn make_token_with_slice(&self, kind: TokenKind, start: usize, end: usize) -> Token<'source> {
         Token {
             kind,
             lexeme: self.lexeme_with_bounds(start, end),
@@ -109,7 +109,12 @@ impl<'a> Scanner<'a> {
         self.advance_if(|c| c == expected)
     }
 
-    fn make_token_if(&mut self, expected: char, kind: TokenKind, other: TokenKind) -> Token<'a> {
+    fn make_token_if(
+        &mut self,
+        expected: char,
+        kind: TokenKind,
+        other: TokenKind,
+    ) -> Token<'source> {
         if self.advance_if_next(expected) {
             self.make_token(kind)
         } else {
@@ -120,20 +125,10 @@ impl<'a> Scanner<'a> {
     fn is_at_end(&self) -> bool {
         self.current >= self.source.len()
     }
-
-    fn column(&self, index: usize) -> usize {
-        let line_start = self.source[..index].rfind('\n').map(|i| i + 1).unwrap_or(0);
-
-        self.source[line_start..index].chars().count()
-    }
-
-    fn line(&self, index: usize) -> usize {
-        self.source[..index].chars().filter(|c| *c == '\n').count() + 1
-    }
 }
 
-impl<'a> Iterator for Scanner<'a> {
-    type Item = Result<Token<'a>, Diagnostic<usize>>;
+impl<'source> Iterator for Scanner<'source> {
+    type Item = Result<Token<'source>, Diagnostic<usize>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.eof {

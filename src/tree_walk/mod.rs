@@ -1,23 +1,23 @@
 #![allow(clippy::single_call_fn)]
 
 use std::{
-    env, fs,
+    env,
     io::{Write, stdin, stdout},
     path::Path,
     process::exit,
     rc::Rc,
 };
 
-use crate::tree_walk::{
-    error::{DisplayLoxError, diagnostic::Diagnostic},
-    interpreter::{
-        Interpreter, InterpreterConfig,
-        env::{Env, EnvironmentImpl as _},
+use crate::{
+    Runner,
+    tree_walk::{
+        error::{ToCodespan, diag_from_io},
+        interpreter::Interpreter,
+        lox_var::functions::LoxCallable,
+        parser::Parser,
+        static_analysis::Resolver,
+        token::Scanner,
     },
-    lox_var::{LoxVar, functions::LoxCallable},
-    parser::Parser,
-    static_analysis::Resolver,
-    token::Scanner,
 };
 pub mod ast;
 pub mod error;
@@ -27,92 +27,54 @@ pub mod parser;
 pub mod static_analysis;
 pub mod token;
 
-pub fn main(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> crate::Result<()> {
+pub fn main(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) {
     let args: Vec<String> = env::args().collect();
 
     if args.len() > 2 {
         println!("usage: rlox [script]");
         exit(64)
     } else if args.len() == 2 {
-        run_file(Path::new(&args[1]), globals)
+        run_file_with_writer(Path::new(&args[1]), globals, Box::new(stdout()));
     } else {
-        run_prompt(globals)
+        run_prompt(globals);
     }
 }
 
-pub fn run_file_with_writer(
+pub fn run_file_with_writer<W: Write + Send + 'static>(
     file_path: &Path,
     globals: Vec<(&'static str, Rc<dyn LoxCallable>)>,
-    writer: &mut impl Write,
-) -> crate::Result<()> {
+    writer: W,
+) {
     #[cfg(feature = "debug_print")]
     writeln!(writer, "script opened at {:?}", file_path)?;
 
-    let contents = fs::read_to_string(file_path).map_err(|e| vec![e.into()])?;
+    let mut runner = Runner::with_writer(Box::new(writer)).with_globals(globals);
 
-    let env = Env::new_with_globals(
-        globals
-            .iter()
-            .cloned()
-            .map(|(name, func)| (name, LoxVar::Callable(func)))
-            .collect(),
-    );
-
-    let mut interpreter = Interpreter::new(Vec::new(), env, InterpreterConfig::new(false));
-
-    run(&contents, &mut interpreter, writer)
-}
-
-pub fn run_file(
-    file_path: &Path,
-    globals: Vec<(&'static str, Rc<dyn LoxCallable>)>,
-) -> crate::Result<()> {
-    #[cfg(feature = "debug_print")]
-    println!("script opened at {:?}", file_path);
-
-    let contents = fs::read_to_string(file_path).map_err(|e| vec![e.into()])?;
-
-    let env = Env::new_with_globals(
-        globals
-            .iter()
-            .cloned()
-            .map(|(name, func)| (name, LoxVar::Callable(func)))
-            .collect(),
-    );
-
-    let mut interpreter = Interpreter::new(Vec::new(), env, InterpreterConfig::new(false));
-
-    run(&contents, &mut interpreter, &mut stdout())
+    if let Err(errs) = runner.run_file(file_path) {
+        runner.write_errors(errs);
+    }
 }
 
 fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> crate::Result<()> {
     let mut line_buf = String::new();
 
-    let env = Env::new_with_globals(
-        globals
-            .iter()
-            .cloned()
-            .map(|(name, func)| (name, LoxVar::Callable(func)))
-            .collect(),
-    );
-    let mut interpreter = Interpreter::new(
-        Vec::new(),
-        env,
-        InterpreterConfig::new(cfg!(feature = "repl_expr_print")),
-    );
+    let mut runner = Runner::with_writer(Box::new(stdout()))
+        .with_globals(globals)
+        .with_print_exprs(cfg!(feature = "repl_expr_print"));
 
     loop {
         print!("> ");
-        stdout().flush().map_err(|e| vec![e.into()])?;
+        stdout().flush().map_err(|e| vec![diag_from_io(e)])?;
         if stdin()
             .read_line(&mut line_buf)
-            .map_err(|e| vec![e.into()])?
+            .map_err(|e| vec![diag_from_io(e)])?
             == 0
         {
             break Ok(());
         }
 
         #[cfg(feature = "implicit_semicolons")]
+        dbg!("needs more work");
         if line_buf.len() > 2
             && line_buf
                 .char_indices()
@@ -124,22 +86,19 @@ fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> crate::Resul
             line_buf.insert(line_buf.len() - 2, ';');
         }
 
-        let out: Result<(), Vec<Diagnostic>> =
-            run(line_buf.trim_end(), &mut interpreter, &mut stdout());
-
-        if let Err(errs) = out {
-            for err in errs {
-                <Diagnostic as DisplayLoxError>::display_err(&err, &line_buf, &mut stdout())
-                    .map_err(|e| vec![e.into()])?;
-            }
+        if let Err(errs) = runner.run_snippet(&line_buf) {
+            runner.write_errors(errs);
         }
 
         line_buf.clear();
     }
 }
 
+#[deprecated]
 fn run(source: &str, interpreter: &mut Interpreter, writer: &mut impl Write) -> crate::Result<()> {
-    let mut scanner = Scanner::new(source);
+    const DEPRECATED_PLACEHOLDER: usize = 0;
+
+    let mut scanner = Scanner::new(source, DEPRECATED_PLACEHOLDER);
 
     let tokens = scanner.scan_tokens()?;
 
@@ -151,7 +110,7 @@ fn run(source: &str, interpreter: &mut Interpreter, writer: &mut impl Write) -> 
         }
     }
 
-    let mut parser = Parser::new(tokens);
+    let mut parser = Parser::new(tokens, DEPRECATED_PLACEHOLDER);
     let mut parsed = parser.parse()?;
 
     #[cfg(feature = "debug_print")]
@@ -162,7 +121,7 @@ fn run(source: &str, interpreter: &mut Interpreter, writer: &mut impl Write) -> 
         }
     }
 
-    let mut resolver = Resolver::new();
+    let mut resolver = Resolver::new(DEPRECATED_PLACEHOLDER);
     resolver.resolve_stmts(&mut parsed)?;
 
     #[cfg(feature = "debug_print")]
@@ -173,19 +132,19 @@ fn run(source: &str, interpreter: &mut Interpreter, writer: &mut impl Write) -> 
         }
     }
 
-    interpreter.update_stmts(&parsed);
+    interpreter.set_stmts(&parsed);
 
     for res in &mut *interpreter {
         match res {
             Ok(out) => {
                 for l in out.lines() {
-                    writeln!(writer, "{l}").map_err(|e| vec![e.into()])?
+                    writeln!(writer, "{l}").map_err(|e| vec![diag_from_io(e)])?
                 }
             }
             Err(err) => {
                 #[cfg(feature = "debug_print")]
                 crate::tree_walk::interpreter::env::debug_print(&interpreter.env);
-                return Err(err.into());
+                return Err(vec![err.to_codespan(DEPRECATED_PLACEHOLDER)]);
             }
         }
     }
