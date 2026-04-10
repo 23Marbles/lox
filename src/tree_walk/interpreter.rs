@@ -91,6 +91,7 @@ impl Interpreter {
     }
 
     pub fn update_stmts(&mut self, new_statements: Vec<Stmt>) {
+        self.ip = 0;
         self.statements = new_statements
     }
 
@@ -112,9 +113,7 @@ impl Interpreter {
                     Some(value) => self.evaluate_expr(value)?,
                     None => LoxVar::Nil,
                 };
-                self.env
-                    .borrow_mut()
-                    .define(name, value);
+                self.env.borrow_mut().define(name, value);
                 Ok(ControlFlow::None)
             }
             Stmt::Block(stmts) => {
@@ -490,11 +489,10 @@ impl Interpreter {
                     } else if let Some(method) = inst.borrow().class.find_method(&name) {
                         Ok(LoxVar::Callable(method))
                     } else {
-                        Err(EvaluateError::new(
-                            EvaluateErrorKind::UndefinedProperty(name),
-                            pos,
+                        Err(
+                            EvaluateError::new(EvaluateErrorKind::UndefinedProperty(name), pos)
+                                .into(),
                         )
-                        .into())
                     }
                 } else {
                     Err(EvaluateError::new(EvaluateErrorKind::NotInstance(obj.into()), pos).into())

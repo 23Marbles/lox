@@ -9,7 +9,11 @@ pub trait LoxPos {
 impl<T: LoxPos> LoxPos for Vec<T> {
     fn pos(&self) -> ErrorPos {
         assert!(!self.is_empty(), "Cannot find the pos of an empty vector");
-        self[0].pos().span_to(self.last().expect("Already checked the len is greater than 1").pos())
+        self[0].pos().span_to(
+            self.last()
+                .expect("Already checked the len is greater than 1")
+                .pos(),
+        )
     }
 }
 
@@ -247,9 +251,7 @@ pub mod run_err {
     impl<T: IntoDiagnostic> From<Vec<T>> for RunError {
         fn from(value: Vec<T>) -> Self {
             Self {
-                kind: RunErrorKind::Diagnostics(
-                    value.iter().map(|t| t.as_diagnostic()).collect(),
-                ),
+                kind: RunErrorKind::Diagnostics(value.iter().map(|t| t.as_diagnostic()).collect()),
             }
         }
     }
@@ -372,7 +374,7 @@ pub mod parse_err {
         InvalidAssignTarget(String),
         TooManyArguments,
         ExpectedName { name: Named, after: TokenKind },
-        ExpectedNumber { input: String }
+        ExpectedNumber { input: String },
     }
 
     impl Display for ParseErrorKind {
@@ -393,7 +395,9 @@ pub mod parse_err {
                 ParseErrorKind::ExpectedName { name, after } => {
                     write!(f, "Expected {name} name after token `{after}`")
                 }
-                ParseErrorKind::ExpectedNumber { input } => write!(f, "Could not parse `{input}` as a number"),
+                ParseErrorKind::ExpectedNumber { input } => {
+                    write!(f, "Could not parse `{input}` as a number")
+                }
             }
         }
     }
@@ -934,7 +938,7 @@ impl ErrorPos {
                 },
             ) => {
                 assert!(
-                    *line < to_line,
+                    to_line >= *line,
                     "The line of the second is before the first"
                 );
                 assert!(
