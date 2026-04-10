@@ -79,11 +79,13 @@ impl Interpreter {
     }
 
     pub fn with_stmts(mut self, statements: &[Stmt]) -> Self {
+        self.ip = 0;
         self.statements = statements.to_vec();
         self
     }
 
     pub fn set_stmts(&mut self, statements: &[Stmt]) {
+        self.ip = 0;
         self.statements = statements.to_vec();
     }
 
@@ -109,7 +111,6 @@ impl Interpreter {
 
     pub fn run(&mut self) -> crate::Result<Vec<InterpOut>> {
         let id = self.file_id;
-        dbg!(&self.statements);
         self.into_iter()
             .map(|r| r.map_err(|e| vec![e.to_codespan(id)]))
             .collect::<Result<Vec<_>, _>>()
@@ -571,7 +572,7 @@ pub mod env {
     where
         Self: Sized,
     {
-        fn debug_print(&self);
+        fn debug_print_env(&self);
         fn new_env(enclosing: Option<Self>) -> Self;
         fn new_with_globals(globals: Vec<(&'static str, LoxVar)>) -> Self;
     }
@@ -587,7 +588,7 @@ pub mod env {
             Rc::new(RefCell::new(Environment::new_with_globals(globals)))
         }
 
-        fn debug_print(&self) {
+        fn debug_print_env(&self) {
             println!("=== ENVIRONMENT DUMP ===");
 
             let mut current = Some(self.clone());
@@ -674,7 +675,7 @@ pub mod env {
         }
 
         pub fn get(&self, name: &str, distance: Option<usize>) -> Option<LoxVar> {
-            #[cfg(feature = "debug_print")]
+            #[cfg(debug_assertions)]
             println!("LOOKUP: {} @ {:?}", name, distance);
             if let Some(dist) = distance {
                 self.get_at(dist, name)

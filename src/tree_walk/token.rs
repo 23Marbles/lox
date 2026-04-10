@@ -15,6 +15,7 @@ pub struct Scanner<'source> {
 
 fn normalize_char(c: char) -> char {
     match c {
+        '；' => ';',
         '（' => '(',
         '）' => ')',
         '｛' => '{',
@@ -147,7 +148,7 @@ impl<'source> Iterator for Scanner<'source> {
                 kind: TokenKind::Eof,
                 lexeme: "\0",
                 span: Range {
-                    start: self.start,
+                    start: self.current,
                     end: self.current,
                 },
             }));
@@ -220,12 +221,15 @@ impl<'source> Iterator for Scanner<'source> {
                     }
                     self.advance();
 
-                    // Do not include "" in the lexme
-                    break 'scan self.make_token_with_slice(
+                    // Do not include the quotes in the lexme, but include the quotes in the span
+                    let mut token = self.make_token_with_slice(
                         TokenKind::String,
                         self.start + 1,
                         self.current - 1,
                     );
+                    token.span.end += 1;
+                    token.span.start -= 1;
+                    break 'scan token;
                 }
                 TokenKind::Slash => {
                     if self.advance_if_next('/') {
@@ -287,7 +291,7 @@ impl<'source> Iterator for Scanner<'source> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token<'a> {
     pub kind: TokenKind,
     pub lexeme: &'a str,
@@ -430,5 +434,147 @@ impl TokenKind {
             "break" => Some(Break),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_eof_span() {
+        let source = "hello";
+        let mut scanner = Scanner {
+            file_id: 0,
+            source,
+            start: 0,
+            current: 0,
+            eof: false,
+        };
+        assert_eq!(
+            scanner.scan_tokens().unwrap().last().unwrap(),
+            &Token {
+                kind: TokenKind::Eof,
+                lexeme: "\0",
+                span: 5..5
+            }
+        );
+    }
+
+    #[test]
+    fn test_eof_span_newline() {
+        let source = "hello\n";
+        let mut scanner = Scanner {
+            file_id: 0,
+            source,
+            start: 0,
+            current: 0,
+            eof: false,
+        };
+        assert_eq!(
+            scanner.scan_tokens().unwrap().last().unwrap(),
+            &Token {
+                kind: TokenKind::Eof,
+                lexeme: "\0",
+                span: 6..6
+            }
+        );
+    }
+
+    #[test]
+    fn test_mandarin_identifier() {
+        let source = "你好啊";
+        let mut scanner = Scanner {
+            file_id: 0,
+            source,
+            start: 0,
+            current: 0,
+            eof: false,
+        };
+        assert_eq!(
+            scanner.scan_tokens(),
+            Ok(vec![
+                Token {
+                    kind: TokenKind::Identifier,
+                    lexeme: "你好啊",
+                    // mandarin characters span multiple bytes
+                    span: 0..9
+                },
+                Token {
+                    kind: TokenKind::Eof,
+                    lexeme: "\0",
+                    span: 9..9
+                }
+            ]),
+            "The identifier token should have a span that includes the entire lexeme plus the quotes for strings"
+        );
+    }
+
+    #[test]
+    fn test_mandarin_string() {
+        let source = "\"你好啊\"";
+        let mut scanner = Scanner {
+            file_id: 0,
+            source,
+            start: 0,
+            current: 0,
+            eof: false,
+        };
+        assert_eq!(
+            scanner.scan_tokens(),
+            Ok(vec![
+                Token {
+                    kind: TokenKind::String,
+                    // Strings dont include the quotes in the lexeme
+                    lexeme: "你好啊",
+                    // mandarin characters span multiple bytes, include the quotes in the span
+                    span: 0..11
+                },
+                Token {
+                    kind: TokenKind::Eof,
+                    lexeme: "\0",
+                    span: 11..11
+                }
+            ])
+        );
+    }
+
+    #[test]
+    fn test_token_kind_search_keyword_str() {
+        assert_eq!(TokenKind::search_keyword_str("and"), Some(TokenKind::And));
+        assert_eq!(
+            TokenKind::search_keyword_str("class"),
+            Some(TokenKind::Class)
+        );
+        assert_eq!(TokenKind::search_keyword_str("else"), Some(TokenKind::Else));
+        assert_eq!(
+            TokenKind::search_keyword_str("false"),
+            Some(TokenKind::False)
+        );
+        assert_eq!(TokenKind::search_keyword_str("fun"), Some(TokenKind::Fun));
+        assert_eq!(TokenKind::search_keyword_str("for"), Some(TokenKind::For));
+        assert_eq!(TokenKind::search_keyword_str("if"), Some(TokenKind::If));
+        assert_eq!(TokenKind::search_keyword_str("nil"), Some(TokenKind::Nil));
+        assert_eq!(TokenKind::search_keyword_str("or"), Some(TokenKind::Or));
+        assert_eq!(
+            TokenKind::search_keyword_str("print"),
+            Some(TokenKind::Print)
+        );
+        assert_eq!(
+            TokenKind::search_keyword_str("return"),
+            Some(TokenKind::Return)
+        );
+        assert_eq!(
+            TokenKind::search_keyword_str("super"),
+            Some(TokenKind::Super)
+        );
+        assert_eq!(TokenKind::search_keyword_str("this"), Some(TokenKind::This));
+        assert_eq!(TokenKind::search_keyword_str("true"), Some(TokenKind::True));
+        assert_eq!(TokenKind::search_keyword_str("var"), Some(TokenKind::Var));
+        assert_eq!(
+            TokenKind::search_keyword_str("while"),
+            Some(TokenKind::While)
+        );
+        assert_eq!(TokenKind::search_keyword_str(""), None);
     }
 }

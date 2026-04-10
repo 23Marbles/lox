@@ -9,7 +9,6 @@
 #![allow(clippy::min_ident_chars)]
 #![allow(clippy::implicit_return)]
 //#![warn(clippy::pedantic)]
-#![warn(clippy::cfg_not_test)]
 #![warn(clippy::copy_iterator)]
 #![warn(clippy::trivially_copy_pass_by_ref)]
 #![warn(clippy::new_without_default)]
@@ -94,7 +93,7 @@ impl Runner {
         }
     }
 
-    pub fn with_writer(writer: Box<dyn io::Write + Send>) -> Self {
+    pub fn new_with_writer(writer: Box<dyn io::Write + Send>) -> Self {
         Self {
             out: writer,
             files: SimpleFiles::new(),
@@ -191,5 +190,111 @@ impl Runner {
         let mut stmts = self.get_stmts(source)?;
         Resolver::new(self.current_id).resolve_stmts(&mut stmts)?;
         Ok(stmts)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[derive(Debug, Default, Clone)]
+    pub struct TestWriter {
+        str_buf: String,
+    }
+
+    impl io::Write for TestWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.str_buf.push_str(
+                std::str::from_utf8(buf).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?,
+            );
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            // Never fails
+            Ok(())
+        }
+    }
+
+    use std::io;
+
+    pub struct SharedWriter(Arc<Mutex<TestWriter>>);
+
+    impl io::Write for SharedWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            let mut guard = self
+                .0
+                .lock()
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+            guard.write(buf)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            let mut guard = self
+                .0
+                .lock()
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+            guard.flush()
+        }
+    }
+
+    /// Tests functions for the Runner.
+    impl Runner {
+        /// Runs a series of snippets and asserts that the output matches the expected output.
+        /// Errors are compared as strings and passed in as codes.
+        pub fn test_repl(
+            snippets: &[&str],
+            expected_output: &[std::result::Result<&str, Vec<&str>>],
+        ) {
+            let writer = Arc::new(Mutex::new(TestWriter::default()));
+
+            let mut runner = Runner::new_with_writer(Box::new(SharedWriter(writer.clone())));
+
+            for (snippet, exp_out) in zip(snippets, expected_output) {
+                match runner.run_snippet(snippet) {
+                    Ok(_) => {
+                        let mut w = writer.lock().unwrap();
+                        let output = w.str_buf.clone();
+
+                        let expected = exp_out.clone().unwrap().to_string();
+
+                        assert_eq!(output, expected);
+
+                        w.str_buf.clear();
+                    }
+                    Err(errs) => {
+                        let actual = errs
+                            .iter()
+                            .map(|e| e.code.as_ref().unwrap().to_string())
+                            .collect::<Vec<String>>();
+
+                        let expected = exp_out
+                            .as_ref()
+                            .unwrap_err()
+                            .iter()
+                            .map(|c| c.to_string())
+                            .collect::<Vec<String>>();
+
+                        assert_eq!(actual, expected);
+                    }
+                }
+            }
+        }
+    }
+
+    use std::{
+        iter::zip,
+        sync::{Arc, Mutex},
+    };
+
+    use super::*;
+
+    #[test]
+    /// Tests that the REPL for a bug where the instructions are not executed correctly and the ip is not reset.
+    fn test_repl_ip_override() {
+        let snippets = ["4+5; 6+7;", "print 4+5;"];
+        let expected_output = [std::result::Result::Ok(""), std::result::Result::Ok("9\n")];
+
+        Runner::test_repl(&snippets, &expected_output);
     }
 }

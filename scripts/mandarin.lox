@@ -1,1 +1,6 @@
-fun 你好（）{return "你好"；};
+vars
+fun 你好（）{return "你好";}
+vars
+print 你好（）；
+vars
+print clock;

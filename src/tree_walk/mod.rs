@@ -48,7 +48,7 @@ pub fn run_file_with_writer<W: Write + Send + 'static>(
     #[cfg(feature = "debug_print")]
     writeln!(writer, "script opened at {:?}", file_path)?;
 
-    let mut runner = Runner::with_writer(Box::new(writer)).with_globals(globals);
+    let mut runner = Runner::new_with_writer(Box::new(writer)).with_globals(globals);
 
     if let Err(errs) = runner.run_file(file_path) {
         runner.write_errors(errs);
@@ -75,16 +75,26 @@ fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) {
         }
 
         #[cfg(feature = "implicit_semicolons")]
-        dbg!("needs more work");
-        if line_buf.len() > 2
-            && line_buf
-                .char_indices()
-                .nth_back(2)
-                .expect("Already checked len is long enough")
-                .1
-                != ';'
         {
-            line_buf.insert(line_buf.len() - 2, ';');
+            todo!("feature = "implicit_semicolons": needs more work");
+            if line_buf.len() > 2
+                && line_buf
+                    .char_indices()
+                    .nth_back(2)
+                    .expect("Already checked len is long enough")
+                    .1
+                    != ';'
+            {
+                line_buf.insert(line_buf.len() - 2, ';');
+            }
+        }
+        #[cfg(debug_assertions)]
+        if line_buf.trim() == "vars" {
+            use crate::tree_walk::interpreter::env::EnvironmentImpl;
+
+            runner.interpreter.env.debug_print_env();
+            line_buf.clear();
+            continue;
         }
 
         if let Err(errs) = runner.run_snippet(&line_buf) {

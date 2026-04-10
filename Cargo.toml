@@ -27,11 +27,10 @@ regex = "1.12.3"
 [[test]]
 name = "lox-tests"
 path = "tests/runner.rs"
-harness = false
 
 [[bench]]
 name = "lox-bench"
-path = "tests/runner.rs"
+path = "benches/runner.rs"
 harness = false
 
 [dependencies]
