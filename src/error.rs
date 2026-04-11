@@ -1,5 +1,5 @@
 use core::fmt::Display;
-use std::{io, ops::Range};
+use std::{error::Error, ops::Range};
 
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle, Severity};
 
@@ -22,7 +22,7 @@ pub trait ToCodespan: ToErrorCode + ErrorLevel + Display {
     }
 }
 
-pub fn diag_from_io<T>(from: io::Error) -> Diagnostic<T> {
+pub fn diag_fom_err<T>(from: impl Error) -> Diagnostic<T> {
     Diagnostic::new(Severity::Bug)
         .with_message(from.to_string())
         // Core Error 0001

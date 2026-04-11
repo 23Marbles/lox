@@ -36,10 +36,13 @@
 //! | trees.lox           | 212.737865755 s/iter | (+/- 94.397381250) |
 
 use std::{
-    fs, io,
+    fs,
+    hint::black_box,
+    io,
     path::Path,
     rc::Rc,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
 use codespan_reporting::{
@@ -49,7 +52,7 @@ use codespan_reporting::{
 };
 
 use crate::{
-    error::diag_from_io,
+    error::diag_fom_err,
     tree_walk::{
         ast::stmt::Stmt,
         interpreter::{
@@ -77,6 +80,7 @@ pub enum Backend {
     TreeWalk,
 }
 
+#[derive(Clone)]
 /// Configuration for the Runner struct.
 pub struct RunnerConfig {
     expr_print: bool,
@@ -93,9 +97,10 @@ impl RunnerConfig {
     }
 }
 
+#[derive(Clone)]
 /// Used to construct and run a file.
 pub struct Runner {
-    out: Box<dyn io::Write + Send>,
+    out: Arc<Mutex<dyn io::Write + Send>>,
     files: SimpleFiles<String, String>,
     current_id: usize,
     interpreter: Interpreter,
@@ -115,7 +120,7 @@ impl Runner {
     /// Creates a new [`Runner`] with the default configuration.
     pub fn new() -> Self {
         Self {
-            out: Box::new(io::stdout()),
+            out: Arc::new(Mutex::new(io::stdout())),
             files: SimpleFiles::new(),
             interpreter: Interpreter::new(0),
             current_id: 0,
@@ -126,7 +131,7 @@ impl Runner {
     /// Creates a new [`Runner`] with the given writer.
     pub fn new_with_writer(writer: Box<dyn io::Write + Send>) -> Self {
         Self {
-            out: writer,
+            out: Arc::new(Mutex::new(writer)),
             files: SimpleFiles::new(),
             interpreter: Interpreter::new(0),
             current_id: 0,
@@ -163,7 +168,7 @@ impl Runner {
 
     /// Runs a file and writes the output to the configured writer.
     pub fn run_file(&mut self, path: &Path) -> Result<()> {
-        let content = fs::read_to_string(path).map_err(|e| vec![diag_from_io(e)])?;
+        let content = fs::read_to_string(path).map_err(|e| vec![diag_fom_err(e)])?;
 
         self.current_id = self.files.add(
             path.file_name()
@@ -186,7 +191,7 @@ impl Runner {
         match self.get_output(source) {
             Ok(out) => {
                 for line in out.iter().flat_map(|o| o.lines()) {
-                    writeln!(self.out, "{}", line).map_err(|e| vec![diag_from_io(e)])?
+                    self.write_to_out(&line)?;
                 }
 
                 Ok(())
@@ -195,12 +200,41 @@ impl Runner {
         }
     }
 
+    /// Returns the time taken to run the given source code, or an error if the source code is invalid.
+    pub fn get_run_time(
+        &self,
+        source: &str,
+    ) -> std::result::Result<Duration, Vec<Diagnostic<usize>>> {
+        let mut interpreter = self.interpreter.clone();
+        interpreter.set_stmts(&self.get_resolved_stmts(source)?);
+        let start = std::time::Instant::now();
+        black_box(interpreter.run()?);
+        Ok(start.elapsed())
+    }
+
+    /// Returns the time taken to parse and run the given source code, or an error if the source code is invalid.
+    pub fn get_full_time(
+        &self,
+        source: &str,
+    ) -> std::result::Result<Duration, Vec<Diagnostic<usize>>> {
+        let ref mut temp = self.clone();
+        let start = std::time::Instant::now();
+        black_box(temp.run_snippet(source)?);
+        Ok(start.elapsed())
+    }
+
     /// Writes errors to the output stream.
-    pub fn write_errors(&mut self, errs: impl IntoIterator<Item = Diagnostic<usize>>) {
+    pub fn write_errors(
+        &mut self,
+        errs: impl IntoIterator<Item = Diagnostic<usize>>,
+    ) -> Result<()> {
         for err in errs {
-            // Pretend missing files dont exist
-            let _ = term::emit_to_io_write(&mut self.out, &self.cfg.err_cfg, &self.files, &err);
+            let mut err_str = String::new();
+            term::emit_to_string(&mut err_str, &self.cfg.err_cfg, &self.files, &err)
+                .map_err(|e| vec![diag_fom_err(e)])?;
+            self.write_to_out(&err_str)?;
         }
+        Ok(())
     }
 }
 
@@ -209,6 +243,16 @@ impl Runner {
     pub fn clear_interp(&mut self) {
         self.interpreter.set_env(Env::new_env(None));
         self.current_id = 0;
+    }
+
+    /// Writes a line to the output stream.
+    fn write_to_out(&mut self, line: &str) -> Result<()> {
+        self.out
+            .lock()
+            .map_err(|e| vec![diag_fom_err(e)])?
+            .write(format!("{}\n", line).as_bytes())
+            .map_err(|e| vec![diag_fom_err(e)])?;
+        Ok(())
     }
 
     /// Gets the source code for the given file ID.

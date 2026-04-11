@@ -13,7 +13,7 @@ use std::{
 use crate::tree_walk::interpreter::env::EnvironmentImpl as _;
 use crate::{
     Runner,
-    error::{ToCodespan as _, diag_from_io},
+    error::{ToCodespan as _, diag_fom_err},
     tree_walk::{
         interpreter::Interpreter, lox_var::functions::LoxCallable, parser::Parser,
         static_analysis::Resolver, token::Scanner,
@@ -52,7 +52,7 @@ pub fn run_file_with_writer<W: Write + Send + 'static>(
     let mut runner = Runner::new_with_writer(Box::new(writer)).with_globals(globals);
 
     if let Err(errs) = runner.run_file(file_path) {
-        runner.write_errors(errs);
+        let _ = runner.write_errors(errs);
     }
 }
 
@@ -66,13 +66,16 @@ pub fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) {
 
     loop {
         print!("> ");
-        if let Err(errs) = stdout().flush().map_err(|e| vec![diag_from_io(e)]) {
-            runner.write_errors(errs);
+        if let Err(errs) = stdout().flush().map_err(|e| vec![diag_fom_err(e)]) {
+            let _ = runner.write_errors(errs);
             continue;
         }
         match stdin().read_line(&mut line_buf) {
             Ok(0) => return,
-            Err(err) => runner.write_errors([diag_from_io(err)]),
+            Err(err) => {
+                let _ = runner.write_errors([diag_fom_err(err)]);
+                continue;
+            }
             _ => {}
         }
 
@@ -100,7 +103,7 @@ pub fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) {
         }
 
         if let Err(errs) = runner.run_snippet(&line_buf) {
-            runner.write_errors(errs);
+            let _ = runner.write_errors(errs);
         }
 
         line_buf.clear();
@@ -152,7 +155,7 @@ fn run(source: &str, interpreter: &mut Interpreter, writer: &mut impl Write) -> 
         match res {
             Ok(out) => {
                 for l in out.lines() {
-                    let _ = writeln!(writer, "{l}").map_err(|e| vec![diag_from_io::<usize>(e)]);
+                    let _ = writeln!(writer, "{l}").map_err(|e| vec![diag_fom_err::<usize>(e)]);
                 }
             }
             Err(err) => {

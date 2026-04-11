@@ -22,12 +22,14 @@ div_zero_error = []
 nan_inf_consts = []
 
 [dev-dependencies]
+criterion = "0.8.2"
 libtest-with = "0.8.1-14"
 regex = "1.12.3"
 
 [[test]]
 name = "lox-tests"
 path = "tests/runner.rs"
+harness = false
 
 [[bench]]
 name = "lox-bench"

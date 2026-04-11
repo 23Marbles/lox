@@ -20,18 +20,6 @@ use regex::Regex;
 
 use std::io::{self, Write};
 
-struct NullWriter;
-
-impl Write for NullWriter {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        Ok(buf.len()) // pretend we wrote all bytes
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
 #[test]
 fn test_main() {
     main();
