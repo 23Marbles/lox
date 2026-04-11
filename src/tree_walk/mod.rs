@@ -102,7 +102,7 @@ pub fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) {
             continue;
         }
 
-        if let Err(errs) = runner.run_snippet(&line_buf) {
+        if let Err(errs) = runner.run_snippet(&line_buf.trim_end()) {
             let _ = runner.write_errors(errs);
         }
 

@@ -159,6 +159,33 @@ impl FromStr for ErrExpectation {
     }
 }
 
+fn unescape(input: &str) -> String {
+    let mut result = String::new();
+    let mut chars = input.chars();
+
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => result.push('\n'),
+                Some('t') => result.push('\t'),
+                Some('r') => result.push('\r'),
+                Some('\\') => result.push('\\'),
+                Some('"') => result.push('"'),
+                Some(other) => {
+                    // unknown escape, keep as-is or handle error
+                    result.push('\\');
+                    result.push(other);
+                }
+                None => result.push('\\'),
+            }
+        } else {
+            result.push(c);
+        }
+    }
+
+    result
+}
+
 impl FromStr for Expectation {
     type Err = ExpectationFromStrError;
 
@@ -181,8 +208,8 @@ impl FromStr for Expectation {
             } else if let Some(cap) = expect_out.captures(line) {
                 let out = cap[1].to_owned();
                 match expectations {
-                    Expectation::None => expectations = Expectation::Ok(vec![out]),
-                    Expectation::Ok(ref mut items) => items.push(out),
+                    Expectation::None => expectations = Expectation::Ok(vec![unescape(&out)]),
+                    Expectation::Ok(ref mut items) => items.push(unescape(&out)),
                     // Do not overwrite the existing Err expectation
                     Expectation::Err(_) => (),
                 }

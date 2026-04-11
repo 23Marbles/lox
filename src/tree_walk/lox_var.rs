@@ -426,11 +426,38 @@ impl LoxVar {
     }
 }
 
+fn unescape(input: &str) -> String {
+    let mut result = String::new();
+    let mut chars = input.chars();
+
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => result.push('\n'),
+                Some('t') => result.push('\t'),
+                Some('r') => result.push('\r'),
+                Some('\\') => result.push('\\'),
+                Some('"') => result.push('"'),
+                Some(other) => {
+                    // unknown escape, keep as-is or handle error
+                    result.push('\\');
+                    result.push(other);
+                }
+                None => result.push('\\'),
+            }
+        } else {
+            result.push(c);
+        }
+    }
+
+    result
+}
+
 impl From<Literal> for LoxVar {
     fn from(value: Literal) -> Self {
         match value {
             Literal::Number(n) => Self::Number(n),
-            Literal::String(s) => Self::String(s),
+            Literal::String(s) => Self::String(unescape(&s)),
             Literal::True => Self::Bool(true),
             Literal::False => Self::Bool(false),
             Literal::Nil => Self::Nil,

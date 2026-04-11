@@ -83,7 +83,7 @@ impl<'source> Scanner<'source> {
             .with_label(Label::new(
                 LabelStyle::Primary,
                 self.file_id,
-                self.start + 1..self.current,
+                self.start..self.current,
             ))
     }
 
@@ -215,13 +215,22 @@ impl<'source> Iterator for Scanner<'source> {
 
             match current_token_type {
                 TokenKind::String => {
-                    while self.peek() != '"' && !self.is_at_end() {
-                        self.advance();
+                    loop {
+                        match self.advance() {
+                            Some('"') => break,
+                            Some('\\') => {
+                                if self.advance().is_none() {
+                                    return Some(
+                                        Err(self.error(ScanErrorKind::UnterminatedString)),
+                                    );
+                                }
+                            }
+                            None => {
+                                return Some(Err(self.error(ScanErrorKind::UnterminatedString)));
+                            }
+                            _ => {}
+                        }
                     }
-                    if self.is_at_end() {
-                        return Some(Err(self.error(ScanErrorKind::UnterminatedString)));
-                    }
-                    self.advance();
 
                     // Do not include the quotes in the lexme, but include the quotes in the span
                     let mut token = self.make_token_with_slice(
