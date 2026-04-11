@@ -107,6 +107,7 @@ fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) {
     }
 }
 
+#[expect(dead_code)]
 #[deprecated]
 fn run(source: &str, interpreter: &mut Interpreter, writer: &mut impl Write) -> crate::Result<()> {
     const DEPRECATED_PLACEHOLDER: usize = 0;
