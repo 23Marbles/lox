@@ -212,7 +212,7 @@ pub(in crate) struct TestWriter {
 impl io::Write for TestWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.str_buf.push_str(
-            core::str::from_utf8(buf).map_err(|e| io::Error::other(e))?,
+            core::str::from_utf8(buf).map_err(io::Error::other)?,
         );
         Ok(buf.len())
     }
