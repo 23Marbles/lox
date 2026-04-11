@@ -43,28 +43,34 @@ fn main() {
     // Parse command line arguments
     let args = Arguments::from_args();
 
-    let tests: Vec<Trial> = recurse_build_check(Path::new("tests").to_path_buf())
-        .into_iter()
-        .map(|path| {
-            let test_name = path.as_os_str().to_string_lossy().to_string();
-            Trial::test(test_name, move || {
-                match std::panic::catch_unwind(|| {
-                    check_file(
-                        &path,
-                        read_file_expectation(&path).map_err(|err| {
-                            Failed::from(format!("Could not read expactions: {err}"))
-                        })?,
-                    )
-                }) {
-                    Ok(result) => result,
-                    Err(panic) => Err(Failed::from(format!(
-                        "Test panicked: {}",
-                        format_panic(panic)
-                    ))),
-                }
-            })
+    let tests: Vec<Trial> = recurse_build_check({
+        let optional_root = std::env::var("TEST_ROOT");
+        if let Ok(path) = optional_root {
+            Path::new(&path).to_path_buf()
+        } else {
+            Path::new("tests").to_path_buf()
+        }
+    })
+    .into_iter()
+    .map(|path| {
+        let test_name = path.as_os_str().to_string_lossy().to_string();
+        Trial::test(test_name, move || {
+            match std::panic::catch_unwind(|| {
+                check_file(
+                    &path,
+                    read_file_expectation(&path)
+                        .map_err(|err| Failed::from(format!("Could not read expactions: {err}")))?,
+                )
+            }) {
+                Ok(result) => result,
+                Err(panic) => Err(Failed::from(format!(
+                    "Test panicked: {}",
+                    format_panic(panic)
+                ))),
+            }
         })
-        .collect();
+    })
+    .collect();
 
     // Run all tests and exit the application appropriatly.
     libtest_with::run(&args, tests).exit();

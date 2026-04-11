@@ -1,5 +1,7 @@
 #![allow(clippy::single_call_fn)]
 
+pub mod error_codes;
+
 use std::{
     env,
     io::{Write, stdin, stdout},

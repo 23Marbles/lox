@@ -3,7 +3,7 @@ use std::ops::Range;
 
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 
-use crate::tree_walk::error::{ErrorCode, scan_err::ScanErrorKind};
+use crate::tree_walk::error::{ToErrorCode, scan_err::ScanErrorKind};
 
 pub struct Scanner<'source> {
     file_id: usize,

@@ -4,18 +4,21 @@ use codespan_reporting::diagnostic::Diagnostic;
 
 use crate::tree_walk::{
     ast::{Literal, expr::Expr, stmt::Stmt},
-    error::{ToCodespan, parse_err::{Named, ParseError}},
+    error::{
+        ToCodespan,
+        parse_err::{Named, ParseError},
+    },
     token::{Token, TokenKind},
 };
 
-pub struct Parser<'a> {
-    tokens: Vec<Token<'a>>,
+pub struct Parser<'source> {
+    tokens: Vec<Token<'source>>,
     current: usize,
     errors: Vec<Diagnostic<usize>>,
     file_id: usize,
 }
 
-impl<'a> Iterator for Parser<'a> {
+impl<'source> Iterator for Parser<'source> {
     type Item = Result<Stmt, Diagnostic<usize>>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -33,8 +36,8 @@ impl<'a> Iterator for Parser<'a> {
     }
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(tokens: Vec<Token<'a>>, file_id: usize) -> Self {
+impl<'source> Parser<'source> {
+    pub fn new(tokens: Vec<Token<'source>>, file_id: usize) -> Self {
         Self {
             tokens,
             current: 0,
@@ -56,20 +59,21 @@ impl<'a> Parser<'a> {
         self.peek().kind == TokenKind::Eof
     }
 
-    fn peek(&self) -> &Token<'a> {
+    fn peek(&self) -> &Token<'source> {
         &self.tokens[self.current]
     }
 
     /// # Panics
     /// Panics if the current token is an Eof
-    fn peek_ahead(&self) -> &Token<'a> {
+    fn peek_ahead(&self) -> Option<&Token<'source>> {
         if self.is_at_end() {
-            panic!("Cannot view beyond the end of the token stream")
+            None
+        } else {
+            Some(&self.tokens[self.current + 1])
         }
-        &self.tokens[self.current + 1]
     }
 
-    fn previous(&self) -> &Token<'a> {
+    fn previous(&self) -> &Token<'source> {
         &self.tokens[self.current - 1]
     }
 
@@ -81,7 +85,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn advance(&mut self) -> &Token<'a> {
+    fn advance(&mut self) -> &Token<'source> {
         if !self.is_at_end() {
             self.current += 1
         };
@@ -129,7 +133,10 @@ impl<'a> Parser<'a> {
             ParseError::ExpectedName {
                 name: Named::Class,
                 after: self.previous().kind,
-                span: self.peek_ahead().span.clone(),
+                span: match self.peek_ahead() {
+                    Some(token) => token.span.clone(),
+                    None => self.peek().span.clone(), // Fallback to current token span
+                },
                 prev_span: self.previous().span.clone(),
             },
         )?;
@@ -179,14 +186,18 @@ impl<'a> Parser<'a> {
                     name: kind,
                     after: self.previous().kind,
                     prev_span: self.previous().span.clone(),
-                    span: self.peek_ahead().span.clone(),
+                    span: self
+                        .peek_ahead()
+                        .expect("Function decl at end of token stream")
+                        .span
+                        .clone(),
                 },
             )?
             .lexeme;
 
         let start_pos: usize = self.expect(TokenKind::LeftParen)?.span.start;
 
-        let mut parameters: Vec<&'a str> = Vec::new();
+        let mut parameters: Vec<&'source str> = Vec::new();
 
         let mut offending_spans: Vec<Range<usize>> = Vec::new();
 
@@ -199,7 +210,11 @@ impl<'a> Parser<'a> {
                             name: Named::Parameter,
                             after: self.previous().kind,
                             prev_span: self.previous().span.clone(),
-                            span: self.peek_ahead().span.clone(),
+                            span: self
+                                .peek_ahead()
+                                .expect("Parameter at end of token stream")
+                                .span
+                                .clone(),
                         },
                     )?
                     .lexeme,
@@ -218,7 +233,10 @@ impl<'a> Parser<'a> {
         let end_pos: usize = self.expect(TokenKind::RightParen)?.span.end;
 
         if !offending_spans.is_empty() {
-            let _ = self.error(ParseError::TooManyArguments { got: u8::MAX as usize + offending_spans.len(), spans: offending_spans });
+            let _ = self.error(ParseError::TooManyArguments {
+                got: u8::MAX as usize + offending_spans.len(),
+                spans: offending_spans,
+            });
         }
 
         self.expect(TokenKind::LeftBrace)?;
@@ -424,7 +442,10 @@ impl<'a> Parser<'a> {
                     span,
                 })
             } else {
-                let kind = ParseError::InvalidAssignTarget{target: expr.to_string(), span: equals.span };
+                let kind = ParseError::InvalidAssignTarget {
+                    target: expr.to_string(),
+                    span: equals.span,
+                };
 
                 let err = kind.to_codespan(self.file_id);
 
@@ -539,7 +560,10 @@ impl<'a> Parser<'a> {
                         name: Named::Property,
                         after: self.previous().kind,
                         prev_span: self.previous().span.clone(),
-                        span: self.peek_ahead().span.clone(),
+                        span: match self.peek_ahead() {
+                            Some(t) => t.span.clone(),
+                            None => self.peek().span.clone(), // Error originating here for file tests\number\decimal_point_at_eof.lox
+                        },
                     },
                 )?;
                 expr = Expr::Get {
@@ -560,7 +584,6 @@ impl<'a> Parser<'a> {
 
         if !self.check(TokenKind::RightParen) {
             loop {
-
                 args.push(self.expression()?);
 
                 if args.len() > u8::MAX as usize {
@@ -576,7 +599,10 @@ impl<'a> Parser<'a> {
         let end_pos: usize = self.expect(TokenKind::RightParen)?.span.end;
 
         if !offending_spans.is_empty() {
-            let _ = self.error(ParseError::TooManyArguments { got: u8::MAX as usize + offending_spans.len(), spans: offending_spans });
+            let _ = self.error(ParseError::TooManyArguments {
+                got: u8::MAX as usize + offending_spans.len(),
+                spans: offending_spans,
+            });
         }
 
         let span = Range {
@@ -638,7 +664,11 @@ impl<'a> Parser<'a> {
                         name: Named::Method,
                         after: self.previous().kind,
                         prev_span: self.previous().span.clone(),
-                        span: self.peek_ahead().span.clone(),
+                        span: self
+                            .peek_ahead()
+                            .expect("Method name at end of token stream")
+                            .span
+                            .clone(),
                     },
                 )?;
 
@@ -666,10 +696,13 @@ impl<'a> Parser<'a> {
                     span: token.span.clone(),
                 })
             }
-            k => Err(self.error(ParseError::UnexpectedTokenKind{
+            k => Err(self.error(ParseError::UnexpectedTokenKind {
                 got: k,
-                expected: [True, False, Nil, Number, String, LeftParen, Super, This, Identifier].to_vec(),
-                span: self.peek().span.clone()
+                expected: [
+                    True, False, Nil, Number, String, LeftParen, Super, This, Identifier,
+                ]
+                .to_vec(),
+                span: self.peek().span.clone(),
             })),
         }
     }
@@ -697,7 +730,7 @@ impl<'a> Parser<'a> {
         &mut self,
         kind: TokenKind,
         err: ParseError,
-    ) -> Result<Token<'a>, Diagnostic<usize>> {
+    ) -> Result<Token<'source>, Diagnostic<usize>> {
         if self.check(kind) {
             Ok(self.advance().clone())
         } else {
@@ -705,7 +738,14 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn expect(&mut self, expected: TokenKind) -> Result<Token<'a>, Diagnostic<usize>> {
-        self.consume(expected, ParseError::ExpectedTokenKind { got: self.peek().kind, expected, span: self.peek().span.clone() })
+    fn expect(&mut self, expected: TokenKind) -> Result<Token<'source>, Diagnostic<usize>> {
+        self.consume(
+            expected,
+            ParseError::ExpectedTokenKind {
+                got: self.peek().kind,
+                expected,
+                span: self.peek().span.clone(),
+            },
+        )
     }
 }

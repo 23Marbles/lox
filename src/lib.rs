@@ -23,7 +23,12 @@
 //!
 //! ## Benchmarks
 
-use std::{fs, io, path::Path, rc::Rc};
+use std::{
+    fs, io,
+    path::Path,
+    rc::Rc,
+    sync::{Arc, Mutex},
+};
 
 use codespan_reporting::{
     diagnostic::Diagnostic,
@@ -193,51 +198,67 @@ impl Runner {
     }
 }
 
+#[derive(Debug, Default, Clone)]
+pub(crate) struct TestWriter {
+    str_buf: String,
+}
+
+impl io::Write for TestWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.str_buf.push_str(
+            std::str::from_utf8(buf).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?,
+        );
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        // Never fails
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+pub struct SharedWriter(Arc<Mutex<TestWriter>>);
+
+impl SharedWriter {
+    pub fn read(&self) -> String {
+        let guard = self
+            .0
+            .lock()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
+            .unwrap();
+        guard.str_buf.clone()
+    }
+}
+
+impl Clone for SharedWriter {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl io::Write for SharedWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let mut guard = self
+            .0
+            .lock()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+        guard.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        let mut guard = self
+            .0
+            .lock()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+        guard.flush()
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    #[derive(Debug, Default, Clone)]
-    pub struct TestWriter {
-        str_buf: String,
-    }
-
-    impl io::Write for TestWriter {
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            self.str_buf.push_str(
-                std::str::from_utf8(buf).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?,
-            );
-            Ok(buf.len())
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            // Never fails
-            Ok(())
-        }
-    }
-
-    use std::io;
-
-    pub struct SharedWriter(Arc<Mutex<TestWriter>>);
-
-    impl io::Write for SharedWriter {
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            let mut guard = self
-                .0
-                .lock()
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-
-            guard.write(buf)
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            let mut guard = self
-                .0
-                .lock()
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-
-            guard.flush()
-        }
-    }
-
     /// Tests functions for the Runner.
     impl Runner {
         /// Runs a series of snippets and asserts that the output matches the expected output.
@@ -246,21 +267,20 @@ mod tests {
             snippets: &[&str],
             expected_output: &[std::result::Result<&str, Vec<&str>>],
         ) {
-            let writer = Arc::new(Mutex::new(TestWriter::default()));
+            let writer = SharedWriter::default();
 
-            let mut runner = Runner::new_with_writer(Box::new(SharedWriter(writer.clone())));
+            let mut runner = Runner::new_with_writer(Box::new(writer.clone()));
 
             for (snippet, exp_out) in zip(snippets, expected_output) {
                 match runner.run_snippet(snippet) {
                     Ok(_) => {
-                        let mut w = writer.lock().unwrap();
-                        let output = w.str_buf.clone();
+                        let output = writer.read();
 
                         let expected = exp_out.clone().unwrap().to_string();
 
                         assert_eq!(output, expected);
 
-                        w.str_buf.clear();
+                        writer.0.lock().unwrap().str_buf.clear();
                     }
                     Err(errs) => {
                         let actual = errs
@@ -282,10 +302,7 @@ mod tests {
         }
     }
 
-    use std::{
-        iter::zip,
-        sync::{Arc, Mutex},
-    };
+    use std::iter::zip;
 
     use super::*;
 
