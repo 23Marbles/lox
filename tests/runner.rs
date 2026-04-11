@@ -14,7 +14,7 @@ use std::{
 use libtest_with::{Failed, Measurement};
 use lox::{
     Runner, SharedWriter,
-    tree_walk::error_codes::{self, ErrorCode},
+    error_codes::{self, ErrorCode},
 };
 use regex::Regex;
 
