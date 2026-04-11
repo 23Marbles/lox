@@ -2,13 +2,15 @@ use core::ops::Range;
 
 use codespan_reporting::diagnostic::Diagnostic;
 
-use crate::tree_walk::{
-    ast::{Literal, expr::Expr, stmt::Stmt},
+use crate::{
     error::{
         ToCodespan as _,
         parse_err::{Named, ParseError},
     },
-    token::{Token, TokenKind},
+    tree_walk::{
+        ast::{Literal, expr::Expr, stmt::Stmt},
+        token::{Token, TokenKind},
+    },
 };
 
 pub struct Parser<'source> {

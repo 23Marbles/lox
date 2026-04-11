@@ -1,3 +1,5 @@
+//! Error codes for the tree-walk interpreter.
+
 use core::{error::Error, fmt::Display, str::FromStr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

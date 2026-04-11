@@ -3,7 +3,7 @@ use core::ops::Range;
 
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 
-use crate::tree_walk::error::{ToErrorCode as _, scan_err::ScanErrorKind};
+use crate::error::{ToErrorCode as _, scan_err::ScanErrorKind};
 
 pub struct Scanner<'source> {
     file_id: usize,
@@ -67,10 +67,7 @@ impl<'source> Scanner<'source> {
         Token {
             kind,
             lexeme: self.lexeme_with_bounds(start, end),
-            span: Range {
-                start,
-                end,
-            },
+            span: Range { start, end },
         }
     }
 

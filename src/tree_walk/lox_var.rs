@@ -15,14 +15,16 @@ use crate::tree_walk::{
 pub mod functions {
     use std::{fmt::Debug, rc::Rc};
 
-    use crate::tree_walk::{
-        ast::stmt::{ControlFlow, Stmt},
+    use crate::{
         error::fn_err::{FunctionError, FunctionErrorKind},
-        interpreter::{
-            Interpreter,
-            env::{Env, EnvironmentImpl as _},
+        tree_walk::{
+            ast::stmt::{ControlFlow, Stmt},
+            interpreter::{
+                Interpreter,
+                env::{Env, EnvironmentImpl as _},
+            },
+            lox_var::{InstanceRef, LoxVar},
         },
-        lox_var::{InstanceRef, LoxVar},
     };
 
     pub trait LoxCallable: Debug {
@@ -182,14 +184,12 @@ pub mod functions {
 pub mod class {
     use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-    use crate::tree_walk::{
+    use crate::{
         error::fn_err::{FunctionError, FunctionErrorKind},
-        interpreter::Interpreter,
-        lox_var::{
-            LoxVar,
-            functions::{LoxCallable, LoxFunc},
-        },
+        tree_walk::{interpreter::Interpreter, lox_var::functions::LoxFunc},
     };
+
+    use super::*;
 
     #[derive(Debug, Clone, PartialEq)]
     pub struct LoxClass {

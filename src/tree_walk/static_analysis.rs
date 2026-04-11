@@ -2,9 +2,9 @@ use std::{collections::HashMap, ops::Range};
 
 use codespan_reporting::diagnostic::Diagnostic;
 
-use crate::tree_walk::{
-    ast::{expr::Expr, stmt::Stmt},
+use crate::{
     error::{ToCodespan as _, anaylysis_err::ResolverErr},
+    tree_walk::ast::{expr::Expr, stmt::Stmt},
 };
 
 pub struct Resolver {

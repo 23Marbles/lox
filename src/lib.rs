@@ -1,5 +1,4 @@
-//#![warn(missing_docs)]
-//#![warn(clippy::pedantic)]
+#![warn(missing_docs)]
 #![warn(clippy::restriction)]
 #![warn(clippy::panic_in_result_fn)]
 #![warn(clippy::unnecessary_to_owned)]
@@ -8,7 +7,6 @@
 #![allow(clippy::question_mark_used)]
 #![allow(clippy::min_ident_chars)]
 #![allow(clippy::implicit_return)]
-//#![warn(clippy::pedantic)]
 #![warn(clippy::copy_iterator)]
 #![warn(clippy::trivially_copy_pass_by_ref)]
 #![warn(clippy::new_without_default)]
@@ -36,19 +34,23 @@ use codespan_reporting::{
     term::{self, Config as ErrWriteConfig},
 };
 
-use crate::tree_walk::{
-    ast::stmt::Stmt,
+use crate::{
     error::diag_from_io,
-    interpreter::{
-        InterpOut, Interpreter,
-        env::{Env, EnvironmentImpl as _},
+    tree_walk::{
+        ast::stmt::Stmt,
+        interpreter::{
+            InterpOut, Interpreter,
+            env::{Env, EnvironmentImpl as _},
+        },
+        lox_var::functions::LoxCallable,
+        parser::Parser,
+        static_analysis::Resolver,
+        token::{Scanner, Token},
     },
-    lox_var::functions::LoxCallable,
-    parser::Parser,
-    static_analysis::Resolver,
-    token::{Scanner, Token},
 };
 
+mod error;
+pub mod error_codes;
 pub mod std_lib;
 #[cfg(feature = "ast")]
 pub mod tree_walk;
@@ -205,15 +207,14 @@ impl Runner {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(in crate) struct TestWriter {
+pub(crate) struct TestWriter {
     str_buf: String,
 }
 
 impl io::Write for TestWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.str_buf.push_str(
-            core::str::from_utf8(buf).map_err(io::Error::other)?,
-        );
+        self.str_buf
+            .push_str(core::str::from_utf8(buf).map_err(io::Error::other)?);
         Ok(buf.len())
     }
 
@@ -245,19 +246,13 @@ impl Clone for SharedWriter {
 
 impl io::Write for SharedWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let mut guard = self
-            .0
-            .lock()
-            .map_err(|e| io::Error::other(e.to_string()))?;
+        let mut guard = self.0.lock().map_err(|e| io::Error::other(e.to_string()))?;
 
         guard.write(buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        let mut guard = self
-            .0
-            .lock()
-            .map_err(|e| io::Error::other(e.to_string()))?;
+        let mut guard = self.0.lock().map_err(|e| io::Error::other(e.to_string()))?;
 
         guard.flush()
     }

@@ -3,7 +3,7 @@ use std::{io, ops::Range};
 
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle, Severity};
 
-use crate::tree_walk::error_codes::ErrorCode;
+use crate::error_codes::ErrorCode;
 
 pub trait ToErrorCode {
     fn error_code(&self) -> ErrorCode;
@@ -57,7 +57,7 @@ fn to_codespan<
 pub mod scan_err {
     use core::fmt::Display;
 
-    use crate::tree_walk::{
+    use crate::{
         error::{ErrorLevel, ToErrorCode},
         error_codes::ErrorCode,
     };
@@ -112,10 +112,10 @@ pub mod parse_err {
 
     use codespan_reporting::diagnostic::{Label, LabelStyle, Severity};
 
-    use crate::tree_walk::{
+    use crate::{
         error::{ErrorLevel, ToCodespan, ToErrorCode},
         error_codes::ErrorCode,
-        token::TokenKind,
+        tree_walk::token::TokenKind,
     };
 
     #[derive(Debug, Clone)]
@@ -286,7 +286,7 @@ pub mod anaylysis_err {
 
     use codespan_reporting::diagnostic::{LabelStyle, Severity};
 
-    use crate::tree_walk::{
+    use crate::{
         error::{ErrorLevel, ToCodespan, ToErrorCode, to_codespan},
         error_codes::ErrorCode,
     };
@@ -422,12 +422,12 @@ pub mod runtime_err {
 
     use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle, Severity};
 
-    use crate::tree_walk::{
+    use crate::{
         error::{
             ErrorLevel, ToCodespan, ToErrorCode, eval_err::EvaluateError, fn_err::FunctionError,
         },
         error_codes::ErrorCode,
-        lox_var::LoxVar,
+        tree_walk::lox_var::LoxVar,
     };
 
     #[derive(Debug, Clone)]
@@ -516,16 +516,18 @@ pub mod runtime_err {
 }
 
 pub mod eval_err {
-    use core::{error::Error, fmt::Display};
     use core::ops::Range;
+    use core::{error::Error, fmt::Display};
 
     use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle, Severity};
 
-    use crate::tree_walk::{
+    use crate::{
         error::{ErrorLevel, ToCodespan, ToErrorCode},
         error_codes::ErrorCode,
-        lox_var::{LoxVar, LoxVarKind},
-        token::TokenKind,
+        tree_walk::{
+            lox_var::{LoxVar, LoxVarKind},
+            token::TokenKind,
+        },
     };
 
     #[derive(Debug, Clone)]
@@ -691,16 +693,17 @@ pub mod eval_err {
 }
 
 pub mod fn_err {
-    use core::{error::Error, fmt::Display};
     use core::ops::Range;
+    use core::{error::Error, fmt::Display};
 
     use codespan_reporting::diagnostic::{Label, LabelStyle, Severity};
 
-    use crate::tree_walk::{
+    use crate::{
         error::{ErrorLevel, ToCodespan, ToErrorCode, runtime_err::RuntimeError},
-        error_codes::ErrorCode,
-        lox_var::LoxVar,
+        tree_walk::lox_var::LoxVar,
     };
+
+    use crate::error_codes::ErrorCode;
 
     #[derive(Debug, Clone)]
     pub struct FunctionError {

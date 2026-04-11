@@ -1,21 +1,23 @@
 use std::{collections::HashMap, rc::Rc};
 
-use crate::tree_walk::{
-    ast::{
-        Literal,
-        expr::Expr,
-        stmt::{ControlFlow, Stmt},
-    },
+use crate::{
     error::{
         ToCodespan as _,
         eval_err::{EvaluateError, EvaluateErrorKind},
         runtime_err::RuntimeError,
     },
-    interpreter::env::{Env, EnvironmentImpl as _},
-    lox_var::{
-        LoxVar,
-        class::{InstanceImpl as _, LoxClass},
-        functions::{LoxCallable, LoxFunc},
+    tree_walk::{
+        ast::{
+            Literal,
+            expr::Expr,
+            stmt::{ControlFlow, Stmt},
+        },
+        interpreter::env::{Env, EnvironmentImpl as _},
+        lox_var::{
+            LoxVar,
+            class::{InstanceImpl as _, LoxClass},
+            functions::{LoxCallable, LoxFunc},
+        },
     },
 };
 
@@ -570,7 +572,7 @@ impl Interpreter {
 pub mod env {
     use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-    use crate::tree_walk::{error::eval_err::EvaluateErrorKind, lox_var::LoxVar};
+    use super::*;
     pub trait EnvironmentImpl
     where
         Self: Sized,

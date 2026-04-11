@@ -1,6 +1,5 @@
 #![allow(clippy::single_call_fn)]
-
-pub mod error_codes;
+//! The tree-walk interpreter for the Lox language.
 
 use std::{
     env,
@@ -14,17 +13,13 @@ use std::{
 use crate::tree_walk::interpreter::env::EnvironmentImpl as _;
 use crate::{
     Runner,
+    error::{ToCodespan as _, diag_from_io},
     tree_walk::{
-        error::{ToCodespan as _, diag_from_io},
-        interpreter::Interpreter,
-        lox_var::functions::LoxCallable,
-        parser::Parser,
-        static_analysis::Resolver,
-        token::Scanner,
+        interpreter::Interpreter, lox_var::functions::LoxCallable, parser::Parser,
+        static_analysis::Resolver, token::Scanner,
     },
 };
 pub mod ast;
-pub mod error;
 pub mod interpreter;
 pub mod lox_var;
 pub mod parser;
