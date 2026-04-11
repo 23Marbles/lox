@@ -10,6 +10,8 @@ use std::{
     rc::Rc,
 };
 
+#[cfg(debug_assertions)]
+use crate::tree_walk::interpreter::env::EnvironmentImpl;
 use crate::{
     Runner,
     tree_walk::{
@@ -45,10 +47,10 @@ pub fn main(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) {
 pub fn run_file_with_writer<W: Write + Send + 'static>(
     file_path: &Path,
     globals: Vec<(&'static str, Rc<dyn LoxCallable>)>,
-    writer: W,
+    mut writer: W,
 ) {
-    #[cfg(feature = "debug_print")]
-    writeln!(writer, "script opened at {:?}", file_path)?;
+    #[cfg(debug_assertions)]
+    let _ = writeln!(writer, "script opened at {:?}", file_path);
 
     let mut runner = Runner::new_with_writer(Box::new(writer)).with_globals(globals);
 
@@ -108,7 +110,7 @@ fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) {
 }
 
 #[expect(dead_code)]
-#[deprecated]
+#[deprecated = "Use [`Runner`] instead"]
 fn run(source: &str, interpreter: &mut Interpreter, writer: &mut impl Write) -> crate::Result<()> {
     const DEPRECATED_PLACEHOLDER: usize = 0;
 
@@ -116,33 +118,33 @@ fn run(source: &str, interpreter: &mut Interpreter, writer: &mut impl Write) -> 
 
     let tokens = scanner.scan_tokens()?;
 
-    #[cfg(feature = "debug_print")]
+    #[cfg(debug_assertions)]
     {
-        writeln!(writer, "tokens:")?;
+        let _ = writeln!(writer, "tokens:");
         for t in tokens.iter() {
-            writeln!(writer, "{t:?}")?
+            let _ = writeln!(writer, "{t:?}");
         }
     }
 
     let mut parser = Parser::new(tokens, DEPRECATED_PLACEHOLDER);
     let mut parsed = parser.parse()?;
 
-    #[cfg(feature = "debug_print")]
+    #[cfg(debug_assertions)]
     {
-        writeln!(writer, "parsed:")?;
+        let _ = writeln!(writer, "parsed:");
         for t in parsed.iter() {
-            writeln!(writer, "{t}")?
+            let _ = writeln!(writer, "{t}");
         }
     }
 
     let mut resolver = Resolver::new(DEPRECATED_PLACEHOLDER);
     resolver.resolve_stmts(&mut parsed)?;
 
-    #[cfg(feature = "debug_print")]
+    #[cfg(debug_assertions)]
     {
-        writeln!(writer, "resolved:")?;
+        let _ = writeln!(writer, "resolved:");
         for t in parsed.iter() {
-            writeln!(writer, "{t:?}")?
+            let _ = writeln!(writer, "{t:?}");
         }
     }
 
@@ -152,12 +154,12 @@ fn run(source: &str, interpreter: &mut Interpreter, writer: &mut impl Write) -> 
         match res {
             Ok(out) => {
                 for l in out.lines() {
-                    writeln!(writer, "{l}").map_err(|e| vec![diag_from_io(e)])?
+                    let _ = writeln!(writer, "{l}").map_err(|e| vec![diag_from_io::<usize>(e)]);
                 }
             }
             Err(err) => {
-                #[cfg(feature = "debug_print")]
-                crate::tree_walk::interpreter::env::debug_print(&interpreter.env);
+                #[cfg(debug_assertions)]
+                interpreter.env.debug_print_env();
                 return Err(vec![err.to_codespan(DEPRECATED_PLACEHOLDER)]);
             }
         }
