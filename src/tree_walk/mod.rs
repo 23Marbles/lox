@@ -11,11 +11,11 @@ use std::{
 };
 
 #[cfg(debug_assertions)]
-use crate::tree_walk::interpreter::env::EnvironmentImpl;
+use crate::tree_walk::interpreter::env::EnvironmentImpl as _;
 use crate::{
     Runner,
     tree_walk::{
-        error::{ToCodespan, diag_from_io},
+        error::{ToCodespan as _, diag_from_io},
         interpreter::Interpreter,
         lox_var::functions::LoxCallable,
         parser::Parser,
@@ -94,7 +94,7 @@ fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) {
         }
         #[cfg(debug_assertions)]
         if line_buf.trim() == "vars" {
-            use crate::tree_walk::interpreter::env::EnvironmentImpl;
+            use crate::tree_walk::interpreter::env::EnvironmentImpl as _;
 
             runner.interpreter.env.debug_print_env();
             line_buf.clear();

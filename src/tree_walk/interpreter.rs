@@ -7,7 +7,7 @@ use crate::tree_walk::{
         stmt::{ControlFlow, Stmt},
     },
     error::{
-        ToCodespan,
+        ToCodespan as _,
         eval_err::{EvaluateError, EvaluateErrorKind},
         runtime_err::RuntimeError,
     },
@@ -218,7 +218,7 @@ impl Interpreter {
                 span,
             } => {
                 let super_class = if let Some(expr) = super_class {
-                    let var = self.evaluate_expr(expr.clone())?;
+                    let var = self.evaluate_expr(expr)?;
 
                     if let LoxVar::Class(s_class) = var {
                         Some(s_class)
@@ -494,7 +494,7 @@ impl Interpreter {
 
                 self.call_depth -= 1;
 
-                return res;
+                res
             }
             Expr::Get { object, name, span } => {
                 let obj = self.evaluate_expr(*object)?;

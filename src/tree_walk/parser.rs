@@ -1,11 +1,11 @@
-use std::ops::Range;
+use core::ops::Range;
 
 use codespan_reporting::diagnostic::Diagnostic;
 
 use crate::tree_walk::{
     ast::{Literal, expr::Expr, stmt::Stmt},
     error::{
-        ToCodespan,
+        ToCodespan as _,
         parse_err::{Named, ParseError},
     },
     token::{Token, TokenKind},

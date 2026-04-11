@@ -1,4 +1,4 @@
-use std::{error::Error, fmt::Display, str::FromStr};
+use core::{error::Error, fmt::Display, str::FromStr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -37,26 +37,26 @@ pub enum ErrorCode {
 }
 
 impl Display for ErrorCode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "E{:05}", *self as u8)
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum ErrorCodeFromStrErr {
-    U8ParseError(std::num::ParseIntError),
+    U8ParseError(core::num::ParseIntError),
     InvalidDiscriminant,
     InvalidFormat,
 }
 
-impl From<std::num::ParseIntError> for ErrorCodeFromStrErr {
-    fn from(err: std::num::ParseIntError) -> Self {
+impl From<core::num::ParseIntError> for ErrorCodeFromStrErr {
+    fn from(err: core::num::ParseIntError) -> Self {
         ErrorCodeFromStrErr::U8ParseError(err)
     }
 }
 
 impl Display for ErrorCodeFromStrErr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             ErrorCodeFromStrErr::U8ParseError(err) => write!(f, "{}", err),
             ErrorCodeFromStrErr::InvalidDiscriminant => write!(f, "invalid discriminant"),

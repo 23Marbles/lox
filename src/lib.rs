@@ -41,7 +41,7 @@ use crate::tree_walk::{
     error::diag_from_io,
     interpreter::{
         InterpOut, Interpreter,
-        env::{Env, EnvironmentImpl},
+        env::{Env, EnvironmentImpl as _},
     },
     lox_var::functions::LoxCallable,
     parser::Parser,
@@ -84,9 +84,15 @@ pub struct Runner {
     cfg: RunnerConfig,
 }
 
-type Result<T> = std::result::Result<T, Vec<Diagnostic<usize>>>;
+type Result<T> = core::result::Result<T, Vec<Diagnostic<usize>>>;
 
 /// Setting up a [`Runner`].
+impl Default for Runner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Runner {
     pub fn new() -> Self {
         Self {
@@ -154,7 +160,7 @@ impl Runner {
     fn write_source_output(&mut self, source: &str) -> Result<()> {
         match self.get_output(source) {
             Ok(out) => {
-                for line in out.iter().map(|o| o.lines()).flatten() {
+                for line in out.iter().flat_map(|o| o.lines()) {
                     writeln!(self.out, "{}", line).map_err(|e| vec![diag_from_io(e)])?
                 }
 
@@ -199,14 +205,14 @@ impl Runner {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct TestWriter {
+pub(in crate) struct TestWriter {
     str_buf: String,
 }
 
 impl io::Write for TestWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.str_buf.push_str(
-            std::str::from_utf8(buf).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?,
+            core::str::from_utf8(buf).map_err(|e| io::Error::other(e))?,
         );
         Ok(buf.len())
     }
@@ -225,7 +231,7 @@ impl SharedWriter {
         let guard = self
             .0
             .lock()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
+            .map_err(|e| io::Error::other(e.to_string()))
             .unwrap();
         guard.str_buf.clone()
     }
@@ -242,7 +248,7 @@ impl io::Write for SharedWriter {
         let mut guard = self
             .0
             .lock()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
 
         guard.write(buf)
     }
@@ -251,7 +257,7 @@ impl io::Write for SharedWriter {
         let mut guard = self
             .0
             .lock()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
 
         guard.flush()
     }

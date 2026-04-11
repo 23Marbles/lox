@@ -14,7 +14,7 @@ pub trait ErrorLevel {
 }
 
 pub trait ToCodespan: ToErrorCode + ErrorLevel + Display {
-    #[allow(unused)]
+    #[expect(unused)]
     fn to_codespan<I: Copy>(&self, file_id: I) -> Diagnostic<I> {
         Diagnostic::new(self.severity())
             .with_message(self.to_string())
@@ -108,7 +108,7 @@ pub mod scan_err {
 
 pub mod parse_err {
     use core::fmt::Display;
-    use std::ops::Range;
+    use core::ops::Range;
 
     use codespan_reporting::diagnostic::{Label, LabelStyle, Severity};
 
@@ -282,7 +282,7 @@ pub mod parse_err {
 
 pub mod anaylysis_err {
     use core::fmt::Display;
-    use std::ops::Range;
+    use core::ops::Range;
 
     use codespan_reporting::diagnostic::{LabelStyle, Severity};
 
@@ -338,14 +338,14 @@ pub mod anaylysis_err {
         ) -> codespan_reporting::diagnostic::Diagnostic<I> {
             match self {
                 ResolverErr::DefinedMultipleTimes(_, ranges) => {
-                    let labels = std::iter::once((
+                    let labels = core::iter::once((
                         LabelStyle::Primary,
                         ranges.first().unwrap().clone(),
                         Some("First defined here".to_owned()),
                     ))
-                    .chain(std::iter::once((
+                    .chain(core::iter::once((
                         LabelStyle::Secondary,
-                        ranges.get(1).unwrap().clone(),
+                        ranges[1].clone(),
                         Some("Redefined here".to_owned()),
                     )))
                     .chain(ranges.iter().skip(2).map(|span| {
@@ -418,7 +418,7 @@ pub mod anaylysis_err {
 
 pub mod runtime_err {
     use core::fmt::Display;
-    use std::ops::Range;
+    use core::ops::Range;
 
     use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle, Severity};
 
@@ -517,7 +517,7 @@ pub mod runtime_err {
 
 pub mod eval_err {
     use core::{error::Error, fmt::Display};
-    use std::ops::Range;
+    use core::ops::Range;
 
     use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle, Severity};
 
@@ -692,7 +692,7 @@ pub mod eval_err {
 
 pub mod fn_err {
     use core::{error::Error, fmt::Display};
-    use std::ops::Range;
+    use core::ops::Range;
 
     use codespan_reporting::diagnostic::{Label, LabelStyle, Severity};
 

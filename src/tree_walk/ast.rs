@@ -7,7 +7,7 @@ use crate::tree_walk::{
 };
 
 pub mod stmt {
-    use std::ops::Range;
+    use core::ops::Range;
 
     use super::*;
     #[derive(Debug, Clone, PartialEq)]
@@ -142,7 +142,7 @@ pub mod stmt {
 }
 
 pub mod expr {
-    use std::ops::Range;
+    use core::ops::Range;
 
     use super::*;
     #[derive(Debug, Clone, PartialEq)]

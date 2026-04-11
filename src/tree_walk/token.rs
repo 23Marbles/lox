@@ -1,9 +1,9 @@
 use core::fmt::Display;
-use std::ops::Range;
+use core::ops::Range;
 
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 
-use crate::tree_walk::error::{ToErrorCode, scan_err::ScanErrorKind};
+use crate::tree_walk::error::{ToErrorCode as _, scan_err::ScanErrorKind};
 
 pub struct Scanner<'source> {
     file_id: usize,
@@ -68,8 +68,8 @@ impl<'source> Scanner<'source> {
             kind,
             lexeme: self.lexeme_with_bounds(start, end),
             span: Range {
-                start: start,
-                end: end,
+                start,
+                end,
             },
         }
     }
@@ -95,14 +95,14 @@ impl<'source> Scanner<'source> {
         self.source[self.current..]
             .chars()
             .next()
-            .map(|c| normalize_char(c))
+            .map(normalize_char)
             .unwrap_or('\0')
     }
 
     fn peek_next(&self) -> char {
         let mut iter = self.source[self.current..].chars();
         iter.next();
-        iter.next().map(|c| normalize_char(c)).unwrap_or('\0')
+        iter.next().map(normalize_char).unwrap_or('\0')
     }
 
     fn advance_if(&mut self, func: impl FnOnce(/*next_char*/ char) -> bool) -> bool {

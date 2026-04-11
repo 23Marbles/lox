@@ -4,7 +4,7 @@ use codespan_reporting::diagnostic::Diagnostic;
 
 use crate::tree_walk::{
     ast::{expr::Expr, stmt::Stmt},
-    error::{ToCodespan, anaylysis_err::ResolverErr},
+    error::{ToCodespan as _, anaylysis_err::ResolverErr},
 };
 
 pub struct Resolver {
@@ -47,7 +47,7 @@ impl Resolver {
                 vec.push(ClassKind::None);
                 vec
             },
-            file_id: file_id,
+            file_id,
             def_mul_times: Vec::new(),
         }
     }
@@ -220,7 +220,7 @@ impl Resolver {
                         }));
                     }
 
-                    #[allow(clippy::unwrap_used)]
+                    #[expect(clippy::unwrap_used)]
                     // Already know this is a Some(Variant); candidate for unwrap_unchecked() if the performace boost is worth it
                     self.resolve_expr(super_class.as_mut().unwrap());
 
