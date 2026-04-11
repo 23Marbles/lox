@@ -12,7 +12,7 @@ pub enum ErrorCode {
     UnexpectedTokenKind = 5,
     ExpectedTokenKind = 6,
     InvalidAssignTarget = 7,
-    TooManyArguments = 8,
+    Over255Arguments = 8,
     ExpectedName = 9,
     ExpectedNumber = 10,
     ReadInOwnInitilaizer = 11,
@@ -79,7 +79,7 @@ impl TryFrom<u8> for ErrorCode {
             5 => Ok(Self::UnexpectedTokenKind),
             6 => Ok(Self::ExpectedTokenKind),
             7 => Ok(Self::InvalidAssignTarget),
-            8 => Ok(Self::TooManyArguments),
+            8 => Ok(Self::Over255Arguments),
             9 => Ok(Self::ExpectedName),
             10 => Ok(Self::ExpectedNumber),
             11 => Ok(Self::ReadInOwnInitilaizer),
@@ -136,7 +136,7 @@ mod tests {
         assert_eq!(format!("{}", ErrorCode::UnexpectedTokenKind), "E00005");
         assert_eq!(format!("{}", ErrorCode::ExpectedTokenKind), "E00006");
         assert_eq!(format!("{}", ErrorCode::InvalidAssignTarget), "E00007");
-        assert_eq!(format!("{}", ErrorCode::TooManyArguments), "E00008");
+        assert_eq!(format!("{}", ErrorCode::Over255Arguments), "E00008");
         assert_eq!(format!("{}", ErrorCode::ExpectedName), "E00009");
         assert_eq!(format!("{}", ErrorCode::ExpectedNumber), "E00010");
         assert_eq!(format!("{}", ErrorCode::ReadInOwnInitilaizer), "E00011");

@@ -156,7 +156,7 @@ pub mod parse_err {
                 ParseError::UnexpectedTokenKind { .. } => ErrorCode::UnexpectedTokenKind,
                 ParseError::ExpectedTokenKind { .. } => ErrorCode::ExpectedTokenKind,
                 ParseError::InvalidAssignTarget { .. } => ErrorCode::InvalidAssignTarget,
-                ParseError::TooManyArguments { .. } => ErrorCode::TooManyArguments,
+                ParseError::TooManyArguments { .. } => ErrorCode::Over255Arguments,
                 ParseError::ExpectedName { .. } => ErrorCode::ExpectedName,
                 ParseError::ExpectedNumber { .. } => ErrorCode::ExpectedNumber,
             }
@@ -434,7 +434,7 @@ pub mod runtime_err {
     pub enum RuntimeError {
         EvaluateError(EvaluateError),
         FunctionError(FunctionError),
-        TooManyArguments(usize, Range<usize>),
+        Over255Arguments(usize, Range<usize>),
         SuperClassIsNotAClass(LoxVar, Range<usize>),
         StackOverflow,
     }
@@ -456,7 +456,7 @@ pub mod runtime_err {
             match self {
                 RuntimeError::EvaluateError(evaluate_error) => evaluate_error.error_code(),
                 RuntimeError::FunctionError(function_error) => function_error.error_code(),
-                RuntimeError::TooManyArguments(..) => ErrorCode::TooManyArguments,
+                RuntimeError::Over255Arguments(..) => ErrorCode::Over255Arguments,
                 RuntimeError::SuperClassIsNotAClass(..) => ErrorCode::SuperClassIsNotAClass,
                 RuntimeError::StackOverflow => ErrorCode::StackOverflow,
             }
@@ -468,7 +468,7 @@ pub mod runtime_err {
             match self {
                 RuntimeError::EvaluateError(evaluate_error) => evaluate_error.severity(),
                 RuntimeError::FunctionError(function_error) => function_error.severity(),
-                RuntimeError::TooManyArguments(..) => Severity::Warning,
+                RuntimeError::Over255Arguments(..) => Severity::Warning,
                 RuntimeError::SuperClassIsNotAClass(..) => Severity::Error,
                 RuntimeError::StackOverflow => Severity::Error,
             }
@@ -483,7 +483,7 @@ pub mod runtime_err {
             match self {
                 RuntimeError::EvaluateError(evaluate_error) => evaluate_error.to_codespan(file_id),
                 RuntimeError::FunctionError(function_error) => function_error.to_codespan(file_id),
-                RuntimeError::TooManyArguments(_, range)
+                RuntimeError::Over255Arguments(_, range)
                 | RuntimeError::SuperClassIsNotAClass(_, range) => Diagnostic::new(self.severity())
                     .with_code(self.error_code())
                     .with_message(self.to_string())
@@ -500,7 +500,7 @@ pub mod runtime_err {
             match self {
                 RuntimeError::EvaluateError(err) => write!(f, "{err}"),
                 RuntimeError::FunctionError(err) => write!(f, "{err}"),
-                RuntimeError::TooManyArguments(got, ..) => {
+                RuntimeError::Over255Arguments(got, ..) => {
                     write!(
                         f,
                         "Too many arguments for function, expected at most 255, got {got}"
@@ -787,7 +787,7 @@ pub mod fn_err {
                         Some(Box::new(evaluate_error.span.clone()))
                     }
                     RuntimeError::FunctionError(function_error) => function_error.call_span.clone(),
-                    RuntimeError::TooManyArguments(_, span) => Some(Box::new(span.clone())),
+                    RuntimeError::Over255Arguments(_, span) => Some(Box::new(span.clone())),
                     RuntimeError::SuperClassIsNotAClass(_, span) => Some(Box::new(span.clone())),
                     RuntimeError::StackOverflow => None,
                 },
