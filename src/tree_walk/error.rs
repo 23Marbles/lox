@@ -3,15 +3,17 @@ use std::{io, ops::Range};
 
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle, Severity};
 
-pub trait ErrorCode {
-    fn error_code(&self) -> &'static str;
+use crate::tree_walk::error_codes::ErrorCode;
+
+pub trait ToErrorCode {
+    fn error_code(&self) -> ErrorCode;
 }
 
 pub trait ErrorLevel {
     fn severity(&self) -> Severity;
 }
 
-pub trait ToCodespan: ErrorCode + ErrorLevel + Display {
+pub trait ToCodespan: ToErrorCode + ErrorLevel + Display {
     #[allow(unused)]
     fn to_codespan<I: Copy>(&self, file_id: I) -> Diagnostic<I> {
         Diagnostic::new(self.severity())
@@ -28,7 +30,7 @@ pub fn diag_from_io<T>(from: io::Error) -> Diagnostic<T> {
 }
 
 fn to_codespan<
-    T: Display + ErrorLevel + ErrorCode,
+    T: Display + ErrorLevel + ToErrorCode,
     K: IntoIterator<Item = (LabelStyle, Range<usize>, Option<impl Display>)>,
     I: Copy,
 >(
@@ -55,7 +57,10 @@ fn to_codespan<
 pub mod scan_err {
     use core::fmt::Display;
 
-    use crate::tree_walk::error::{ErrorCode, ErrorLevel};
+    use crate::tree_walk::{
+        error::{ErrorLevel, ToErrorCode},
+        error_codes::ErrorCode,
+    };
 
     #[derive(Debug, Clone, Copy)]
     pub enum ScanErrorKind {
@@ -78,13 +83,13 @@ pub mod scan_err {
         }
     }
 
-    impl ErrorCode for ScanErrorKind {
-        fn error_code(&self) -> &'static str {
+    impl ToErrorCode for ScanErrorKind {
+        fn error_code(&self) -> ErrorCode {
             match self {
-                ScanErrorKind::UnexpectedCharacter(_) => "SE0001",
-                ScanErrorKind::UnterminatedString => "SE0002",
+                ScanErrorKind::UnexpectedCharacter(_) => ErrorCode::UnexpectedCharacter,
+                ScanErrorKind::UnterminatedString => ErrorCode::UnterminatedString,
                 #[cfg(feature = "inline_comments")]
-                ScanErrorKind::UnterminatedComment => "SE0003",
+                ScanErrorKind::UnterminatedComment => ErrorCode::UnterminatedComment,
             }
         }
     }
@@ -108,7 +113,8 @@ pub mod parse_err {
     use codespan_reporting::diagnostic::{Label, LabelStyle, Severity};
 
     use crate::tree_walk::{
-        error::{ErrorCode, ErrorLevel, ToCodespan},
+        error::{ErrorLevel, ToCodespan, ToErrorCode},
+        error_codes::ErrorCode,
         token::TokenKind,
     };
 
@@ -144,15 +150,15 @@ pub mod parse_err {
         },
     }
 
-    impl ErrorCode for ParseError {
-        fn error_code(&self) -> &'static str {
+    impl ToErrorCode for ParseError {
+        fn error_code(&self) -> ErrorCode {
             match self {
-                ParseError::UnexpectedTokenKind { .. } => "PE0001",
-                ParseError::ExpectedTokenKind { .. } => "PE0002",
-                ParseError::InvalidAssignTarget { .. } => "PE0003",
-                ParseError::TooManyArguments { .. } => "PE0004",
-                ParseError::ExpectedName { .. } => "PE0005",
-                ParseError::ExpectedNumber { .. } => "PE0006",
+                ParseError::UnexpectedTokenKind { .. } => ErrorCode::UnexpectedTokenKind,
+                ParseError::ExpectedTokenKind { .. } => ErrorCode::ExpectedTokenKind,
+                ParseError::InvalidAssignTarget { .. } => ErrorCode::InvalidAssignTarget,
+                ParseError::TooManyArguments { .. } => ErrorCode::TooManyArguments,
+                ParseError::ExpectedName { .. } => ErrorCode::ExpectedName,
+                ParseError::ExpectedNumber { .. } => ErrorCode::ExpectedNumber,
             }
         }
     }
@@ -280,7 +286,10 @@ pub mod anaylysis_err {
 
     use codespan_reporting::diagnostic::{LabelStyle, Severity};
 
-    use crate::tree_walk::error::{ErrorCode, ErrorLevel, ToCodespan, to_codespan};
+    use crate::tree_walk::{
+        error::{ErrorLevel, ToCodespan, ToErrorCode, to_codespan},
+        error_codes::ErrorCode,
+    };
 
     #[derive(Debug, Clone)]
     pub enum ResolverErr {
@@ -294,16 +303,16 @@ pub mod anaylysis_err {
         SuperOutsideSubclass(Range<usize>),
     }
 
-    impl ErrorCode for ResolverErr {
-        fn error_code(&self) -> &'static str {
+    impl ToErrorCode for ResolverErr {
+        fn error_code(&self) -> ErrorCode {
             match self {
-                ResolverErr::ReadInOwnInitializer(_) => "AE0001",
-                ResolverErr::DefinedMultipleTimes { .. } => "AE0002",
-                ResolverErr::ReturnFromTop(_) => "AE0003",
-                ResolverErr::ReturnValueFromInit(_) => "AE0004",
-                ResolverErr::ThisOutsideClass(_) => "AE0005",
-                ResolverErr::SelfReferentialInheritance(_) => "AE0006",
-                ResolverErr::SuperOutsideSubclass(_) => "AE0007",
+                ResolverErr::ReadInOwnInitializer(_) => ErrorCode::ReadInOwnInitilaizer,
+                ResolverErr::DefinedMultipleTimes { .. } => ErrorCode::DefinedMultipleTimes,
+                ResolverErr::ReturnFromTop(_) => ErrorCode::ReturnFromTop,
+                ResolverErr::ReturnValueFromInit(_) => ErrorCode::ReturnValueFromInit,
+                ResolverErr::ThisOutsideClass(_) => ErrorCode::ThisOutsideClass,
+                ResolverErr::SelfReferentialInheritance(_) => ErrorCode::SelfReferentialInheritance,
+                ResolverErr::SuperOutsideSubclass(_) => ErrorCode::SuperOutsideSubclass,
             }
         }
     }
@@ -415,8 +424,9 @@ pub mod runtime_err {
 
     use crate::tree_walk::{
         error::{
-            ErrorCode, ErrorLevel, ToCodespan, eval_err::EvaluateError, fn_err::FunctionError,
+            ErrorLevel, ToCodespan, ToErrorCode, eval_err::EvaluateError, fn_err::FunctionError,
         },
+        error_codes::ErrorCode,
         lox_var::LoxVar,
     };
 
@@ -441,14 +451,14 @@ pub mod runtime_err {
         }
     }
 
-    impl ErrorCode for RuntimeError {
-        fn error_code(&self) -> &'static str {
+    impl ToErrorCode for RuntimeError {
+        fn error_code(&self) -> ErrorCode {
             match self {
                 RuntimeError::EvaluateError(evaluate_error) => evaluate_error.error_code(),
                 RuntimeError::FunctionError(function_error) => function_error.error_code(),
-                RuntimeError::TooManyArguments(..) => "RE0001",
-                RuntimeError::SuperClassIsNotAClass(..) => "RE0002",
-                RuntimeError::StackOverflow => "RE0003",
+                RuntimeError::TooManyArguments(..) => ErrorCode::TooManyArguments,
+                RuntimeError::SuperClassIsNotAClass(..) => ErrorCode::SuperClassIsNotAClass,
+                RuntimeError::StackOverflow => ErrorCode::StackOverflow,
             }
         }
     }
@@ -512,7 +522,8 @@ pub mod eval_err {
     use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle, Severity};
 
     use crate::tree_walk::{
-        error::{ErrorCode, ErrorLevel, ToCodespan},
+        error::{ErrorLevel, ToCodespan, ToErrorCode},
+        error_codes::ErrorCode,
         lox_var::{LoxVar, LoxVarKind},
         token::TokenKind,
     };
@@ -583,18 +594,24 @@ pub mod eval_err {
         NotInstance(LoxVarKind),
     }
 
-    impl ErrorCode for EvaluateError {
-        fn error_code(&self) -> &'static str {
+    impl ToErrorCode for EvaluateError {
+        fn error_code(&self) -> ErrorCode {
             match self.kind {
-                EvaluateErrorKind::IncompatableUnaryOperator { .. } => "EE0001",
-                EvaluateErrorKind::IncompatableBinaryOperator { .. } => "EE0002",
-                EvaluateErrorKind::UndeclaredVariable { .. } => "EE0003",
-                EvaluateErrorKind::NonCallable { .. } => "EE0004",
-                EvaluateErrorKind::IncorrectArity { .. } => "EE0005",
-                EvaluateErrorKind::IncompatableConversion { .. } => "EE0006",
-                EvaluateErrorKind::DivisionByZero => "EE0007",
-                EvaluateErrorKind::UndefinedProperty(_) => "EE0008",
-                EvaluateErrorKind::NotInstance(_) => "EE0009",
+                EvaluateErrorKind::IncompatableUnaryOperator { .. } => {
+                    ErrorCode::IncompatableUnaryOperator
+                }
+                EvaluateErrorKind::IncompatableBinaryOperator { .. } => {
+                    ErrorCode::IncompatableBinaryOperator
+                }
+                EvaluateErrorKind::UndeclaredVariable { .. } => ErrorCode::UndeclaredVariable,
+                EvaluateErrorKind::NonCallable { .. } => ErrorCode::NonCallable,
+                EvaluateErrorKind::IncorrectArity { .. } => ErrorCode::IncorrectArity,
+                EvaluateErrorKind::IncompatableConversion { .. } => {
+                    ErrorCode::IncompatibleConversion
+                }
+                EvaluateErrorKind::DivisionByZero => ErrorCode::DivisionByZero,
+                EvaluateErrorKind::UndefinedProperty(_) => ErrorCode::UndefinedProperty,
+                EvaluateErrorKind::NotInstance(_) => ErrorCode::NotInstance,
             }
         }
     }
@@ -676,7 +693,8 @@ pub mod fn_err {
     use codespan_reporting::diagnostic::{Label, LabelStyle, Severity};
 
     use crate::tree_walk::{
-        error::{ErrorCode, ErrorLevel, ToCodespan, runtime_err::RuntimeError},
+        error::{ErrorLevel, ToCodespan, ToErrorCode, runtime_err::RuntimeError},
+        error_codes::ErrorCode,
         lox_var::LoxVar,
     };
 
@@ -714,10 +732,10 @@ pub mod fn_err {
         }
     }
 
-    impl ErrorCode for FunctionError {
-        fn error_code(&self) -> &'static str {
+    impl ToErrorCode for FunctionError {
+        fn error_code(&self) -> ErrorCode {
             match &self.kind {
-                FunctionErrorKind::IncorrectArity { .. } => "FE0001",
+                FunctionErrorKind::IncorrectArity { .. } => ErrorCode::IncorrectArity,
                 FunctionErrorKind::SubError(runtime_error) => runtime_error.error_code(),
             }
         }
