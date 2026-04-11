@@ -633,6 +633,14 @@ impl<'source> Parser<'source> {
                 self.advance();
                 Ok(Expr::Literal(Literal::Nil))
             }
+            NaN => {
+                self.advance();
+                Ok(Expr::Literal(Literal::Number(f64::NAN)))
+            }
+            INF => {
+                self.advance();
+                Ok(Expr::Literal(Literal::Number(f64::INFINITY)))
+            }
             Number => {
                 let token = self.advance().clone();
                 Ok(Expr::Literal(Literal::Number(

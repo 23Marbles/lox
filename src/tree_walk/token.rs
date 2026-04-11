@@ -355,6 +355,8 @@ pub enum TokenKind {
     True,
     Var,
     While,
+    NaN,
+    INF,
     #[cfg(feature = "break")]
     Break,
 
@@ -401,11 +403,13 @@ impl Display for TokenKind {
             Less => write!(f, "<"),
             LessEqual => write!(f, "<="),
             Identifier => write!(f, "ident"),
-            String => write!(f, "\"string\""),
+            String => write!(f, "\""),
             Number => write!(f, "num"),
             Eof => write!(f, "\0"),
             #[cfg(feature = "break")]
             Break => write!(f, "break"),
+            NaN => write!(f, "NaN"),
+            INF => write!(f, "INF"),
         }
     }
 }
@@ -432,6 +436,8 @@ impl TokenKind {
             "while" => Some(While),
             #[cfg(feature = "break")]
             "break" => Some(Break),
+            "NaN" => Some(NaN),
+            "INF" => Some(INF),
             _ => None,
         }
     }
