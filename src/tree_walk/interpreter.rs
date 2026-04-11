@@ -124,7 +124,6 @@ impl Interpreter {
             }
             Stmt::Print(expr) => {
                 let value = self.evaluate_expr(expr)?;
-                dbg!(&value);
                 self.out_buf.println(value);
                 Ok(ControlFlow::None)
             }
