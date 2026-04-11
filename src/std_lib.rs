@@ -5,10 +5,12 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use crate::tree_walk::{
+use crate::{
     error::fn_err::{FunctionError, FunctionErrorKind},
-    interpreter::Interpreter,
-    lox_var::{LoxVar, functions::LoxCallable},
+    tree_walk::{
+        interpreter::Interpreter,
+        lox_var::{LoxVar, functions::LoxCallable},
+    },
 };
 
 /// The default library implemented in the crafting interpreters book.

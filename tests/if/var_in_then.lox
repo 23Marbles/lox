@@ -1,2 +1,2 @@
-// [line 2] Error at 'var': Expect expression.
+// error: 5
 if (true) var foo;

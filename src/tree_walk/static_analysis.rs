@@ -1,26 +1,31 @@
-use std::collections::HashMap;
+//! Static analysis for Lox source code.
 
-use crate::tree_walk::{
-    ast::{expr::Expr, stmt::Stmt},
-    error::{
-        ErrorPos,
-        anaylysis_err::{ResolverErr, ResolverErrKind},
-    },
+use std::{collections::HashMap, ops::Range};
+
+use codespan_reporting::diagnostic::Diagnostic;
+
+use crate::{
+    error::{ToCodespan as _, anaylysis_err::ResolverErr},
+    tree_walk::ast::{expr::Expr, stmt::Stmt},
 };
 
+/// A resolver that performs static analysis on a stream of statements.
 pub struct Resolver {
-    scopes: Vec<HashMap<String, bool>>,
-    errors: Vec<ResolverErr>,
+    scopes: Vec<HashMap<String, (bool, Range<usize>)>>,
+    errors: Vec<Diagnostic<usize>>,
     func_path: Vec<FunctionKind>,
     class_path: Vec<ClassKind>,
+    file_id: usize,
+    /// Each vec *MUST* have at least two elements
+    def_mul_times: Vec<HashMap<String, Vec<Range<usize>>>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum FunctionKind {
     None,
     Method,
     Function,
-    Initializer,
+    Initializer(Range<usize>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,14 +35,9 @@ enum ClassKind {
     SubClass,
 }
 
-impl Default for Resolver {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Resolver {
-    pub fn new() -> Self {
+    /// Creates a new resolver with the given file id.
+    pub fn new(file_id: usize) -> Self {
         Self {
             scopes: Vec::new(),
             errors: Vec::new(),
@@ -51,10 +51,13 @@ impl Resolver {
                 vec.push(ClassKind::None);
                 vec
             },
+            file_id,
+            def_mul_times: Vec::new(),
         }
     }
 
-    pub fn resolve_stmts(&mut self, stmts: &mut [Stmt]) -> Result<(), Vec<ResolverErr>> {
+    /// Resolves the given stream of statements.
+    pub fn resolve_stmts(&mut self, stmts: &mut [Stmt]) -> crate::Result<()> {
         for s in stmts.iter_mut() {
             self.resolve_stmt(s);
         }
@@ -66,50 +69,58 @@ impl Resolver {
         }
     }
 
-    fn error(&mut self, kind: ResolverErrKind, pos: ErrorPos) {
-        self.errors.push(ResolverErr::new(kind, pos));
+    fn error(&mut self, kind: ResolverErr) {
+        self.errors.push(kind.to_codespan(self.file_id));
     }
 
     fn begin_scope(&mut self) {
         self.scopes.push(HashMap::new());
+        self.def_mul_times.push(HashMap::new());
     }
 
     fn end_scope(&mut self) {
         self.scopes.pop();
+        if let Some(last) = self.def_mul_times.last().cloned() {
+            for (name, redefs) in last.into_iter() {
+                self.error(ResolverErr::DefinedMultipleTimes(name, redefs));
+            }
+        }
+        self.def_mul_times.pop();
     }
 
-    fn decalare(&mut self, name: String, pos: ErrorPos) {
-        let error;
+    fn decalare(&mut self, name: String, span: Range<usize>) {
         if let Some(scope) = self.scopes.iter_mut().last() {
-            if scope.contains_key(&name) {
-                error = Some(ResolverErrKind::DefinedMultipleTimes(name.to_owned()))
-            } else {
-                error = None
+            if let Some((_, p_span)) = scope.get(&name) {
+                let def_scope = self
+                    .def_mul_times
+                    .iter_mut()
+                    .last()
+                    .expect("def_mul_times (len = 0) should always match scopes");
+                if let Some(spans) = def_scope.get_mut(&name) {
+                    spans.push(span.clone());
+                } else {
+                    def_scope.insert(name.clone(), vec![p_span.clone(), span.clone()]);
+                };
             }
-            scope.insert(name, false);
-        } else {
-            error = None
-        }
-
-        if let Some(kind) = error {
-            self.error(kind, pos);
+            scope.insert(name, (false, span));
         }
     }
 
     /// # Panics
     /// Panics if define is called before declare
-    fn define(&mut self, name: String) {
+    fn define(&mut self, name: &String) {
         if let Some(scope) = self.scopes.iter_mut().last() {
             scope
-                .insert(name, true)
-                .expect("Tried to define before declaring");
+                .get_mut(name)
+                .expect("Tried to define before declaring")
+                .0 = true;
         }
     }
 
     fn resolve_function(
         &mut self,
-        parameters: &Vec<String>,
-        pos: ErrorPos,
+        parameters: &[String],
+        span: Range<usize>,
         body: &mut [Stmt],
         kind: FunctionKind,
     ) {
@@ -117,8 +128,8 @@ impl Resolver {
         self.begin_scope();
 
         for param in parameters {
-            self.decalare(param.clone(), pos);
-            self.define(param.clone());
+            self.decalare(param.clone(), span.clone());
+            self.define(param);
         }
         let _ = self.resolve_stmts(body);
         self.end_scope();
@@ -132,11 +143,11 @@ impl Resolver {
                 name,
                 parameters,
                 body,
-                pos,
+                span,
             } => {
-                self.decalare(name.clone(), *pos);
-                self.define(name.clone());
-                self.resolve_function(parameters, *pos, body, FunctionKind::Function);
+                self.decalare(name.clone(), span.clone());
+                self.define(name);
+                self.resolve_function(parameters, span.clone(), body, FunctionKind::Function);
             }
             Stmt::Block(stmts) => {
                 self.begin_scope();
@@ -146,13 +157,13 @@ impl Resolver {
             Stmt::Var {
                 name,
                 initializer,
-                position,
+                span,
             } => {
-                self.decalare(name.to_owned(), *position);
+                self.decalare(name.clone(), span.clone());
                 if let Some(initializer) = initializer {
                     self.resolve_expr(initializer);
                 }
-                self.define(name.to_owned());
+                self.define(name);
             }
             Stmt::Expression(expr) => self.resolve_expr(expr),
             Stmt::If {
@@ -167,15 +178,18 @@ impl Resolver {
                 }
             }
             Stmt::Print(expr) => self.resolve_expr(expr),
-            Stmt::Return { value, pos } => {
+            Stmt::Return { value, span } => {
                 match self.func_path.last().expect(
                     "Only ever descends and ascends in parralel so should never pop the top",
                 ) {
-                    FunctionKind::None => self.error(ResolverErrKind::ReturnFromTop, *pos),
+                    FunctionKind::None => self.error(ResolverErr::ReturnFromTop(span.clone())),
 
-                    FunctionKind::Initializer => {
+                    FunctionKind::Initializer(init_span) => {
                         if value.is_some() {
-                            self.error(ResolverErrKind::ReturnValueFromInit, *pos)
+                            self.error(ResolverErr::ReturnValueFromInit([
+                                span.clone(),
+                                init_span.clone(),
+                            ]))
                         }
                     }
                     _ => (),
@@ -193,33 +207,35 @@ impl Resolver {
                 name,
                 super_class,
                 methods,
-                pos,
+                span,
             } => {
-                self.decalare(name.to_owned(), *pos);
-                self.define(name.to_owned());
+                self.decalare(name.clone(), span.clone());
+                self.define(name);
 
-                if let Some(s_class) = super_class {
-                    if let Expr::Variable {
-                        name: s_name,
-                        position: s_pos,
-                        ..
-                    } = s_class
-                        && name == s_name
-                    {
-                        self.error(
-                            ResolverErrKind::SelfReferentialInheritance,
-                            pos.span_to(*s_pos),
-                        );
+                if let Some(Expr::Variable {
+                    name: s_name,
+                    span: s_span,
+                    ..
+                }) = super_class.clone()
+                {
+                    if *name == s_name {
+                        self.error(ResolverErr::SelfReferentialInheritance(Range {
+                            start: span.start,
+                            end: s_span.end,
+                        }));
                     }
 
-                    self.resolve_expr(s_class);
+                    #[expect(clippy::unwrap_used)]
+                    // Already know this is a Some(Variant); candidate for unwrap_unchecked() if the performace boost is worth it
+                    self.resolve_expr(super_class.as_mut().unwrap());
 
                     self.begin_scope();
+
                     self.scopes
                         .iter_mut()
                         .last()
                         .expect("Just began a scope")
-                        .insert("super".to_owned(), true);
+                        .insert("super".to_owned(), (true, s_span));
                 }
 
                 self.begin_scope();
@@ -233,22 +249,22 @@ impl Resolver {
                     .iter_mut()
                     .last()
                     .expect("Just began a new scope")
-                    .insert("this".to_owned(), true);
+                    .insert("this".to_owned(), (true, span.clone()));
 
                 for method in methods {
                     if let Stmt::Function {
                         parameters,
                         body,
-                        pos,
+                        span,
                         name,
                     } = method
                     {
                         self.resolve_function(
                             parameters,
-                            *pos,
+                            span.clone(),
                             body,
                             if name == "init" {
-                                FunctionKind::Initializer
+                                FunctionKind::Initializer(span.clone())
                             } else {
                                 FunctionKind::Method
                             },
@@ -269,13 +285,13 @@ impl Resolver {
 
     fn resolve_expr(&mut self, expr: &mut Expr) {
         let name = match expr {
-            Expr::Variable { name, position, .. } => {
+            Expr::Variable { name, span, .. } => {
                 if self
                     .scopes
                     .last()
-                    .is_some_and(|map| map.get(name).is_some_and(|v| !*v))
+                    .is_some_and(|map| map.get(name).is_some_and(|v| !v.0))
                 {
-                    self.error(ResolverErrKind::ReadInOwnInitializer, *position);
+                    self.error(ResolverErr::ReadInOwnInitializer(span.clone()));
                 }
 
                 &name.clone()
@@ -321,26 +337,26 @@ impl Resolver {
                 self.resolve_expr(value);
                 return;
             }
-            Expr::This { pos, .. } => {
+            Expr::This { span, .. } => {
                 if *self
                     .class_path
                     .last()
                     .expect("Always has a higher class as they come in pairs")
                     == ClassKind::None
                 {
-                    self.error(ResolverErrKind::ThisOutsideClass, *pos);
+                    self.error(ResolverErr::ThisOutsideClass(span.clone()));
                     return;
                 }
                 "this"
             }
-            Expr::Super { pos, .. } => {
+            Expr::Super { span, .. } => {
                 if *self
                     .class_path
                     .last()
                     .expect("Always has a higher class as they come in pairs")
                     != ClassKind::SubClass
                 {
-                    self.error(ResolverErrKind::SuperOutsideSubclass, *pos);
+                    self.error(ResolverErr::SuperOutsideSubclass(span.clone()));
                     return;
                 }
                 "super"

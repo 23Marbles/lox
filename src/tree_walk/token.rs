@@ -1,20 +1,37 @@
+//! Token types for Lox source code.
+
 use core::fmt::Display;
+use core::ops::Range;
 
-use crate::tree_walk::error::{
-    self, ErrorPos,
-    scan_err::{ScanError, ScanErrorKind},
-};
+use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 
-pub struct Scanner<'a> {
-    source: &'a str,
+use crate::error::{ToErrorCode as _, scan_err::ScanErrorKind};
+
+/// A scanner that tokenizes a source string.
+pub struct Scanner<'source> {
+    file_id: usize,
+    source: &'source str,
     start: usize,
     current: usize,
     eof: bool,
 }
 
-impl<'a> Scanner<'a> {
-    pub fn new(source: &'a str) -> Self {
+fn normalize_char(c: char) -> char {
+    match c {
+        '；' => ';',
+        '（' => '(',
+        '）' => ')',
+        '｛' => '{',
+        '｝' => '}',
+        _ => c,
+    }
+}
+
+impl<'source> Scanner<'source> {
+    /// Creates a new scanner with the given source string and file id.
+    pub fn new(source: &'source str, file_id: usize) -> Self {
         Self {
+            file_id,
             source,
             start: 0,
             current: 0,
@@ -22,8 +39,9 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn scan_tokens(&mut self) -> Result<Vec<Token<'a>>, Vec<ScanError>> {
-        let mut errors: Vec<error::scan_err::ScanError> = Vec::new();
+    /// Scans the source string and returns a vector of tokens or a vector of errors.
+    pub fn scan_tokens(&mut self) -> Result<Vec<Token<'source>>, Vec<Diagnostic<usize>>> {
+        let mut errors: Vec<Diagnostic<usize>> = Vec::new();
 
         let tokens: Vec<Token<'_>> = self
             .filter_map(|v| match v {
@@ -42,47 +60,51 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn lexeme_with_bounds(&self, start: usize, end: usize) -> &'a str {
+    fn lexeme_with_bounds(&self, start: usize, end: usize) -> &'source str {
         &self.source[start..end]
     }
 
-    fn make_token(&self, kind: TokenKind) -> Token<'a> {
+    fn make_token(&self, kind: TokenKind) -> Token<'source> {
         self.make_token_with_slice(kind, self.start, self.current)
     }
 
-    fn make_token_with_slice(&self, kind: TokenKind, start: usize, end: usize) -> Token<'a> {
+    fn make_token_with_slice(&self, kind: TokenKind, start: usize, end: usize) -> Token<'source> {
         Token {
             kind,
             lexeme: self.lexeme_with_bounds(start, end),
-            line: self.line(self.current),
-            column: self.column(start) + 1,
+            span: Range { start, end },
         }
     }
 
-    fn error(&self, kind: ScanErrorKind, pos: Option<ErrorPos>) -> ScanError {
-        ScanError::new(kind, pos.unwrap_or(self.pos(self.current)))
+    fn error(&self, kind: ScanErrorKind) -> Diagnostic<usize> {
+        Diagnostic::error()
+            .with_code(kind.error_code())
+            .with_message(kind.to_string())
+            .with_label(Label::new(
+                LabelStyle::Primary,
+                self.file_id,
+                self.start + 1..self.current,
+            ))
     }
 
-    fn advance(&mut self) -> char {
-        let c = self.source.as_bytes()[self.current] as char;
-        self.current += 1;
-        c
+    fn advance(&mut self) -> Option<char> {
+        let ch = self.source[self.current..].chars().next()?;
+        self.current += ch.len_utf8(); // IMPORTANT for UTF-8
+        Some(normalize_char(ch))
     }
 
     fn peek(&self) -> char {
-        if self.is_at_end() {
-            '\0'
-        } else {
-            self.source.as_bytes()[self.current] as char
-        }
+        self.source[self.current..]
+            .chars()
+            .next()
+            .map(normalize_char)
+            .unwrap_or('\0')
     }
 
     fn peek_next(&self) -> char {
-        if self.current + 1 >= self.source.len() {
-            '\0'
-        } else {
-            self.source.as_bytes()[self.current + 1] as char
-        }
+        let mut iter = self.source[self.current..].chars();
+        iter.next();
+        iter.next().map(normalize_char).unwrap_or('\0')
     }
 
     fn advance_if(&mut self, func: impl FnOnce(/*next_char*/ char) -> bool) -> bool {
@@ -98,7 +120,12 @@ impl<'a> Scanner<'a> {
         self.advance_if(|c| c == expected)
     }
 
-    fn make_token_if(&mut self, expected: char, kind: TokenKind, other: TokenKind) -> Token<'a> {
+    fn make_token_if(
+        &mut self,
+        expected: char,
+        kind: TokenKind,
+        other: TokenKind,
+    ) -> Token<'source> {
         if self.advance_if_next(expected) {
             self.make_token(kind)
         } else {
@@ -109,31 +136,10 @@ impl<'a> Scanner<'a> {
     fn is_at_end(&self) -> bool {
         self.current >= self.source.len()
     }
-
-    fn column(&self, index: usize) -> usize {
-        let line_start = self.source[..index].rfind('\n').map(|i| i + 1).unwrap_or(0);
-
-        self.source[line_start..index].chars().count()
-    }
-
-    fn line(&self, index: usize) -> usize {
-        self.source[..index].chars().filter(|c| *c == '\n').count() + 1
-    }
-
-    /// # Panics
-    /// Panics if the index is out of range
-    fn pos(&self, index: usize) -> ErrorPos {
-        assert!(
-            self.source.len() > index - 1,
-            "Cannot find pos of out of range index"
-        );
-
-        ErrorPos::new(self.line(index), self.column(index), 1, 1)
-    }
 }
 
-impl<'a> Iterator for Scanner<'a> {
-    type Item = Result<Token<'a>, ScanError>;
+impl<'source> Iterator for Scanner<'source> {
+    type Item = Result<Token<'source>, Diagnostic<usize>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.eof {
@@ -143,8 +149,10 @@ impl<'a> Iterator for Scanner<'a> {
             return Some(Ok(Token {
                 kind: TokenKind::Eof,
                 lexeme: "\0",
-                line: self.line(self.current),
-                column: self.column(self.current),
+                span: Range {
+                    start: self.current,
+                    end: self.current,
+                },
             }));
         }
 
@@ -153,7 +161,7 @@ impl<'a> Iterator for Scanner<'a> {
         Some(Ok('scan: {
             let c = self.advance();
 
-            let current_token_type = match c {
+            let current_token_type = match c? {
                 '(' => break 'scan self.make_token(TokenKind::LeftParen),
                 ')' => break 'scan self.make_token(TokenKind::RightParen),
                 '{' => break 'scan self.make_token(TokenKind::LeftBrace),
@@ -175,7 +183,11 @@ impl<'a> Iterator for Scanner<'a> {
                     let mut string = String::new();
                     string.push(x);
                     while self.peek().is_alphanumeric() || self.peek() == '_' {
-                        string.push(self.advance());
+                        string.push(
+                            self.advance()
+                                .ok_or(self.error(ScanErrorKind::UnterminatedString))
+                                .ok()?,
+                        );
                     }
                     if let Some(key) = TokenKind::search_keyword_str(&string) {
                         break 'scan self.make_token(key);
@@ -198,7 +210,7 @@ impl<'a> Iterator for Scanner<'a> {
 
                     break 'scan self.make_token(TokenKind::Number);
                 }
-                x => return Some(Err(self.error(ScanErrorKind::UnexpectedCharacter(x), None))),
+                x => return Some(Err(self.error(ScanErrorKind::UnexpectedCharacter(x)))),
             };
 
             match current_token_type {
@@ -207,22 +219,19 @@ impl<'a> Iterator for Scanner<'a> {
                         self.advance();
                     }
                     if self.is_at_end() {
-                        return Some(
-                            Err(self.error(
-                                ScanErrorKind::UnterminatedString,
-                                Some(self.pos(self.start + 1/* trying to find first char but advance at the start */)
-                                    .span_to(self.pos(self.current)))
-                            ))
-                        );
+                        return Some(Err(self.error(ScanErrorKind::UnterminatedString)));
                     }
                     self.advance();
 
-                    // Do not include "" in the lexme
-                    break 'scan self.make_token_with_slice(
+                    // Do not include the quotes in the lexme, but include the quotes in the span
+                    let mut token = self.make_token_with_slice(
                         TokenKind::String,
                         self.start + 1,
                         self.current - 1,
                     );
+                    token.span.end += 1;
+                    token.span.start -= 1;
+                    break 'scan token;
                 }
                 TokenKind::Slash => {
                     if self.advance_if_next('/') {
@@ -284,12 +293,15 @@ impl<'a> Iterator for Scanner<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, PartialEq)]
+/// A token with a kind, lexeme, and span in the source code.
 pub struct Token<'a> {
+    /// The kind of the token.
     pub kind: TokenKind,
+    /// The lexeme of the token tied to the source code.
     pub lexeme: &'a str,
-    pub line: usize,
-    pub column: usize,
+    /// The span of the token in the source code.
+    pub span: Range<usize>,
 }
 
 impl<'a> Display for Token<'a> {
@@ -303,6 +315,8 @@ impl<'a> Display for Token<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+/// The kind of a token.
+#[expect(missing_docs)]
 pub enum TokenKind {
     // Single-character tokens.
     LeftParen,
@@ -349,6 +363,10 @@ pub enum TokenKind {
     True,
     Var,
     While,
+    #[cfg(feature = "nan_inf_consts")]
+    NaN,
+    #[cfg(feature = "nan_inf_consts")]
+    INF,
     #[cfg(feature = "break")]
     Break,
 
@@ -395,11 +413,15 @@ impl Display for TokenKind {
             Less => write!(f, "<"),
             LessEqual => write!(f, "<="),
             Identifier => write!(f, "ident"),
-            String => write!(f, "\"string\""),
+            String => write!(f, "\""),
             Number => write!(f, "num"),
             Eof => write!(f, "\0"),
             #[cfg(feature = "break")]
             Break => write!(f, "break"),
+            #[cfg(feature = "nan_inf_consts")]
+            NaN => write!(f, "NaN"),
+            #[cfg(feature = "nan_inf_consts")]
+            INF => write!(f, "INF"),
         }
     }
 }
@@ -426,7 +448,153 @@ impl TokenKind {
             "while" => Some(While),
             #[cfg(feature = "break")]
             "break" => Some(Break),
+            #[cfg(feature = "nan_inf_consts")]
+            "NaN" => Some(NaN),
+            #[cfg(feature = "nan_inf_consts")]
+            "INF" => Some(INF),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_eof_span() {
+        let source = "hello";
+        let mut scanner = Scanner {
+            file_id: 0,
+            source,
+            start: 0,
+            current: 0,
+            eof: false,
+        };
+        assert_eq!(
+            scanner.scan_tokens().unwrap().last().unwrap(),
+            &Token {
+                kind: TokenKind::Eof,
+                lexeme: "\0",
+                span: 5..5
+            }
+        );
+    }
+
+    #[test]
+    fn test_eof_span_newline() {
+        let source = "hello\n";
+        let mut scanner = Scanner {
+            file_id: 0,
+            source,
+            start: 0,
+            current: 0,
+            eof: false,
+        };
+        assert_eq!(
+            scanner.scan_tokens().unwrap().last().unwrap(),
+            &Token {
+                kind: TokenKind::Eof,
+                lexeme: "\0",
+                span: 6..6
+            }
+        );
+    }
+
+    #[test]
+    fn test_mandarin_identifier() {
+        let source = "你好啊";
+        let mut scanner = Scanner {
+            file_id: 0,
+            source,
+            start: 0,
+            current: 0,
+            eof: false,
+        };
+        assert_eq!(
+            scanner.scan_tokens(),
+            Ok(vec![
+                Token {
+                    kind: TokenKind::Identifier,
+                    lexeme: "你好啊",
+                    // mandarin characters span multiple bytes
+                    span: 0..9
+                },
+                Token {
+                    kind: TokenKind::Eof,
+                    lexeme: "\0",
+                    span: 9..9
+                }
+            ]),
+            "The identifier token should have a span that includes the entire lexeme plus the quotes for strings"
+        );
+    }
+
+    #[test]
+    fn test_mandarin_string() {
+        let source = "\"你好啊\"";
+        let mut scanner = Scanner {
+            file_id: 0,
+            source,
+            start: 0,
+            current: 0,
+            eof: false,
+        };
+        assert_eq!(
+            scanner.scan_tokens(),
+            Ok(vec![
+                Token {
+                    kind: TokenKind::String,
+                    // Strings dont include the quotes in the lexeme
+                    lexeme: "你好啊",
+                    // mandarin characters span multiple bytes, include the quotes in the span
+                    span: 0..11
+                },
+                Token {
+                    kind: TokenKind::Eof,
+                    lexeme: "\0",
+                    span: 11..11
+                }
+            ])
+        );
+    }
+
+    #[test]
+    fn test_token_kind_search_keyword_str() {
+        assert_eq!(TokenKind::search_keyword_str("and"), Some(TokenKind::And));
+        assert_eq!(
+            TokenKind::search_keyword_str("class"),
+            Some(TokenKind::Class)
+        );
+        assert_eq!(TokenKind::search_keyword_str("else"), Some(TokenKind::Else));
+        assert_eq!(
+            TokenKind::search_keyword_str("false"),
+            Some(TokenKind::False)
+        );
+        assert_eq!(TokenKind::search_keyword_str("fun"), Some(TokenKind::Fun));
+        assert_eq!(TokenKind::search_keyword_str("for"), Some(TokenKind::For));
+        assert_eq!(TokenKind::search_keyword_str("if"), Some(TokenKind::If));
+        assert_eq!(TokenKind::search_keyword_str("nil"), Some(TokenKind::Nil));
+        assert_eq!(TokenKind::search_keyword_str("or"), Some(TokenKind::Or));
+        assert_eq!(
+            TokenKind::search_keyword_str("print"),
+            Some(TokenKind::Print)
+        );
+        assert_eq!(
+            TokenKind::search_keyword_str("return"),
+            Some(TokenKind::Return)
+        );
+        assert_eq!(
+            TokenKind::search_keyword_str("super"),
+            Some(TokenKind::Super)
+        );
+        assert_eq!(TokenKind::search_keyword_str("this"), Some(TokenKind::This));
+        assert_eq!(TokenKind::search_keyword_str("true"), Some(TokenKind::True));
+        assert_eq!(TokenKind::search_keyword_str("var"), Some(TokenKind::Var));
+        assert_eq!(
+            TokenKind::search_keyword_str("while"),
+            Some(TokenKind::While)
+        );
+        assert_eq!(TokenKind::search_keyword_str(""), None);
     }
 }

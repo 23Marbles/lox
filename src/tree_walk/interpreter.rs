@@ -1,46 +1,50 @@
+//! Interpreter for the Lox language.
+
 use std::{collections::HashMap, rc::Rc};
 
-use crate::tree_walk::{
-    ast::{
-        Literal,
-        expr::Expr,
-        stmt::{ControlFlow, Stmt},
-    },
+use crate::{
     error::{
+        ToCodespan as _,
         eval_err::{EvaluateError, EvaluateErrorKind},
-        runtime_err::{RuntimeError, RuntimeErrorKind},
+        runtime_err::RuntimeError,
     },
-    interpreter::env::{Env, EnvironmentImpl as _},
-    lox_var::{
-        LoxVar,
-        class::{InstanceImpl as _, LoxClass},
-        functions::{LoxCallable as _, LoxFunc},
+    tree_walk::{
+        ast::{
+            Literal,
+            expr::Expr,
+            stmt::{ControlFlow, Stmt},
+        },
+        interpreter::env::{Env, EnvironmentImpl as _},
+        lox_var::{
+            LoxVar,
+            class::{InstanceImpl as _, LoxClass},
+            functions::{LoxCallable, LoxFunc},
+        },
     },
 };
 
 const MAX_CALL_DEPTH: usize = 1024;
 
 #[derive(Debug, Clone)]
+/// Represents an interpreter that executes a sequence of statements.
 pub struct Interpreter {
-    pub cfg: InterpreterConfig,
     statements: Vec<Stmt>,
     ip: usize,
     out_buf: InterpOut,
+    /// The environment in which the interpreter executes.
     pub env: Env,
     call_depth: usize,
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct InterpreterConfig {
-    _print_expr: bool,
+    file_id: usize,
 }
 
 #[derive(Debug, Clone, Default)]
+/// Represents the output of an interpreter, consisting of a list of lines.
 pub struct InterpOut {
     lines: Vec<String>,
 }
 
 impl InterpOut {
+    /// Returns the lines of output as a vector of strings.
     pub fn lines(&self) -> Vec<String> {
         self.lines.clone()
     }
@@ -70,31 +74,64 @@ impl Iterator for Interpreter {
     }
 }
 
-impl InterpreterConfig {
-    pub fn new(print_expr: bool) -> Self {
-        Self {
-            _print_expr: print_expr,
-        }
-    }
-}
-
 impl Interpreter {
-    pub fn new(statements: Vec<Stmt>, env: Env, cfg: InterpreterConfig) -> Self {
+    /// Creates a new interpreter with the given file ID.
+    pub fn new(file_id: usize) -> Self {
         Self {
-            statements,
-            env,
-            cfg,
+            statements: Vec::new(),
+            env: Env::new_env(None),
             ip: 0,
             out_buf: InterpOut::default(),
             call_depth: 0,
+            file_id,
         }
     }
 
-    pub fn update_stmts(&mut self, new_statements: Vec<Stmt>) {
+    /// Returns a new interpreter with the given statements.
+    pub fn with_stmts(mut self, statements: &[Stmt]) -> Self {
         self.ip = 0;
-        self.statements = new_statements
+        self.statements = statements.to_vec();
+        self
     }
 
+    /// Sets the statements for the interpreter.
+    pub fn set_stmts(&mut self, statements: &[Stmt]) {
+        self.ip = 0;
+        self.statements = statements.to_vec();
+    }
+
+    /// Returns a new interpreter with the given environment.
+    pub fn with_env(mut self, env: Env) -> Self {
+        self.env = env;
+        self
+    }
+
+    /// Sets the environment for the interpreter.
+    pub fn set_env(&mut self, env: Env) {
+        self.env = env;
+    }
+
+    /// Returns a new interpreter with the given globals.
+    pub fn with_globals(mut self, globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Self {
+        self.env = Env::new_with_globals(
+            globals
+                .iter()
+                .cloned()
+                .map(|(name, func)| (name, LoxVar::Callable(func)))
+                .collect(),
+        );
+        self
+    }
+
+    /// Runs the interpreter and returns the output.
+    pub fn run(&mut self) -> crate::Result<Vec<InterpOut>> {
+        let id = self.file_id;
+        self.into_iter()
+            .map(|r| r.map_err(|e| vec![e.to_codespan(id)]))
+            .collect::<Result<Vec<_>, _>>()
+    }
+
+    /// Runs a single statement and returns the control flow.
     pub fn run_stmt(&mut self, stmt: Stmt) -> Result<ControlFlow, RuntimeError> {
         match stmt {
             Stmt::Expression(expr) => {
@@ -121,7 +158,15 @@ impl Interpreter {
                 self.env = Env::new_env(Some(previous.clone()));
 
                 for stmt in stmts {
-                    match self.run_stmt(stmt)? {
+                    match {
+                        match self.run_stmt(stmt) {
+                            Ok(c) => c,
+                            Err(e) => {
+                                self.env = previous;
+                                return Err(e);
+                            }
+                        }
+                    } {
                         ControlFlow::None => {}
                         ControlFlow::Return(v) => {
                             self.env = previous;
@@ -161,14 +206,15 @@ impl Interpreter {
                 name,
                 parameters,
                 body,
-                pos,
+                span,
             } => {
                 self.env.borrow_mut().define(
                     name.to_owned(),
                     LoxVar::Callable(Rc::new(LoxFunc::new(
-                        parameters.len().try_into().map_err(|_| {
-                            RuntimeError::new(RuntimeErrorKind::TooManyArguments(pos))
-                        })?,
+                        parameters
+                            .len()
+                            .try_into()
+                            .map_err(|_| RuntimeError::Over255Arguments(parameters.len(), span))?,
                         body,
                         parameters,
                         name,
@@ -185,22 +231,15 @@ impl Interpreter {
                 name,
                 methods,
                 super_class,
-                pos,
+                span,
             } => {
                 let super_class = if let Some(expr) = super_class {
-                    let var = self.evaluate_expr(expr.clone())?;
+                    let var = self.evaluate_expr(expr)?;
 
                     if let LoxVar::Class(s_class) = var {
                         Some(s_class)
                     } else {
-                        return Err(RuntimeError::new(RuntimeErrorKind::SuperClassIsNotAClass(
-                            var,
-                            if let Expr::Variable { position, .. } = expr {
-                                position
-                            } else {
-                                pos
-                            },
-                        )));
+                        return Err(RuntimeError::SuperClassIsNotAClass(var, span));
                     }
                 } else {
                     None
@@ -240,11 +279,7 @@ impl Interpreter {
                     }
                 }
 
-                let class = LoxClass {
-                    name: name.clone(),
-                    methods: method_map,
-                    super_class,
-                };
+                let class = LoxClass::new(name.clone(), method_map, super_class);
 
                 self.env
                     .borrow_mut()
@@ -255,6 +290,7 @@ impl Interpreter {
         }
     }
 
+    /// Evaluates an expression and returns the result.
     pub fn evaluate_expr(&mut self, expr: Expr) -> Result<LoxVar, RuntimeError> {
         use crate::tree_walk::token::TokenKind;
         use core::ops::{Add as _, Div as _, Mul as _, Sub as _};
@@ -263,7 +299,7 @@ impl Interpreter {
             Expr::Unary {
                 operator,
                 right,
-                position,
+                span,
             } => {
                 let right_var = self.evaluate_expr(*right)?;
                 match operator {
@@ -276,7 +312,7 @@ impl Interpreter {
                                     operator: TokenKind::Minus,
                                     var_ty: right_var.into(),
                                 },
-                                position,
+                                span,
                             )
                             .into())
                         }
@@ -291,7 +327,7 @@ impl Interpreter {
                 left,
                 operator,
                 right,
-                position,
+                span,
             } => {
                 let left_var = self.evaluate_expr(*left)?;
                 let right_var = self.evaluate_expr(*right)?;
@@ -304,10 +340,10 @@ impl Interpreter {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord == Ordering::Greater))
                         } else {
-                            Err(EvaluateError::bin_eval_error(
-                                position, Greater, &left_var, &right_var,
+                            Err(
+                                EvaluateError::bin_eval_error(span, Greater, &left_var, &right_var)
+                                    .into(),
                             )
-                            .into())
                         }
                     }
                     GreaterEqual => {
@@ -315,7 +351,7 @@ impl Interpreter {
                             Ok(LoxVar::Bool(ord != Ordering::Less))
                         } else {
                             Err(EvaluateError::bin_eval_error(
-                                position,
+                                span,
                                 GreaterEqual,
                                 &left_var,
                                 &right_var,
@@ -327,10 +363,10 @@ impl Interpreter {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord == Ordering::Less))
                         } else {
-                            Err(EvaluateError::bin_eval_error(
-                                position, Less, &left_var, &right_var,
+                            Err(
+                                EvaluateError::bin_eval_error(span, Less, &left_var, &right_var)
+                                    .into(),
                             )
-                            .into())
                         }
                     }
                     LessEqual => {
@@ -338,34 +374,35 @@ impl Interpreter {
                             Ok(LoxVar::Bool(ord != Ordering::Greater))
                         } else {
                             Err(EvaluateError::bin_eval_error(
-                                position, LessEqual, &left_var, &right_var,
+                                span, LessEqual, &left_var, &right_var,
                             )
                             .into())
                         }
                     }
                     EqualEqual => Ok(LoxVar::Bool(left_var.eq(&right_var))),
                     BangEqual => Ok(LoxVar::Bool(left_var.ne(&right_var))),
-                    Minus => left_var.sub(&right_var).map_err(|(l, r)| {
-                        EvaluateError::bin_eval_error(position, Minus, l, r).into()
-                    }),
+                    Minus => left_var
+                        .sub(&right_var)
+                        .map_err(|(l, r)| EvaluateError::bin_eval_error(span, Minus, l, r).into()),
                     Slash => {
+                        #[cfg(feature = "div_zero_error")]
                         if right_var == LoxVar::Number(0.) {
-                            Err(
-                                EvaluateError::new(EvaluateErrorKind::DivisionByZero, position)
-                                    .into(),
+                            return Err(EvaluateError::new(
+                                EvaluateErrorKind::DivisionByZero,
+                                span,
                             )
-                        } else {
-                            left_var.div(&right_var).map_err(|(l, r)| {
-                                EvaluateError::bin_eval_error(position, Slash, l, r).into()
-                            })
+                            .into());
                         }
+                        left_var.div(&right_var).map_err(|(l, r)| {
+                            EvaluateError::bin_eval_error(span, Slash, l, r).into()
+                        })
                     }
-                    Star => left_var.mul(&right_var).map_err(|(l, r)| {
-                        EvaluateError::bin_eval_error(position, Star, l, r).into()
-                    }),
-                    Plus => left_var.add(&right_var).map_err(|(l, r)| {
-                        EvaluateError::bin_eval_error(position, Plus, l, r).into()
-                    }),
+                    Star => left_var
+                        .mul(&right_var)
+                        .map_err(|(l, r)| EvaluateError::bin_eval_error(span, Star, l, r).into()),
+                    Plus => left_var
+                        .add(&right_var)
+                        .map_err(|(l, r)| EvaluateError::bin_eval_error(span, Plus, l, r).into()),
                     _ => unreachable!(
                         "only tokens with kind gt, ge, lt, le, ne, eq, minus, plus, slash and star can be binary operators"
                     ),
@@ -374,20 +411,20 @@ impl Interpreter {
             Expr::Grouping(expr) => self.evaluate_expr(*expr),
             Expr::Variable {
                 name,
-                position,
+                span,
                 distance,
             } => self.env.borrow().get(&name, distance).ok_or(
                 EvaluateError::new(
                     EvaluateErrorKind::UndeclaredVariable {
                         name: name.to_owned(),
                     },
-                    position,
+                    span,
                 )
                 .into(),
             ),
             Expr::Assign {
                 name,
-                position,
+                span,
                 value,
                 distance,
             } => {
@@ -395,7 +432,7 @@ impl Interpreter {
                 self.env
                     .borrow_mut()
                     .assign(&name, &value, distance)
-                    .map_err(|err| EvaluateError::new(err, position))?;
+                    .map_err(|err| EvaluateError::new(err, span))?;
                 Ok(value)
             }
             Expr::Logical {
@@ -423,51 +460,39 @@ impl Interpreter {
                     _ => unreachable!("Logical expr can only have operators Or or And"),
                 }
             }
-            Expr::Call {
-                callee,
-                args,
-                position,
-            } => {
+            Expr::Call { callee, args, span } => {
                 self.call_depth += 1;
 
                 let arguments: Vec<LoxVar> = args
                     .iter()
                     .map(|expr| self.evaluate_expr(expr.clone()))
                     .collect::<Result<_, _>>()?;
-                match self.evaluate_expr(*callee)? {
+                let res = match self.evaluate_expr(*callee)? {
                     LoxVar::Callable(func) => {
                         let ret = func.call(self, &arguments).map_err(|mut err| {
-                            err.call_pos = Some(Box::new(position));
+                            err.call_span = Some(Box::new(span));
                             err.input_args = arguments;
 
                             err
                         })?;
 
                         if self.call_depth > MAX_CALL_DEPTH {
-                            return Err(RuntimeError::new(RuntimeErrorKind::StackOverflow(
-                                position,
-                            )));
+                            return Err(RuntimeError::StackOverflow);
                         }
-
-                        self.call_depth -= 1;
 
                         Ok(ret)
                     }
                     LoxVar::Class(class) => {
                         let ret = class.call(self, &arguments).map_err(|mut err| {
-                            err.call_pos = Some(Box::new(position));
+                            err.call_span = Some(Box::new(span));
                             err.input_args = arguments;
 
                             err
                         })?;
 
                         if self.call_depth > MAX_CALL_DEPTH {
-                            return Err(RuntimeError::new(RuntimeErrorKind::StackOverflow(
-                                position,
-                            )));
+                            return Err(RuntimeError::StackOverflow);
                         }
-
-                        self.call_depth -= 1;
 
                         Ok(ret)
                     }
@@ -475,34 +500,38 @@ impl Interpreter {
                         EvaluateErrorKind::NonCallable {
                             name: other.to_string(),
                         },
-                        position,
+                        span,
                     )
                     .into()),
-                }
+                };
+
+                self.call_depth -= 1;
+
+                res
             }
-            Expr::Get { object, name, pos } => {
+            Expr::Get { object, name, span } => {
                 let obj = self.evaluate_expr(*object)?;
 
                 if let LoxVar::Instance(inst) = obj {
                     if let Some(property) = inst.get(&name) {
                         Ok(property)
-                    } else if let Some(method) = inst.borrow().class.find_method(&name) {
+                    } else if let Some(method) = inst.borrow().class().find_method(&name) {
                         Ok(LoxVar::Callable(method))
                     } else {
                         Err(
-                            EvaluateError::new(EvaluateErrorKind::UndefinedProperty(name), pos)
+                            EvaluateError::new(EvaluateErrorKind::UndefinedProperty(name), span)
                                 .into(),
                         )
                     }
                 } else {
-                    Err(EvaluateError::new(EvaluateErrorKind::NotInstance(obj.into()), pos).into())
+                    Err(EvaluateError::new(EvaluateErrorKind::NotInstance(obj.into()), span).into())
                 }
             }
             Expr::Set {
                 object,
                 name,
                 value,
-                pos,
+                span,
             } => {
                 let obj = self.evaluate_expr(*object)?;
 
@@ -513,7 +542,7 @@ impl Interpreter {
 
                     Ok(val)
                 } else {
-                    Err(EvaluateError::new(EvaluateErrorKind::NotInstance(obj.into()), pos).into())
+                    Err(EvaluateError::new(EvaluateErrorKind::NotInstance(obj.into()), span).into())
                 }
             }
             Expr::This { distance, .. } => Ok(self
@@ -524,7 +553,7 @@ impl Interpreter {
             Expr::Super {
                 distance,
                 method_name,
-                pos,
+                span,
             } => {
                 let dist = distance.expect("super must be resolved");
 
@@ -542,7 +571,7 @@ impl Interpreter {
                     .find_method(&method_name)
                     .ok_or(EvaluateError::new(
                         EvaluateErrorKind::UndefinedProperty(method_name.to_owned()),
-                        pos,
+                        span,
                     ))?;
 
                 Ok(LoxVar::Callable(method.bind(instance)))
@@ -551,20 +580,21 @@ impl Interpreter {
     }
 }
 
+/// Module for the environment, which holds the current scope's variables and allows looking up values by name.
 pub mod env {
     use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-    use crate::tree_walk::{error::eval_err::EvaluateErrorKind, lox_var::LoxVar};
-    pub trait EnvironmentImpl
+    use super::*;
+    pub(crate) trait EnvironmentImpl
     where
         Self: Sized,
     {
-        fn debug_print(&self);
+        fn debug_print_env(&self);
         fn new_env(enclosing: Option<Self>) -> Self;
         fn new_with_globals(globals: Vec<(&'static str, LoxVar)>) -> Self;
     }
 
-    pub type Env = Rc<RefCell<Environment>>;
+    pub(crate) type Env = Rc<RefCell<Environment>>;
 
     impl EnvironmentImpl for Env {
         fn new_env(enclosing: Option<Self>) -> Self {
@@ -575,7 +605,7 @@ pub mod env {
             Rc::new(RefCell::new(Environment::new_with_globals(globals)))
         }
 
-        fn debug_print(&self) {
+        fn debug_print_env(&self) {
             println!("=== ENVIRONMENT DUMP ===");
 
             let mut current = Some(self.clone());
@@ -609,20 +639,23 @@ pub mod env {
     }
 
     #[derive(Clone, Debug)]
+    /// Represents an environment, holding variables and allowing lookups by name.
     pub struct Environment {
         enclosing: Option<Env>,
         values: HashMap<String, LoxVar>,
     }
 
     impl Environment {
-        fn new(parent: Option<Env>) -> Environment {
+        /// Creates a new environment with the given parent.
+        pub fn new(parent: Option<Env>) -> Environment {
             Self {
                 enclosing: parent,
                 values: HashMap::new(),
             }
         }
 
-        fn new_with_globals(globals: Vec<(&'static str, LoxVar)>) -> Environment {
+        /// Creates a new environment with the given globals.
+        pub fn new_with_globals(globals: Vec<(&'static str, LoxVar)>) -> Environment {
             Self {
                 enclosing: None,
                 values: {
@@ -637,11 +670,13 @@ pub mod env {
             }
         }
 
+        /// Defines a variable in this environment.
         pub fn define(&mut self, name: String, value: LoxVar) {
             self.values.insert(name, value);
         }
 
-        pub fn get_at(&self, dist: usize, name: &str) -> Option<LoxVar> {
+        /// Gets a variable from this environment, searching up the enclosing chain if necessary.
+        fn get_at(&self, dist: usize, name: &str) -> Option<LoxVar> {
             if dist == 0 {
                 return self.values.get(name).cloned();
             }
@@ -649,7 +684,8 @@ pub mod env {
             self.enclosing.as_ref()?.borrow().get_at(dist - 1, name)
         }
 
-        pub fn get_global(&self, name: &str) -> Option<LoxVar> {
+        /// Gets a variable from the global scope.
+        fn get_global(&self, name: &str) -> Option<LoxVar> {
             if let Some(ref parent) = self.enclosing {
                 return parent.borrow().get_global(name);
             }
@@ -661,9 +697,12 @@ pub mod env {
             None
         }
 
+        /// Gets a variable from this environment, searching up the enclosing chain if necessary.
+        /// If `distance` is `Some`, the variable is looked up at the given distance,
+        /// if `distance` is `None`, the variable is looked up in the global scope.
         pub fn get(&self, name: &str, distance: Option<usize>) -> Option<LoxVar> {
-            #[cfg(feature = "debug_print")]
-            println!("LOOKUP: {} @ {:?}", name, distance);
+            //#[cfg(debug_assertions)]
+            //println!("LOOKUP: {} @ {:?}", name, distance);
             if let Some(dist) = distance {
                 self.get_at(dist, name)
             } else {
@@ -671,6 +710,9 @@ pub mod env {
             }
         }
 
+        /// Assigns a value to a variable in this environment, searching up the enclosing chain if necessary.
+        /// If `dist` is `Some`, the variable is assigned at the given distance,
+        /// if `dist` is `None`, the variable is assigned in the global scope.
         pub fn assign(
             &mut self,
             name: &str,

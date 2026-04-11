@@ -1,3 +1,6 @@
+//! Lox variable types.
+//! Also contains the implementation of Lox functions and classes.
+
 use std::{
     fmt::{Debug, Display},
     ops::*,
@@ -12,29 +15,36 @@ use crate::tree_walk::{
     },
 };
 
+/// Contains the implementation of Lox functions.
 pub mod functions {
     use std::{fmt::Debug, rc::Rc};
 
-    use crate::tree_walk::{
-        ast::stmt::{ControlFlow, Stmt},
+    use crate::{
         error::fn_err::{FunctionError, FunctionErrorKind},
-        interpreter::{
-            Interpreter,
-            env::{Env, EnvironmentImpl as _},
+        tree_walk::{
+            ast::stmt::{ControlFlow, Stmt},
+            interpreter::{
+                Interpreter,
+                env::{Env, EnvironmentImpl as _},
+            },
+            lox_var::{InstanceRef, LoxVar},
         },
-        lox_var::{InstanceRef, LoxVar},
     };
 
+    /// Represents a callable Lox function.
     pub trait LoxCallable: Debug {
+        /// Calls the function with the given arguments.
         fn call(
             &self,
             interpreter: &mut Interpreter,
             arguments: &[LoxVar],
         ) -> Result<LoxVar, FunctionError>;
 
+        /// Returns the signature of the function, including parameter names and types.
         fn signature(&self) -> String;
     }
 
+    /// Represents a Lox function defined in the Lox code.
     pub struct LoxFunc {
         arity: u8,
         name: String,
@@ -68,6 +78,9 @@ pub mod functions {
     }
 
     impl LoxFunc {
+        /// Creates a new Lox function with the given arity, body, parameters, name, closure, and initialization flag.
+        /// The `closure` is the environment in which the function is defined.
+        /// The `is_init` flag indicates whether the function is an initializer for a class.
         pub fn new(
             arity: u8,
             body: Vec<Stmt>,
@@ -86,10 +99,12 @@ pub mod functions {
             }
         }
 
+        /// Returns the arity of the function, i.e. the number of arguments it expects.
         pub fn arity(&self) -> u8 {
             self.arity
         }
 
+        /// Binds the function to an instance, creating a new closure with the instance bound to `this`.
         pub fn bind(&self, instance: InstanceRef) -> Rc<LoxFunc> {
             let env = Env::new_env(Some(self.closure.clone()));
 
@@ -179,26 +194,43 @@ pub mod functions {
     }
 }
 
+/// Represents a Lox class, including its name, methods, and superclass.
 pub mod class {
     use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-    use crate::tree_walk::{
+    use crate::{
         error::fn_err::{FunctionError, FunctionErrorKind},
-        interpreter::Interpreter,
-        lox_var::{
-            LoxVar,
-            functions::{LoxCallable, LoxFunc},
-        },
+        tree_walk::{interpreter::Interpreter, lox_var::functions::LoxFunc},
     };
 
+    use super::*;
+
     #[derive(Debug, Clone, PartialEq)]
+    /// Represents a Lox class, including its name, methods, and superclass.
     pub struct LoxClass {
+        /// The name of the class.
         pub name: String,
-        pub methods: HashMap<String, Rc<LoxFunc>>,
-        pub super_class: Option<Rc<LoxClass>>,
+        /// The methods defined in this class.
+        methods: HashMap<String, Rc<LoxFunc>>,
+        /// The superclass of this class, if any.
+        super_class: Option<Rc<LoxClass>>,
     }
 
     impl LoxClass {
+        /// Creates a new `LoxClass` instance.
+        pub fn new(
+            name: String,
+            methods: HashMap<String, Rc<LoxFunc>>,
+            super_class: Option<Rc<LoxClass>>,
+        ) -> Self {
+            Self {
+                name,
+                methods,
+                super_class,
+            }
+        }
+
+        /// Finds a method with the given name in this class or its superclass.
         pub fn find_method(&self, name: &str) -> Option<Rc<LoxFunc>> {
             if let Some(m) = self.methods.get(name) {
                 Some(m.clone())
@@ -207,6 +239,7 @@ pub mod class {
             }
         }
 
+        /// Returns the arity of the `init` method, if one exists.
         fn arity(&self) -> Option<u8> {
             Some(self.find_method("init")?.arity())
         }
@@ -240,26 +273,34 @@ pub mod class {
     }
 
     #[derive(Debug)]
+    /// Represents a Lox instance, including its class and fields.
     pub struct LoxInstance {
-        pub class: Rc<LoxClass>,
+        class: Rc<LoxClass>,
+        /// The fields of this instance, mapped by their names.
         pub fields: HashMap<String, LoxVar>,
     }
 
     impl LoxInstance {
+        /// Creates a new `LoxInstance` instance.
         pub fn new(class: Rc<LoxClass>) -> Self {
             Self {
                 class,
                 fields: HashMap::new(),
             }
         }
+
+        /// Returns a reference to the class of this instance.
+        pub fn class(&self) -> &LoxClass {
+            &self.class
+        }
     }
 
-    pub trait InstanceImpl {
+    pub(crate) trait InstanceImpl {
         fn get(&self, name: &str) -> Option<LoxVar>;
         fn set(&mut self, name: String, value: LoxVar);
     }
 
-    pub type InstanceRef = Rc<RefCell<LoxInstance>>;
+    pub(crate) type InstanceRef = Rc<RefCell<LoxInstance>>;
 
     impl InstanceImpl for InstanceRef {
         fn get(&self, name: &str) -> Option<LoxVar> {
@@ -281,24 +322,40 @@ pub mod class {
 }
 
 #[derive(Clone, Debug)]
+/// Represents a Lox variable, which can be a number, boolean, string, callable, class, instance, or nil.
 pub enum LoxVar {
+    /// Represents a Lox number.
     Number(f64),
+    /// Represents a Lox boolean.
     Bool(bool),
+    /// Represents a Lox string.
     String(String),
+    /// Represents a Lox callable function.
     Callable(Rc<dyn LoxCallable>),
+    /// Represents a Lox class.
     Class(Rc<LoxClass>),
+    /// Represents a Lox instance.
     Instance(InstanceRef),
+    /// Represents a nil value.
     Nil,
 }
 
 #[derive(Debug, Clone, Copy)]
+/// Represents the kind of a Lox variable, which can be a number, boolean, string, callable, class, instance, or nil.
 pub enum LoxVarKind {
+    /// Represents a Lox number.
     Number,
+    /// Represents a Lox boolean.
     Bool,
+    /// Represents a Lox string.
     String,
+    /// Represents a Lox callable function.
     Callable,
+    /// Represents a Lox class.
     Class,
+    /// Represents a Lox instance.
     Instance,
+    /// Represents a nil value.
     Nil,
 }
 
@@ -331,6 +388,7 @@ impl From<&LoxVar> for LoxVarKind {
 }
 
 impl LoxVar {
+    /// Returns the kind of this variable, which can be a number, boolean, string, callable, class, instance, or nil.
     pub fn kind(&self) -> LoxVarKind {
         self.into()
     }
@@ -342,6 +400,7 @@ impl LoxVar {
         }
     }
 
+    /// Returns `true` if this variable is truthy, `false` otherwise.
     pub fn is_truthy(&self) -> bool {
         match self {
             LoxVar::Nil => false,
@@ -351,6 +410,7 @@ impl LoxVar {
     }
 
     #[cfg(feature = "implicit_converions")]
+    /// Tries to convert this variable to the specified kind, returning `Some` if successful, `None` otherwise.
     pub fn try_convert(&self, to: LoxVarKind) -> Option<LoxVar> {
         match to {
             LoxVarKind::Nil => Some(LoxVar::Nil),
@@ -388,7 +448,7 @@ impl Display for LoxVar {
             LoxVar::Callable(c) => write!(f, "<fn {}>", c.signature()),
             LoxVar::Class(c) => write!(f, "{}", c.name),
             LoxVar::Instance(i) => {
-                write!(f, "{} instance", i.borrow().class.name)
+                write!(f, "{} instance", i.borrow().class().name)
             }
         }
     }

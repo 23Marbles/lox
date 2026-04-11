@@ -1,12 +1,12 @@
-//#![warn(missing_docs)]
-//#![warn(clippy::pedantic)]
-//#![warn(clippy::restriction)]
+#![warn(missing_docs)]
+#![warn(clippy::restriction)]
 #![warn(clippy::panic_in_result_fn)]
 #![warn(clippy::unnecessary_to_owned)]
 #![warn(clippy::redundant_clone)]
 #![warn(clippy::unwrap_used)]
-//#![warn(clippy::pedantic)]
-#![warn(clippy::cfg_not_test)]
+#![allow(clippy::question_mark_used)]
+#![allow(clippy::min_ident_chars)]
+#![allow(clippy::implicit_return)]
 #![warn(clippy::copy_iterator)]
 #![warn(clippy::trivially_copy_pass_by_ref)]
 #![warn(clippy::new_without_default)]
@@ -20,138 +20,373 @@
 //! The benchmarks and tests are currently all passing.
 //!
 //! ## Benchmarks
+//!
+//! | Name                | Average               | Range              |
+//! | ------------------- | --------------------- | ------------------ |
+//! | zoo_batch.lox       | 10.070327800 s/iter   | (+/- 0.139661850)  |
+//! | method_call.lox     | 15.108997379 s/iter  | (+/- 4.856173500)  |
+//! | invocation.lox      | 19.936385232 s/iter  | (+/- 6.740746550)  |
+//! | zoo.lox             | 23.176159476 s/iter  | (+/- 8.743484650)  |
+//! | instantiation.lox   | 24.841070760 s/iter  | (+/- 34.450921200) |
+//! | properties.lox      | 28.623850036 s/iter  | (+/- 9.612263500)  |
+//! | fib.lox             | 65.744055751 s/iter  | (+/- 21.469839300) |
+//! | string_equality.lox | 79.359264633 s/iter  | (+/- 21.871288400) |
+//! | equality.lox        | 88.425643870 s/iter  | (+/- 31.590151000) |
+//! | binary_trees.lox    | 99.988585526 s/iter  | (+/- 35.513968700) |
+//! | trees.lox           | 212.737865755 s/iter | (+/- 94.397381250) |
 
-use std::{fmt::Write, fs::File, io::Read as _, path::Path};
-
-use crate::tree_walk::{
-    error::{diagnostic::Diagnostic, run_err::RunError, scan_err::ScanError},
-    interpreter::{
-        Interpreter, InterpreterConfig,
-        env::{Env, EnvironmentImpl as _},
-    },
-    lox_var::LoxVar,
-    parser::Parser,
-    static_analysis::Resolver,
-    token::{self, Scanner},
+use std::{
+    fs,
+    hint::black_box,
+    io,
+    path::Path,
+    rc::Rc,
+    sync::{Arc, Mutex},
+    time::Duration,
 };
 
+use codespan_reporting::{
+    diagnostic::Diagnostic,
+    files::SimpleFiles,
+    term::{self, Config as ErrWriteConfig},
+};
+
+use crate::{
+    error::diag_fom_err,
+    tree_walk::{
+        ast::stmt::Stmt,
+        interpreter::{
+            InterpOut, Interpreter,
+            env::{Env, EnvironmentImpl as _},
+        },
+        lox_var::functions::LoxCallable,
+        parser::Parser,
+        static_analysis::Resolver,
+        token::{Scanner, Token},
+    },
+};
+
+mod error;
+pub mod error_codes;
 pub mod std_lib;
 #[cfg(feature = "ast")]
 pub mod tree_walk;
 
-/// The backend type for the Runner struct
+/// The backend type for the Runner struct.
 pub enum Backend {
-    /// Use the treewalk interpreter
-    TreeWalk,
-    /// Use the bytecode VM
+    /// Use the bytecode VM.
     ByteCode,
+    /// Use the treewalk interpreter.
+    TreeWalk,
 }
 
-/// Used to construct and run a file
+#[derive(Clone)]
+/// Configuration for the Runner struct.
+pub struct RunnerConfig {
+    expr_print: bool,
+    err_cfg: ErrWriteConfig,
+}
+
+impl RunnerConfig {
+    /// Creates a new [`RunnerConfig`] with the given configuration.
+    pub fn new(expr_print: bool, err_cfg: ErrWriteConfig) -> Self {
+        Self {
+            expr_print,
+            err_cfg,
+        }
+    }
+}
+
+#[derive(Clone)]
+/// Used to construct and run a file.
 pub struct Runner {
-    writer: Box<dyn Write>,
-    _backend: Backend,
+    out: Arc<Mutex<dyn io::Write + Send>>,
+    files: SimpleFiles<String, String>,
+    current_id: usize,
     interpreter: Interpreter,
+    cfg: RunnerConfig,
+}
+
+type Result<T> = core::result::Result<T, Vec<Diagnostic<usize>>>;
+
+/// Setting up a [`Runner`].
+impl Default for Runner {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Runner {
-    pub fn run_file(&mut self, path: &Path) -> Result<(), Vec<Diagnostic>> {
-        let mut file = File::open(path).map_err(|e| vec![e.into()])?;
-        let mut content = String::new();
-        file.read_to_string(&mut content)
-            .map_err(|e| vec![e.into()])?;
-
-        self.run_source(&content)
+    /// Creates a new [`Runner`] with the default configuration.
+    pub fn new() -> Self {
+        Self {
+            out: Arc::new(Mutex::new(io::stdout())),
+            files: SimpleFiles::new(),
+            interpreter: Interpreter::new(0),
+            current_id: 0,
+            cfg: RunnerConfig::new(false, ErrWriteConfig::default()),
+        }
     }
 
-    pub fn run_source(&mut self, source: &str) -> Result<(), Vec<Diagnostic>> {
-        let tokens = match Scanner::new(source).scan_tokens() {
-            Ok(t) => t,
-            Err(errs) => return Err(errs.iter().map(|err| err.into()).collect::<Vec<_>>()),
-        };
-
-        let mut parsed = match Parser::new(tokens).parse() {
-            Ok(stmts) => stmts,
-            Err(errs) => return Err(errs.iter().map(|err| err.into()).collect::<Vec<_>>()),
-        };
-
-        match Resolver::new().resolve_stmts(&mut parsed) {
-            Ok(_) => (),
-            Err(errs) => return Err(errs.iter().map(|err| err.into()).collect::<Vec<_>>()),
-        };
-
-        self.interpreter.update_stmts(parsed);
-
-        for res in &mut self.interpreter {
-            match res {
-                Ok(out) => {
-                    for l in out.lines() {
-                        writeln!(self.writer, "{l}").map_err(|err| vec![err.into()])?
-                    }
-                }
-                Err(err) => {
-                    return Err(err.into());
-                }
-            }
+    /// Creates a new [`Runner`] with the given writer.
+    pub fn new_with_writer(writer: Box<dyn io::Write + Send>) -> Self {
+        Self {
+            out: Arc::new(Mutex::new(writer)),
+            files: SimpleFiles::new(),
+            interpreter: Interpreter::new(0),
+            current_id: 0,
+            cfg: RunnerConfig::new(false, ErrWriteConfig::default()),
         }
+    }
 
+    /// Sets whether to print expressions.
+    pub fn with_print_exprs(mut self, print_exprs: bool) -> Self {
+        self.cfg.expr_print = print_exprs;
+        self
+    }
+
+    /// Sets the globals for the runner.
+    pub fn with_globals(mut self, globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Self {
+        self.interpreter = self.interpreter.with_globals(globals);
+        self
+    }
+
+    /// Sets the error writer configuration for the runner.
+    pub fn with_err_writer_cfg(mut self, err_writer_cfg: ErrWriteConfig) -> Self {
+        self.cfg.err_cfg = err_writer_cfg;
+        self
+    }
+}
+
+/// Running snippets and files and getting output.
+impl Runner {
+    /// Runs a snippet and writes the output to the configured writer.
+    pub fn run_snippet(&mut self, snippet: &str) -> Result<()> {
+        self.current_id = self.files.add("snippet".into(), snippet.into());
+        self.write_source_output(snippet)
+    }
+
+    /// Runs a file and writes the output to the configured writer.
+    pub fn run_file(&mut self, path: &Path) -> Result<()> {
+        let content = fs::read_to_string(path).map_err(|e| vec![diag_fom_err(e)])?;
+
+        self.current_id = self.files.add(
+            path.file_name()
+                .map(|n| n.to_string_lossy())
+                .unwrap_or_default()
+                .into_owned(),
+            content.clone(),
+        );
+
+        self.write_source_output(&content)
+    }
+
+    fn get_output(&mut self, source: &str) -> Result<Vec<InterpOut>> {
+        self.interpreter
+            .set_stmts(&self.get_resolved_stmts(source)?);
+        self.interpreter.run()
+    }
+
+    fn write_source_output(&mut self, source: &str) -> Result<()> {
+        match self.get_output(source) {
+            Ok(out) => {
+                for line in out.iter().flat_map(|o| o.lines()) {
+                    self.write_to_out(&line)?;
+                }
+
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Returns the time taken to run the given source code, or an error if the source code is invalid.
+    pub fn get_run_time(
+        &self,
+        source: &str,
+    ) -> std::result::Result<Duration, Vec<Diagnostic<usize>>> {
+        let mut interpreter = self.interpreter.clone();
+        interpreter.set_stmts(&self.get_resolved_stmts(source)?);
+        let start = std::time::Instant::now();
+        black_box(interpreter.run()?);
+        Ok(start.elapsed())
+    }
+
+    /// Returns the time taken to parse and run the given source code, or an error if the source code is invalid.
+    pub fn get_full_time(
+        &self,
+        source: &str,
+    ) -> std::result::Result<Duration, Vec<Diagnostic<usize>>> {
+        let ref mut temp = self.clone();
+        let start = std::time::Instant::now();
+        black_box(temp.run_snippet(source)?);
+        Ok(start.elapsed())
+    }
+
+    /// Writes errors to the output stream.
+    pub fn write_errors(
+        &mut self,
+        errs: impl IntoIterator<Item = Diagnostic<usize>>,
+    ) -> Result<()> {
+        for err in errs {
+            let mut err_str = String::new();
+            term::emit_to_string(&mut err_str, &self.cfg.err_cfg, &self.files, &err)
+                .map_err(|e| vec![diag_fom_err(e)])?;
+            self.write_to_out(&err_str)?;
+        }
         Ok(())
     }
 }
 
-pub fn run_with_out(source: &str) -> Result<Vec<String>, RunError> {
-    let mut interpreter = Interpreter::new(
-        Vec::new(),
-        Env::new_with_globals(
-            std_lib::default_lib()
-                .iter()
-                .cloned()
-                .map(|(name, func)| (name, LoxVar::Callable(func)))
-                .collect(),
-        ),
-        InterpreterConfig::default(),
-    );
+impl Runner {
+    /// Clears the interpreter state, resetting the environment and call depth.
+    pub fn clear_interp(&mut self) {
+        self.interpreter.set_env(Env::new_env(None));
+        self.current_id = 0;
+    }
 
-    let scanner = Scanner::new(source);
+    /// Writes a line to the output stream.
+    fn write_to_out(&mut self, line: &str) -> Result<()> {
+        self.out
+            .lock()
+            .map_err(|e| vec![diag_fom_err(e)])?
+            .write(format!("{}\n", line).as_bytes())
+            .map_err(|e| vec![diag_fom_err(e)])?;
+        Ok(())
+    }
 
-    let mut errors: Vec<ScanError> = Vec::new();
+    /// Gets the source code for the given file ID.
+    pub fn get_source(&self, file_id: usize) -> Option<&str> {
+        Some(self.files.get(file_id).ok()?.source())
+    }
 
-    let tokens: Vec<token::Token<'_>> = scanner
-        .filter_map(|v| match v {
-            Ok(t) => Some(t),
-            Err(e) => {
-                errors.push(e);
-                None
-            }
-        })
-        .collect();
+    /// Gets the tokens for the given source.
+    pub fn get_tokens<'source>(&self, source: &'source str) -> Result<Vec<Token<'source>>> {
+        Scanner::new(source, self.current_id).scan_tokens()
+    }
 
-    if errors.is_empty() {
-        let mut parser = Parser::new(tokens);
-        let mut parsed = parser.parse()?;
+    /// Gets the statements for the given source.
+    pub fn get_stmts(&self, source: &str) -> Result<Vec<Stmt>> {
+        Parser::new(self.get_tokens(source)?, self.current_id).parse()
+    }
 
-        let mut resolver = Resolver::new();
-        resolver.resolve_stmts(&mut parsed)?;
+    /// Gets the resolved statements for the given source.
+    pub fn get_resolved_stmts(&self, source: &str) -> Result<Vec<Stmt>> {
+        let mut stmts = self.get_stmts(source)?;
+        Resolver::new(self.current_id).resolve_stmts(&mut stmts)?;
+        Ok(stmts)
+    }
+}
 
-        interpreter.update_stmts(parsed);
+#[derive(Debug, Default, Clone)]
+pub(crate) struct TestWriter {
+    str_buf: String,
+}
 
-        let mut out = Vec::new();
+impl io::Write for TestWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.str_buf
+            .push_str(core::str::from_utf8(buf).map_err(io::Error::other)?);
+        Ok(buf.len())
+    }
 
-        for res in interpreter {
-            match res {
-                Ok(i_out) => {
-                    for l in i_out.lines() {
-                        out.push(l);
+    fn flush(&mut self) -> io::Result<()> {
+        // Never fails
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+/// A shared writer that can be used to write output from the runner.
+pub struct SharedWriter(Arc<Mutex<TestWriter>>);
+
+impl SharedWriter {
+    /// Reads the contents of the writer.
+    pub fn read(&self) -> String {
+        let guard = self
+            .0
+            .lock()
+            .map_err(|e| io::Error::other(e.to_string()))
+            .unwrap();
+        guard.str_buf.clone()
+    }
+}
+
+impl Clone for SharedWriter {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl io::Write for SharedWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let mut guard = self.0.lock().map_err(|e| io::Error::other(e.to_string()))?;
+
+        guard.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        let mut guard = self.0.lock().map_err(|e| io::Error::other(e.to_string()))?;
+
+        guard.flush()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// Tests functions for the Runner.
+    impl Runner {
+        /// Runs a series of snippets and asserts that the output matches the expected output.
+        /// Errors are compared as strings and passed in as codes.
+        pub fn test_repl(
+            snippets: &[&str],
+            expected_output: &[std::result::Result<&str, Vec<&str>>],
+        ) {
+            let writer = SharedWriter::default();
+
+            let mut runner = Runner::new_with_writer(Box::new(writer.clone()));
+
+            for (snippet, exp_out) in zip(snippets, expected_output) {
+                match runner.run_snippet(snippet) {
+                    Ok(_) => {
+                        let output = writer.read();
+
+                        let expected = exp_out.clone().unwrap().to_string();
+
+                        assert_eq!(output, expected);
+
+                        writer.0.lock().unwrap().str_buf.clear();
                     }
-                }
-                Err(err) => {
-                    return Err(err.into());
+                    Err(errs) => {
+                        let actual = errs
+                            .iter()
+                            .map(|e| e.code.as_ref().unwrap().to_string())
+                            .collect::<Vec<String>>();
+
+                        let expected = exp_out
+                            .as_ref()
+                            .unwrap_err()
+                            .iter()
+                            .map(|c| c.to_string())
+                            .collect::<Vec<String>>();
+
+                        assert_eq!(actual, expected);
+                    }
                 }
             }
         }
+    }
 
-        Ok(out)
-    } else {
-        Err(errors.into())
+    use std::iter::zip;
+
+    use super::*;
+
+    #[test]
+    /// Tests that the REPL for a bug where the instructions are not executed correctly and the ip is not reset.
+    fn test_repl_ip_override() {
+        let snippets = ["4+5; 6+7;", "print 4+5;"];
+        let expected_output = [std::result::Result::Ok(""), std::result::Result::Ok("9\n")];
+
+        Runner::test_repl(&snippets, &expected_output);
     }
 }

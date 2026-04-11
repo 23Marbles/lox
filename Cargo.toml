@@ -18,9 +18,11 @@ break = []
 class_challenges = ["static_methods", "getters_setters"]
 static_methods = []
 getters_setters = []
-debug_print = []
+div_zero_error = []
+nan_inf_consts = []
 
 [dev-dependencies]
+criterion = "0.8.2"
 libtest-with = "0.8.1-14"
 regex = "1.12.3"
 
@@ -31,7 +33,8 @@ harness = false
 
 [[bench]]
 name = "lox-bench"
-path = "tests/runner.rs"
+path = "benches/runner.rs"
 harness = false
 
 [dependencies]
+codespan-reporting = "0.13.1"

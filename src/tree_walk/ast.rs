@@ -1,54 +1,91 @@
+//! AST nodes for the Lox language.
+
 use core::fmt::Display;
 
 use crate::tree_walk::{
     ast::expr::Expr,
-    error::ErrorPos,
     lox_var::LoxVar,
     token::{Token, TokenKind},
 };
 
+/// Module for statement AST nodes.
 pub mod stmt {
+    use core::ops::Range;
+
     use super::*;
     #[derive(Debug, Clone, PartialEq)]
+    /// Represents a statement in the AST.
     pub enum Stmt {
+        /// Represents an [`Expr`] statement.
         Expression(Expr),
+        /// Represents a print statement.
+        /// This will print the value of the expression.
         Print(Expr),
+        /// Represents a variable declaration statement.
         Var {
+            /// The span of the variable declaration in the source code.
+            span: Range<usize>,
+            /// The name of the variable being declared.
             name: String,
+            /// The initializer expression for the variable, if any.
             initializer: Option<Expr>,
-            position: ErrorPos,
         },
+        /// Represents a block of statements.
         Block(Vec<Stmt>),
+        /// Represents an if statement.
+        /// This will execute the `then_branch` if the `condition` is true, and the `else_branch` if it is false.
         If {
+            /// The condition expression for the if statement.
             condition: Expr,
+            /// The branch to execute if the condition is true.
             then_branch: Box<Stmt>,
+            /// The branch to execute if the condition is false, if any.
             else_branch: Option<Box<Stmt>>,
         },
+        /// Represents a while statement.
         While {
+            /// The condition expression for the while statement.
             condition: Expr,
+            /// The body of the while statement.
             body: Box<Stmt>,
         },
+        /// Represents a function declaration.
         Function {
+            /// The span of the function declaration in the source code.
+            span: Range<usize>,
+            /// The name of the function being declared.
             name: String,
+            /// The parameters of the function.
             parameters: Vec<String>,
+            /// The body of the function.
             body: Vec<Stmt>,
-            pos: ErrorPos,
         },
+        /// Represents a return statement.
         Return {
+            /// The value being returned, if any.
             value: Option<Expr>,
-            pos: ErrorPos,
+            /// The span of the return statement in the source code.
+            span: Range<usize>,
         },
+        /// Represents a class declaration.
         Class {
+            /// The name of the class being declared.
             name: String,
+            /// The superclass of the class, if any.
             super_class: Option<Expr>,
+            /// The methods of the class.
             methods: Vec<Stmt>,
-            pos: ErrorPos,
+            /// The span of the class declaration in the source code.
+            span: Range<usize>,
         },
     }
 
     #[derive(Debug, Clone)]
+    /// Represents the control flow of a function.
     pub enum ControlFlow {
+        /// No control flow, the function continues normally.
         None,
+        /// A return statement has been encountered, with the given value.
         Return(LoxVar),
     }
 
@@ -140,78 +177,131 @@ pub mod stmt {
     }
 }
 
+/// Module for expressions in the AST.
 pub mod expr {
+    use core::ops::Range;
+
     use super::*;
     #[derive(Debug, Clone, PartialEq)]
+    /// Represents an expression in the AST.
     pub enum Expr {
+        /// Represents a literal value in the AST. Contains a [`Literal`] value.
         Literal(Literal),
 
+        /// Represents a unary expression in the AST. Contains an [`operator`][`TokenKind`] and a [`right`][`Expr`] expression.
         Unary {
+            /// The operator of the unary expression.
             operator: TokenKind,
-            position: ErrorPos,
+            /// The span of the unary expression in the source code.
+            span: Range<usize>,
+            /// The right-hand side expression of the unary expression.
             right: Box<Expr>,
         },
 
+        /// Represents a binary expression in the AST. Contains a [`left`][`Expr`] expression, an [`operator`][`TokenKind`], and a [`right`][`Expr`] expression.
         Binary {
+            /// The left-hand side expression of the binary expression.
             left: Box<Expr>,
+            /// The operator of the binary expression.
             operator: TokenKind,
+            /// The right-hand side expression of the binary expression.
             right: Box<Expr>,
-            position: ErrorPos,
+            /// The span of the binary expression in the source code.
+            span: Range<usize>,
         },
 
+        /// Represents a grouping expression in the AST. Contains an [`Expr`] expression.
         Grouping(Box<Expr>),
 
+        /// Represents a variable expression in the AST. Contains a [`name`] and an optional [`distance`] for lookup.
+        /// This is set in the resolver and used during evaluation.
         Variable {
+            /// The span of the variable expression in the source code.
+            span: Range<usize>,
+            /// The name of the variable.
             name: String,
+            /// The distance from the current scope for lookup. If it is `None`, the variable is a global variable.
             distance: Option<usize>,
-            position: ErrorPos,
         },
 
+        /// Represents an assignment expression in the AST. Contains a [`name`], [`distance`], [`value`] and an optional [`distance`] for lookup.
+        /// This is set in the resolver and used during evaluation.
         Assign {
+            /// The name of the variable being assigned.
             name: String,
+            /// The distance from the current scope for lookup. If it is `None`, the variable is a global variable.
             distance: Option<usize>,
-            position: ErrorPos,
+            /// The span of the assignment expression in the source code.
+            span: Range<usize>,
+            /// The value being assigned to the variable.
             value: Box<Expr>,
         },
 
+        /// Represents a logical expression in the AST. Contains a [`left`][`Expr`] expression, an [`operator`], and a [`right`][`Expr`] expression.
         Logical {
+            /// The left-hand side expression of the logical expression.
             left: Box<Expr>,
+            /// The operator of the logical expression.
             operator: TokenKind,
+            /// The right-hand side expression of the logical expression.
             right: Box<Expr>,
         },
 
+        /// Represents a function call expression in the AST. Contains a [`callee`][`Expr`] expression and a list of [`args`][`Expr`] expressions.
         Call {
+            /// The expression being called.
             callee: Box<Expr>,
+            /// The list of arguments to the function call.
             args: Vec<Expr>,
-            position: ErrorPos,
+            /// The span of the function call expression in the source code.
+            span: Range<usize>,
         },
 
+        /// Represents a get expression in the AST. Contains an [`object`][`Expr`] expression and a [`name`] string.
         Get {
+            /// The object expression being accessed.
             object: Box<Expr>,
+            /// The name of the property being accessed.
             name: String,
-            pos: ErrorPos,
+            /// The span of the get expression in the source code.
+            span: Range<usize>,
         },
 
+        /// Represents a set expression in the AST. Contains an [`object`][`Expr`] expression, a [`name`] string, and a [`value`][`Expr`] expression.
         Set {
+            /// The object expression being set.
             object: Box<Expr>,
+            /// The name of the property being set.
             name: String,
+            /// The value being set.
             value: Box<Expr>,
-            pos: ErrorPos,
+            /// The span of the set expression in the source code.
+            span: Range<usize>,
         },
 
+        /// Represents a super expression in the AST. Contains a [`method_name`] string and an optional [`distance`] usize.
         Super {
+            /// The name of the method being called.
             method_name: String,
+            /// The distance from the current scope to the superclass scope.
+            /// If `None`, distance is to the global scope.
             distance: Option<usize>,
-            pos: ErrorPos,
+            /// The span of the super expression in the source code.
+            span: Range<usize>,
         },
 
+        /// Represents a `this` expression in the AST. Contains an optional [`distance`] usize.
         This {
+            /// The distance from the current scope to the superclass scope.
+            /// If `None`, distance is to the global scope.
             distance: Option<usize>,
-            pos: ErrorPos,
+            /// The span of the `this` expression in the source code.
+            span: Range<usize>,
         },
     }
 
     impl Expr {
+        /// Resolves the [`distance`] field of a [`Variable`], [`Assign`], [`This`], or [`Super`] expression to the given [`dist`] value.
         pub fn resolve(&mut self, dist: usize) {
             match self {
                 Expr::Variable { distance, .. }
@@ -224,23 +314,28 @@ pub mod expr {
             }
         }
 
+        /// Creates a binary expression with the given left and right operands and operator.
         pub fn binary(left: Expr, operator: Token<'_>, right: Expr) -> Self {
             Self::Binary {
                 left: Box::new(left),
                 operator: operator.kind,
                 right: Box::new(right),
-                position: operator.into(),
+                span: operator.span,
             }
         }
 
+        /// Creates a unary expression with the given operator and right operand.
         pub fn unary(operator: Token<'_>, right: Expr) -> Self {
             Self::Unary {
                 operator: operator.kind,
                 right: Box::new(right),
-                position: operator.into(),
+                span: operator.span,
             }
         }
 
+        /// Returns a string representation of the expression.
+        /// This is designed to be human-readable, not machine-parsable.
+        /// It more closely resembles the source code than a machine-readable format.
         pub fn string(&self) -> String {
             match self {
                 Expr::Literal(literal) => literal.to_string(),
@@ -336,11 +431,17 @@ pub mod expr {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// Represents a literal value in the AST.
 pub enum Literal {
+    /// Represents a numeric literal value.
     Number(f64),
+    /// Represents a string literal value.
     String(String),
+    /// Represents the boolean literal value `true`.
     True,
+    /// Represents the boolean literal value `false`.
     False,
+    /// Represents the `nil` literal value.
     Nil,
 }
 
