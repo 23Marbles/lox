@@ -199,7 +199,7 @@ impl Interpreter {
                         parameters
                             .len()
                             .try_into()
-                            .map_err(|_| RuntimeError::TooManyArguments(parameters.len(), span))?,
+                            .map_err(|_| RuntimeError::Over255Arguments(parameters.len(), span))?,
                         body,
                         parameters,
                         name,
