@@ -701,8 +701,8 @@ pub mod env {
         /// If `distance` is `Some`, the variable is looked up at the given distance,
         /// if `distance` is `None`, the variable is looked up in the global scope.
         pub fn get(&self, name: &str, distance: Option<usize>) -> Option<LoxVar> {
-            #[cfg(debug_assertions)]
-            println!("LOOKUP: {} @ {:?}", name, distance);
+            //#[cfg(debug_assertions)]
+            //println!("LOOKUP: {} @ {:?}", name, distance);
             if let Some(dist) = distance {
                 self.get_at(dist, name)
             } else {
