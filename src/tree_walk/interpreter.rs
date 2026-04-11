@@ -372,13 +372,17 @@ impl Interpreter {
                         .sub(&right_var)
                         .map_err(|(l, r)| EvaluateError::bin_eval_error(span, Minus, l, r).into()),
                     Slash => {
+                        #[cfg(feature = "div_zero_error")]
                         if right_var == LoxVar::Number(0.) {
-                            Err(EvaluateError::new(EvaluateErrorKind::DivisionByZero, span).into())
-                        } else {
-                            left_var.div(&right_var).map_err(|(l, r)| {
-                                EvaluateError::bin_eval_error(span, Slash, l, r).into()
-                            })
+                            return Err(EvaluateError::new(
+                                EvaluateErrorKind::DivisionByZero,
+                                span,
+                            )
+                            .into());
                         }
+                        left_var.div(&right_var).map_err(|(l, r)| {
+                            EvaluateError::bin_eval_error(span, Slash, l, r).into()
+                        })
                     }
                     Star => left_var
                         .mul(&right_var)

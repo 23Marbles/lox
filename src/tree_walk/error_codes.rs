@@ -30,6 +30,7 @@ pub enum ErrorCode {
     NonCallable = 24,
     IncorrectArity = 25,
     IncompatibleConversion = 26,
+    #[cfg(feature = "div_zero_error")]
     DivisionByZero = 27,
     UndefinedProperty = 28,
     NotInstance = 29,
@@ -97,6 +98,7 @@ impl TryFrom<u8> for ErrorCode {
             24 => Ok(Self::NonCallable),
             25 => Ok(Self::IncorrectArity),
             26 => Ok(Self::IncompatibleConversion),
+            #[cfg(feature = "div_zero_error")]
             27 => Ok(Self::DivisionByZero),
             28 => Ok(Self::UndefinedProperty),
             29 => Ok(Self::NotInstance),

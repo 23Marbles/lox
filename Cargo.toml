@@ -18,6 +18,8 @@ break = []
 class_challenges = ["static_methods", "getters_setters"]
 static_methods = []
 getters_setters = []
+div_zero_error = []
+nan_inf_consts = []
 
 [dev-dependencies]
 libtest-with = "0.8.1-14"

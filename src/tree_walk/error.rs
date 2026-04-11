@@ -589,6 +589,7 @@ pub mod eval_err {
             from: LoxVarKind,
             to: LoxVarKind,
         },
+        #[cfg(feature = "div_zero_error")]
         DivisionByZero,
         UndefinedProperty(String),
         NotInstance(LoxVarKind),
@@ -609,6 +610,7 @@ pub mod eval_err {
                 EvaluateErrorKind::IncompatableConversion { .. } => {
                     ErrorCode::IncompatibleConversion
                 }
+                #[cfg(feature = "div_zero_error")]
                 EvaluateErrorKind::DivisionByZero => ErrorCode::DivisionByZero,
                 EvaluateErrorKind::UndefinedProperty(_) => ErrorCode::UndefinedProperty,
                 EvaluateErrorKind::NotInstance(_) => ErrorCode::NotInstance,
@@ -625,6 +627,7 @@ pub mod eval_err {
                 EvaluateErrorKind::NonCallable { .. } => Severity::Error,
                 EvaluateErrorKind::IncorrectArity { .. } => Severity::Error,
                 EvaluateErrorKind::IncompatableConversion { .. } => Severity::Error,
+                #[cfg(feature = "div_zero_error")]
                 EvaluateErrorKind::DivisionByZero => Severity::Warning,
                 EvaluateErrorKind::UndefinedProperty(_) => Severity::Error,
                 EvaluateErrorKind::NotInstance(_) => Severity::Error,
@@ -671,6 +674,7 @@ pub mod eval_err {
                 EvaluateErrorKind::IncompatableConversion { from, to } => {
                     write!(f, "Cannot coerce `{from:?}` to `{to:?}`")
                 }
+                #[cfg(feature = "div_zero_error")]
                 EvaluateErrorKind::DivisionByZero => write!(f, "Tried to divide by zero"),
                 EvaluateErrorKind::UndefinedProperty(name) => {
                     write!(f, "Property `{name}` is not defined")

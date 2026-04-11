@@ -633,10 +633,12 @@ impl<'source> Parser<'source> {
                 self.advance();
                 Ok(Expr::Literal(Literal::Nil))
             }
+            #[cfg(feature = "nan_inf_consts")]
             NaN => {
                 self.advance();
                 Ok(Expr::Literal(Literal::Number(f64::NAN)))
             }
+            #[cfg(feature = "nan_inf_consts")]
             INF => {
                 self.advance();
                 Ok(Expr::Literal(Literal::Number(f64::INFINITY)))

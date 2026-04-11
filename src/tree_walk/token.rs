@@ -355,7 +355,9 @@ pub enum TokenKind {
     True,
     Var,
     While,
+    #[cfg(feature = "nan_inf_consts")]
     NaN,
+    #[cfg(feature = "nan_inf_consts")]
     INF,
     #[cfg(feature = "break")]
     Break,
@@ -408,7 +410,9 @@ impl Display for TokenKind {
             Eof => write!(f, "\0"),
             #[cfg(feature = "break")]
             Break => write!(f, "break"),
+            #[cfg(feature = "nan_inf_consts")]
             NaN => write!(f, "NaN"),
+            #[cfg(feature = "nan_inf_consts")]
             INF => write!(f, "INF"),
         }
     }
@@ -436,7 +440,9 @@ impl TokenKind {
             "while" => Some(While),
             #[cfg(feature = "break")]
             "break" => Some(Break),
+            #[cfg(feature = "nan_inf_consts")]
             "NaN" => Some(NaN),
+            #[cfg(feature = "nan_inf_consts")]
             "INF" => Some(INF),
             _ => None,
         }

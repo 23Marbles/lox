@@ -1,0 +1,1 @@
+var oops = 1 / 0; // div_zero_error: error: 27
