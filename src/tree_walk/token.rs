@@ -1,3 +1,5 @@
+//! Token types for Lox source code.
+
 use core::fmt::Display;
 use core::ops::Range;
 
@@ -5,6 +7,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 
 use crate::error::{ToErrorCode as _, scan_err::ScanErrorKind};
 
+/// A scanner that tokenizes a source string.
 pub struct Scanner<'source> {
     file_id: usize,
     source: &'source str,
@@ -25,6 +28,7 @@ fn normalize_char(c: char) -> char {
 }
 
 impl<'source> Scanner<'source> {
+    /// Creates a new scanner with the given source string and file id.
     pub fn new(source: &'source str, file_id: usize) -> Self {
         Self {
             file_id,
@@ -35,6 +39,7 @@ impl<'source> Scanner<'source> {
         }
     }
 
+    /// Scans the source string and returns a vector of tokens or a vector of errors.
     pub fn scan_tokens(&mut self) -> Result<Vec<Token<'source>>, Vec<Diagnostic<usize>>> {
         let mut errors: Vec<Diagnostic<usize>> = Vec::new();
 
@@ -289,9 +294,13 @@ impl<'source> Iterator for Scanner<'source> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// A token with a kind, lexeme, and span in the source code.
 pub struct Token<'a> {
+    /// The kind of the token.
     pub kind: TokenKind,
+    /// The lexeme of the token tied to the source code.
     pub lexeme: &'a str,
+    /// The span of the token in the source code.
     pub span: Range<usize>,
 }
 
@@ -306,6 +315,8 @@ impl<'a> Display for Token<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+/// The kind of a token.
+#[expect(missing_docs)]
 pub enum TokenKind {
     // Single-character tokens.
     LeftParen,

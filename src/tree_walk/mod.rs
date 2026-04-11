@@ -26,6 +26,7 @@ pub mod parser;
 pub mod static_analysis;
 pub mod token;
 
+/// The entry point for the tree-walk interpreter.
 pub fn main(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) {
     let args: Vec<String> = env::args().collect();
 
@@ -39,6 +40,7 @@ pub fn main(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) {
     }
 }
 
+/// Runs a Lox script file with the given globals and writes output to the provided writer.
 pub fn run_file_with_writer<W: Write + Send + 'static>(
     file_path: &Path,
     globals: Vec<(&'static str, Rc<dyn LoxCallable>)>,
@@ -54,7 +56,8 @@ pub fn run_file_with_writer<W: Write + Send + 'static>(
     }
 }
 
-fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) {
+/// Runs a Lox prompt with the given globals.
+pub fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) {
     let mut line_buf = String::new();
 
     let mut runner = Runner::new()

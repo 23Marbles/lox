@@ -1,3 +1,5 @@
+//! Parser for Lox source code.
+
 use core::ops::Range;
 
 use codespan_reporting::diagnostic::Diagnostic;
@@ -13,6 +15,7 @@ use crate::{
     },
 };
 
+/// A parser that produces a stream of statements from a sequence of tokens.
 pub struct Parser<'source> {
     tokens: Vec<Token<'source>>,
     current: usize,
@@ -39,6 +42,7 @@ impl<'source> Iterator for Parser<'source> {
 }
 
 impl<'source> Parser<'source> {
+    /// Creates a new parser from a sequence of tokens and a file id.
     pub fn new(tokens: Vec<Token<'source>>, file_id: usize) -> Self {
         Self {
             tokens,
@@ -105,6 +109,7 @@ impl<'source> Parser<'source> {
         false
     }
 
+    /// Parses the tokens into a stream of statements.
     pub fn parse(&mut self) -> crate::Result<Vec<Stmt>> {
         let statements = self
             .filter_map(|res: Result<Stmt, Diagnostic<usize>>| res.ok())
@@ -236,7 +241,6 @@ impl<'source> Parser<'source> {
 
         if !offending_spans.is_empty() {
             let _ = self.error(ParseError::TooManyArguments {
-                got: u8::MAX as usize + offending_spans.len(),
                 spans: offending_spans,
             });
         }
@@ -602,7 +606,6 @@ impl<'source> Parser<'source> {
 
         if !offending_spans.is_empty() {
             let _ = self.error(ParseError::TooManyArguments {
-                got: u8::MAX as usize + offending_spans.len(),
                 spans: offending_spans,
             });
         }

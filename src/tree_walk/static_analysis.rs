@@ -1,3 +1,5 @@
+//! Static analysis for Lox source code.
+
 use std::{collections::HashMap, ops::Range};
 
 use codespan_reporting::diagnostic::Diagnostic;
@@ -7,6 +9,7 @@ use crate::{
     tree_walk::ast::{expr::Expr, stmt::Stmt},
 };
 
+/// A resolver that performs static analysis on a stream of statements.
 pub struct Resolver {
     scopes: Vec<HashMap<String, (bool, Range<usize>)>>,
     errors: Vec<Diagnostic<usize>>,
@@ -33,6 +36,7 @@ enum ClassKind {
 }
 
 impl Resolver {
+    /// Creates a new resolver with the given file id.
     pub fn new(file_id: usize) -> Self {
         Self {
             scopes: Vec::new(),
@@ -52,6 +56,7 @@ impl Resolver {
         }
     }
 
+    /// Resolves the given stream of statements.
     pub fn resolve_stmts(&mut self, stmts: &mut [Stmt]) -> crate::Result<()> {
         for s in stmts.iter_mut() {
             self.resolve_stmt(s);

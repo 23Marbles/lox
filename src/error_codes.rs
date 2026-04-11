@@ -5,6 +5,7 @@ use core::{error::Error, fmt::Display, str::FromStr};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 #[non_exhaustive]
+#[allow(missing_docs)]
 pub enum ErrorCode {
     CoreErrorFromString = 1,
     UnexpectedCharacter = 2,
@@ -45,9 +46,13 @@ impl Display for ErrorCode {
 }
 
 #[derive(Debug, Clone)]
+/// Error code from string parsing error.
 pub enum ErrorCodeFromStrErr {
+    /// Error parsing the error code as a u8.
     U8ParseError(core::num::ParseIntError),
+    /// Invalid discriminant value.
     InvalidDiscriminant,
+    /// Invalid format.
     InvalidFormat,
 }
 

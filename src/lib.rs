@@ -20,6 +20,20 @@
 //! The benchmarks and tests are currently all passing.
 //!
 //! ## Benchmarks
+//!
+//! | Name                | Average               | Range              |
+//! | ------------------- | --------------------- | ------------------ |
+//! | zoo_batch.lox       | 10.070327800 s/iter   | (+/- 0.139661850)  |
+//! | method_call.lox     | 15.108997379 s/iter  | (+/- 4.856173500)  |
+//! | invocation.lox      | 19.936385232 s/iter  | (+/- 6.740746550)  |
+//! | zoo.lox             | 23.176159476 s/iter  | (+/- 8.743484650)  |
+//! | instantiation.lox   | 24.841070760 s/iter  | (+/- 34.450921200) |
+//! | properties.lox      | 28.623850036 s/iter  | (+/- 9.612263500)  |
+//! | fib.lox             | 65.744055751 s/iter  | (+/- 21.469839300) |
+//! | string_equality.lox | 79.359264633 s/iter  | (+/- 21.871288400) |
+//! | equality.lox        | 88.425643870 s/iter  | (+/- 31.590151000) |
+//! | binary_trees.lox    | 99.988585526 s/iter  | (+/- 35.513968700) |
+//! | trees.lox           | 212.737865755 s/iter | (+/- 94.397381250) |
 
 use std::{
     fs, io,
@@ -63,12 +77,14 @@ pub enum Backend {
     TreeWalk,
 }
 
+/// Configuration for the Runner struct.
 pub struct RunnerConfig {
     expr_print: bool,
     err_cfg: ErrWriteConfig,
 }
 
 impl RunnerConfig {
+    /// Creates a new [`RunnerConfig`] with the given configuration.
     pub fn new(expr_print: bool, err_cfg: ErrWriteConfig) -> Self {
         Self {
             expr_print,
@@ -96,6 +112,7 @@ impl Default for Runner {
 }
 
 impl Runner {
+    /// Creates a new [`Runner`] with the default configuration.
     pub fn new() -> Self {
         Self {
             out: Box::new(io::stdout()),
@@ -106,6 +123,7 @@ impl Runner {
         }
     }
 
+    /// Creates a new [`Runner`] with the given writer.
     pub fn new_with_writer(writer: Box<dyn io::Write + Send>) -> Self {
         Self {
             out: writer,
@@ -116,16 +134,19 @@ impl Runner {
         }
     }
 
+    /// Sets whether to print expressions.
     pub fn with_print_exprs(mut self, print_exprs: bool) -> Self {
         self.cfg.expr_print = print_exprs;
         self
     }
 
+    /// Sets the globals for the runner.
     pub fn with_globals(mut self, globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Self {
         self.interpreter = self.interpreter.with_globals(globals);
         self
     }
 
+    /// Sets the error writer configuration for the runner.
     pub fn with_err_writer_cfg(mut self, err_writer_cfg: ErrWriteConfig) -> Self {
         self.cfg.err_cfg = err_writer_cfg;
         self
@@ -134,11 +155,13 @@ impl Runner {
 
 /// Running snippets and files and getting output.
 impl Runner {
+    /// Runs a snippet and writes the output to the configured writer.
     pub fn run_snippet(&mut self, snippet: &str) -> Result<()> {
         self.current_id = self.files.add("snippet".into(), snippet.into());
         self.write_source_output(snippet)
     }
 
+    /// Runs a file and writes the output to the configured writer.
     pub fn run_file(&mut self, path: &Path) -> Result<()> {
         let content = fs::read_to_string(path).map_err(|e| vec![diag_from_io(e)])?;
 
@@ -182,23 +205,28 @@ impl Runner {
 }
 
 impl Runner {
+    /// Clears the interpreter state, resetting the environment and call depth.
     pub fn clear_interp(&mut self) {
         self.interpreter.set_env(Env::new_env(None));
         self.current_id = 0;
     }
 
+    /// Gets the source code for the given file ID.
     pub fn get_source(&self, file_id: usize) -> Option<&str> {
         Some(self.files.get(file_id).ok()?.source())
     }
 
+    /// Gets the tokens for the given source.
     pub fn get_tokens<'source>(&self, source: &'source str) -> Result<Vec<Token<'source>>> {
         Scanner::new(source, self.current_id).scan_tokens()
     }
 
+    /// Gets the statements for the given source.
     pub fn get_stmts(&self, source: &str) -> Result<Vec<Stmt>> {
         Parser::new(self.get_tokens(source)?, self.current_id).parse()
     }
 
+    /// Gets the resolved statements for the given source.
     pub fn get_resolved_stmts(&self, source: &str) -> Result<Vec<Stmt>> {
         let mut stmts = self.get_stmts(source)?;
         Resolver::new(self.current_id).resolve_stmts(&mut stmts)?;
@@ -225,9 +253,11 @@ impl io::Write for TestWriter {
 }
 
 #[derive(Default)]
+/// A shared writer that can be used to write output from the runner.
 pub struct SharedWriter(Arc<Mutex<TestWriter>>);
 
 impl SharedWriter {
+    /// Reads the contents of the writer.
     pub fn read(&self) -> String {
         let guard = self
             .0

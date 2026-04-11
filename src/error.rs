@@ -135,7 +135,6 @@ pub mod parse_err {
             span: Range<usize>,
         },
         TooManyArguments {
-            got: usize,
             spans: Vec<Range<usize>>,
         },
         ExpectedName {

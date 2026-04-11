@@ -1,3 +1,5 @@
+//! Interpreter for the Lox language.
+
 use std::{collections::HashMap, rc::Rc};
 
 use crate::{
@@ -24,21 +26,25 @@ use crate::{
 const MAX_CALL_DEPTH: usize = 1024;
 
 #[derive(Debug, Clone)]
+/// Represents an interpreter that executes a sequence of statements.
 pub struct Interpreter {
     statements: Vec<Stmt>,
     ip: usize,
     out_buf: InterpOut,
+    /// The environment in which the interpreter executes.
     pub env: Env,
     call_depth: usize,
     file_id: usize,
 }
 
 #[derive(Debug, Clone, Default)]
+/// Represents the output of an interpreter, consisting of a list of lines.
 pub struct InterpOut {
     lines: Vec<String>,
 }
 
 impl InterpOut {
+    /// Returns the lines of output as a vector of strings.
     pub fn lines(&self) -> Vec<String> {
         self.lines.clone()
     }
@@ -69,6 +75,7 @@ impl Iterator for Interpreter {
 }
 
 impl Interpreter {
+    /// Creates a new interpreter with the given file ID.
     pub fn new(file_id: usize) -> Self {
         Self {
             statements: Vec::new(),
@@ -80,26 +87,31 @@ impl Interpreter {
         }
     }
 
+    /// Returns a new interpreter with the given statements.
     pub fn with_stmts(mut self, statements: &[Stmt]) -> Self {
         self.ip = 0;
         self.statements = statements.to_vec();
         self
     }
 
+    /// Sets the statements for the interpreter.
     pub fn set_stmts(&mut self, statements: &[Stmt]) {
         self.ip = 0;
         self.statements = statements.to_vec();
     }
 
+    /// Returns a new interpreter with the given environment.
     pub fn with_env(mut self, env: Env) -> Self {
         self.env = env;
         self
     }
 
+    /// Sets the environment for the interpreter.
     pub fn set_env(&mut self, env: Env) {
         self.env = env;
     }
 
+    /// Returns a new interpreter with the given globals.
     pub fn with_globals(mut self, globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Self {
         self.env = Env::new_with_globals(
             globals
@@ -111,6 +123,7 @@ impl Interpreter {
         self
     }
 
+    /// Runs the interpreter and returns the output.
     pub fn run(&mut self) -> crate::Result<Vec<InterpOut>> {
         let id = self.file_id;
         self.into_iter()
@@ -118,6 +131,7 @@ impl Interpreter {
             .collect::<Result<Vec<_>, _>>()
     }
 
+    /// Runs a single statement and returns the control flow.
     pub fn run_stmt(&mut self, stmt: Stmt) -> Result<ControlFlow, RuntimeError> {
         match stmt {
             Stmt::Expression(expr) => {
@@ -265,11 +279,7 @@ impl Interpreter {
                     }
                 }
 
-                let class = LoxClass {
-                    name: name.clone(),
-                    methods: method_map,
-                    super_class,
-                };
+                let class = LoxClass::new(name.clone(), method_map, super_class);
 
                 self.env
                     .borrow_mut()
@@ -280,6 +290,7 @@ impl Interpreter {
         }
     }
 
+    /// Evaluates an expression and returns the result.
     pub fn evaluate_expr(&mut self, expr: Expr) -> Result<LoxVar, RuntimeError> {
         use crate::tree_walk::token::TokenKind;
         use core::ops::{Add as _, Div as _, Mul as _, Sub as _};
@@ -504,7 +515,7 @@ impl Interpreter {
                 if let LoxVar::Instance(inst) = obj {
                     if let Some(property) = inst.get(&name) {
                         Ok(property)
-                    } else if let Some(method) = inst.borrow().class.find_method(&name) {
+                    } else if let Some(method) = inst.borrow().class().find_method(&name) {
                         Ok(LoxVar::Callable(method))
                     } else {
                         Err(
@@ -569,11 +580,12 @@ impl Interpreter {
     }
 }
 
+/// Module for the environment, which holds the current scope's variables and allows looking up values by name.
 pub mod env {
     use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
     use super::*;
-    pub trait EnvironmentImpl
+    pub(crate) trait EnvironmentImpl
     where
         Self: Sized,
     {
@@ -582,7 +594,7 @@ pub mod env {
         fn new_with_globals(globals: Vec<(&'static str, LoxVar)>) -> Self;
     }
 
-    pub type Env = Rc<RefCell<Environment>>;
+    pub(crate) type Env = Rc<RefCell<Environment>>;
 
     impl EnvironmentImpl for Env {
         fn new_env(enclosing: Option<Self>) -> Self {
@@ -627,20 +639,23 @@ pub mod env {
     }
 
     #[derive(Clone, Debug)]
+    /// Represents an environment, holding variables and allowing lookups by name.
     pub struct Environment {
         enclosing: Option<Env>,
         values: HashMap<String, LoxVar>,
     }
 
     impl Environment {
-        fn new(parent: Option<Env>) -> Environment {
+        /// Creates a new environment with the given parent.
+        pub fn new(parent: Option<Env>) -> Environment {
             Self {
                 enclosing: parent,
                 values: HashMap::new(),
             }
         }
 
-        fn new_with_globals(globals: Vec<(&'static str, LoxVar)>) -> Environment {
+        /// Creates a new environment with the given globals.
+        pub fn new_with_globals(globals: Vec<(&'static str, LoxVar)>) -> Environment {
             Self {
                 enclosing: None,
                 values: {
@@ -655,11 +670,13 @@ pub mod env {
             }
         }
 
+        /// Defines a variable in this environment.
         pub fn define(&mut self, name: String, value: LoxVar) {
             self.values.insert(name, value);
         }
 
-        pub fn get_at(&self, dist: usize, name: &str) -> Option<LoxVar> {
+        /// Gets a variable from this environment, searching up the enclosing chain if necessary.
+        fn get_at(&self, dist: usize, name: &str) -> Option<LoxVar> {
             if dist == 0 {
                 return self.values.get(name).cloned();
             }
@@ -667,7 +684,8 @@ pub mod env {
             self.enclosing.as_ref()?.borrow().get_at(dist - 1, name)
         }
 
-        pub fn get_global(&self, name: &str) -> Option<LoxVar> {
+        /// Gets a variable from the global scope.
+        fn get_global(&self, name: &str) -> Option<LoxVar> {
             if let Some(ref parent) = self.enclosing {
                 return parent.borrow().get_global(name);
             }
@@ -679,6 +697,9 @@ pub mod env {
             None
         }
 
+        /// Gets a variable from this environment, searching up the enclosing chain if necessary.
+        /// If `distance` is `Some`, the variable is looked up at the given distance,
+        /// if `distance` is `None`, the variable is looked up in the global scope.
         pub fn get(&self, name: &str, distance: Option<usize>) -> Option<LoxVar> {
             #[cfg(debug_assertions)]
             println!("LOOKUP: {} @ {:?}", name, distance);
@@ -689,6 +710,9 @@ pub mod env {
             }
         }
 
+        /// Assigns a value to a variable in this environment, searching up the enclosing chain if necessary.
+        /// If `dist` is `Some`, the variable is assigned at the given distance,
+        /// if `dist` is `None`, the variable is assigned in the global scope.
         pub fn assign(
             &mut self,
             name: &str,
