@@ -243,11 +243,12 @@ fn check_file(path: &Path, expectation: Expectation) -> Result<(), Failed> {
                 }
             }
             Expectation::Err(errs) => Err(Failed::from(format!(
-                "Expected errs:\n{}",
+                "Expected error(s):\n{}\nGot output:\n{}",
                 errs.iter()
                     .map(|e| e.to_string())
                     .collect::<Vec<_>>()
-                    .join("\n")
+                    .join("\n"),
+                out
             ))),
             Expectation::None => {
                 if out.is_empty() {
@@ -258,24 +259,36 @@ fn check_file(path: &Path, expectation: Expectation) -> Result<(), Failed> {
             }
         },
         Err(errs) => match expectation {
-            Expectation::None => Err(Failed::from("Expected no output, got error")),
+            Expectation::None => Err(Failed::from(format!(
+                "Expected no output, got error(s)\n{}",
+                errs.iter()
+                    .map(|e| e.to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ))),
             Expectation::Ok(exp_out) => Err(Failed::from(format!(
                 "Expected output:\n{}\nGot error(s)\n{}",
                 exp_out.join("\n"),
-                errs.join("\n")
+                errs.iter()
+                    .map(|e| e.to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n")
             ))),
             Expectation::Err(exp_errs) => {
                 if exp_errs == errs {
                     Ok(())
                 } else {
                     Err(Failed::from(format!(
-                        "Expected errs:\n{}\nGot:\n{}",
+                        "Expected error(s):\n{}\nGot:\n{}",
                         exp_errs
                             .iter()
                             .map(|e| e.to_string())
                             .collect::<Vec<_>>()
                             .join("\n"),
-                        errs.join("\n")
+                        errs.iter()
+                            .map(|e| e.to_string())
+                            .collect::<Vec<_>>()
+                            .join("\n")
                     )))
                 }
             }
