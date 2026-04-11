@@ -118,6 +118,12 @@ struct ErrExpectation {
     code: ErrorCode,
 }
 
+impl PartialEq<String> for ErrExpectation {
+    fn eq(&self, other: &String) -> bool {
+        self.code.to_string() == *other
+    }
+}
+
 impl Display for ErrExpectation {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.code)
@@ -251,17 +257,19 @@ fn check_file(path: &Path, expectation: Expectation) -> Result<(), Failed> {
                 errs.join("\n")
             ))),
             Expectation::Err(exp_errs) => {
-                /*
-                if codes == errs {
-                Ok(())
+                if exp_errs == errs {
+                    Ok(())
                 } else {
-                Err(Failed::from(format!(
-                "Expected errs:\n{}\nGot:\n{}",
-                codes.join("\n"),
-                errs.join("\n")
-                )))
-                } */
-                Ok(())
+                    Err(Failed::from(format!(
+                        "Expected errs:\n{}\nGot:\n{}",
+                        exp_errs
+                            .iter()
+                            .map(|e| e.to_string())
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                        errs.join("\n")
+                    )))
+                }
             }
         },
     }
