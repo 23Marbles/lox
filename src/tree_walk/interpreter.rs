@@ -1,6 +1,6 @@
 //! Interpreter for the Lox language.
 
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, ops::Neg, rc::Rc};
 
 use crate::{
     error::{
@@ -303,20 +303,16 @@ impl Interpreter {
             } => {
                 let right_var = self.evaluate_expr(*right)?;
                 match operator {
-                    TokenKind::Minus => {
-                        if let LoxVar::Number(n) = right_var {
-                            Ok(LoxVar::Number(-n))
-                        } else {
-                            Err(EvaluateError::new(
-                                EvaluateErrorKind::IncompatableUnaryOperator {
-                                    operator: TokenKind::Minus,
-                                    var_ty: right_var.into(),
-                                },
-                                span,
-                            )
-                            .into())
-                        }
-                    }
+                    TokenKind::Minus => (&right_var).neg().map_err(|e| {
+                        EvaluateError::new(
+                            EvaluateErrorKind::IncompatableUnaryOperator {
+                                operator: TokenKind::Minus,
+                                var_ty: e.into(),
+                            },
+                            span,
+                        )
+                        .into()
+                    }),
                     TokenKind::Bang => Ok(LoxVar::Bool(!right_var.is_truthy())),
                     _ => {
                         unreachable!("only tokens with kind minus and bang can be unary operators")

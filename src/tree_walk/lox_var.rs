@@ -534,6 +534,17 @@ bin_num_op_impl!(Sub, sub);
 bin_num_op_impl!(Div, div);
 bin_num_op_impl!(Mul, mul);
 
+impl Neg for &LoxVar {
+    type Output = Result<LoxVar, Self>;
+
+    fn neg(self) -> Self::Output {
+        match self {
+            LoxVar::Number(n) => Ok(LoxVar::Number(-n)),
+            l => Err(l),
+        }
+    }
+}
+
 impl PartialOrd for LoxVar {
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         match (self, other) {
