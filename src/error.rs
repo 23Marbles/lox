@@ -594,6 +594,9 @@ pub mod eval_err {
         DivisionByZero,
         UndefinedProperty(String),
         NotInstance(LoxVarKind),
+        UninitializedVariable {
+            name: String,
+        },
     }
 
     impl ToErrorCode for EvaluateError {
@@ -615,6 +618,7 @@ pub mod eval_err {
                 EvaluateErrorKind::DivisionByZero => ErrorCode::DivisionByZero,
                 EvaluateErrorKind::UndefinedProperty(_) => ErrorCode::UndefinedProperty,
                 EvaluateErrorKind::NotInstance(_) => ErrorCode::NotInstance,
+                EvaluateErrorKind::UninitializedVariable { .. } => ErrorCode::UninitializedVariable,
             }
         }
     }
@@ -632,6 +636,7 @@ pub mod eval_err {
                 EvaluateErrorKind::DivisionByZero => Severity::Warning,
                 EvaluateErrorKind::UndefinedProperty(_) => Severity::Error,
                 EvaluateErrorKind::NotInstance(_) => Severity::Error,
+                EvaluateErrorKind::UninitializedVariable { .. } => Severity::Warning,
             }
         }
     }
@@ -684,6 +689,13 @@ pub mod eval_err {
                     write!(
                         f,
                         "Tried to access a property of a non-instance, is of type `{kind:?}` instead"
+                    )
+                }
+                EvaluateErrorKind::UninitializedVariable { name } => {
+                    write!(
+                        f,
+                        "Tried to access an uninitialized variable with name {}",
+                        name
                     )
                 }
             }

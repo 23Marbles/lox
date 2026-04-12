@@ -37,6 +37,7 @@ pub enum ErrorCode {
     DivisionByZero = 27,
     UndefinedProperty = 28,
     NotInstance = 29,
+    UninitializedVariable = 30,
 }
 
 impl Display for ErrorCode {
@@ -109,6 +110,7 @@ impl TryFrom<u8> for ErrorCode {
             27 => Ok(Self::DivisionByZero),
             28 => Ok(Self::UndefinedProperty),
             29 => Ok(Self::NotInstance),
+            30 => Ok(Self::UninitializedVariable),
             _ => Err(ErrorCodeFromStrErr::InvalidDiscriminant),
         }
     }

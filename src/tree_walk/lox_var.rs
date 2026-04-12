@@ -338,6 +338,8 @@ pub enum LoxVar {
     Instance(InstanceRef),
     /// Represents a nil value.
     Nil,
+    /// Represents an uninitialized variable.
+    Uninitialized,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -357,6 +359,8 @@ pub enum LoxVarKind {
     Instance,
     /// Represents a nil value.
     Nil,
+    /// Represents an uninitialized variable.
+    Uninitialized,
 }
 
 impl From<LoxVar> for LoxVarKind {
@@ -369,6 +373,7 @@ impl From<LoxVar> for LoxVarKind {
             LoxVar::Callable(..) => Self::Callable,
             LoxVar::Class(..) => Self::Class,
             LoxVar::Instance(..) => Self::Instance,
+            LoxVar::Uninitialized => Self::Uninitialized,
         }
     }
 }
@@ -383,6 +388,7 @@ impl From<&LoxVar> for LoxVarKind {
             LoxVar::Callable(..) => Self::Callable,
             LoxVar::Class(..) => Self::Class,
             LoxVar::Instance(..) => Self::Instance,
+            LoxVar::Uninitialized => Self::Uninitialized,
         }
     }
 }
@@ -400,6 +406,11 @@ impl LoxVar {
             LoxVar::Bool(b) => *b,
             _ => true,
         }
+    }
+
+    /// Returns `true` if this variable is uninitialized, `false` otherwise.
+    pub fn is_uninitialized(&self) -> bool {
+        matches!(self, LoxVar::Uninitialized)
     }
 
     #[cfg(feature = "implicit_converions")]
@@ -470,6 +481,7 @@ impl Display for LoxVar {
             LoxVar::Instance(i) => {
                 write!(f, "{} instance", i.borrow().class().name)
             }
+            LoxVar::Uninitialized => write!(f, "<uninitialized>"),
         }
     }
 }
@@ -536,6 +548,9 @@ impl Mul for &LoxVar {
             (LoxVar::String(s), LoxVar::Number(n)) => {
                 Ok(LoxVar::String(s.to_owned().repeat(*n as usize)))
             }
+            (LoxVar::Number(n), LoxVar::String(s)) => {
+                Ok(LoxVar::String(s.to_owned().repeat(*n as usize)))
+            }
             (l, r) => Err((l, r)),
         }
     }
@@ -556,17 +571,8 @@ impl PartialOrd for LoxVar {
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         match (self, other) {
             (LoxVar::Number(l), LoxVar::Number(r)) => l.partial_cmp(r),
-            (_ls, _rs) => {
-                #[cfg(feature = "implicit_converions")]
-                {
-                    _ls.try_convert(LoxVarKind::Number)?
-                        .partial_cmp(&_rs.try_convert(LoxVarKind::Number)?)
-                }
-                #[cfg(not(feature = "implicit_converions"))]
-                {
-                    None
-                }
-            }
+            (LoxVar::String(l), LoxVar::String(r)) => l.partial_cmp(r),
+            (_ls, _rs) => None,
         }
     }
 }

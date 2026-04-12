@@ -152,7 +152,7 @@ impl Interpreter {
             } => {
                 let value = match initializer {
                     Some(value) => self.evaluate_expr(value)?,
-                    None => LoxVar::Nil,
+                    None => LoxVar::Uninitialized,
                 };
                 self.env.borrow_mut().define(name, value);
                 Ok(ControlFlow::None)
@@ -416,15 +416,12 @@ impl Interpreter {
                 name,
                 span,
                 distance,
-            } => self.env.borrow().get(&name, distance).ok_or(
-                EvaluateError::new(
-                    EvaluateErrorKind::UndeclaredVariable {
-                        name: name.to_owned(),
-                    },
-                    span,
-                )
-                .into(),
-            ),
+            } => self
+                .env
+                .borrow()
+                .get(&name, distance)
+                .map_err(|k| EvaluateError::new(k, span).into()),
+
             Expr::Assign {
                 name,
                 span,
@@ -560,13 +557,23 @@ impl Interpreter {
             } => {
                 let dist = distance.expect("super must be resolved");
 
-                let superclass = match self.env.borrow().get("super", Some(dist)) {
-                    Some(LoxVar::Class(cls)) => cls,
+                let superclass = match self
+                    .env
+                    .borrow()
+                    .get("super", Some(dist))
+                    .map_err(|k| EvaluateError::new(k, span.clone()))?
+                {
+                    LoxVar::Class(cls) => cls,
                     _ => unreachable!("super must be a class"),
                 };
 
-                let instance = match self.env.borrow().get("this", Some(dist - 1)) {
-                    Some(LoxVar::Instance(inst)) => inst,
+                let instance = match self
+                    .env
+                    .borrow()
+                    .get("this", Some(dist - 1))
+                    .map_err(|k| EvaluateError::new(k, span.clone()))?
+                {
+                    LoxVar::Instance(inst) => inst,
                     _ => unreachable!("this must be an instance"),
                 };
 
@@ -679,31 +686,59 @@ pub mod env {
         }
 
         /// Gets a variable from this environment, searching up the enclosing chain if necessary.
-        fn get_at(&self, dist: usize, name: &str) -> Option<LoxVar> {
+        fn get_at(&self, dist: usize, name: &str) -> Result<LoxVar, EvaluateErrorKind> {
             if dist == 0 {
-                return self.values.get(name).cloned();
+                if let Some(v) = self.values.get(name) {
+                    if v.is_uninitialized() {
+                        return Err(EvaluateErrorKind::UninitializedVariable {
+                            name: name.to_owned(),
+                        });
+                    }
+                    return Ok(v.clone());
+                } else {
+                    return Err(EvaluateErrorKind::UndeclaredVariable {
+                        name: name.to_owned(),
+                    });
+                }
             }
 
-            self.enclosing.as_ref()?.borrow().get_at(dist - 1, name)
+            self.enclosing
+                .as_ref()
+                .ok_or(EvaluateErrorKind::UndeclaredVariable {
+                    name: name.to_owned(),
+                })?
+                .borrow()
+                .get_at(dist - 1, name)
         }
 
         /// Gets a variable from the global scope.
-        fn get_global(&self, name: &str) -> Option<LoxVar> {
+        fn get_global(&self, name: &str) -> Result<LoxVar, EvaluateErrorKind> {
             if let Some(ref parent) = self.enclosing {
                 return parent.borrow().get_global(name);
             }
 
             if let Some(v) = self.values.get(name) {
-                return Some(v.clone());
+                if v.is_uninitialized() {
+                    return Err(EvaluateErrorKind::UninitializedVariable {
+                        name: name.to_owned(),
+                    });
+                }
+                return Ok(v.clone());
             }
 
-            None
+            Err(EvaluateErrorKind::UndeclaredVariable {
+                name: name.to_owned(),
+            })
         }
 
         /// Gets a variable from this environment, searching up the enclosing chain if necessary.
         /// If `distance` is `Some`, the variable is looked up at the given distance,
         /// if `distance` is `None`, the variable is looked up in the global scope.
-        pub fn get(&self, name: &str, distance: Option<usize>) -> Option<LoxVar> {
+        pub fn get(
+            &self,
+            name: &str,
+            distance: Option<usize>,
+        ) -> Result<LoxVar, EvaluateErrorKind> {
             //#[cfg(debug_assertions)]
             //println!("LOOKUP: {} @ {:?}", name, distance);
             if let Some(dist) = distance {
