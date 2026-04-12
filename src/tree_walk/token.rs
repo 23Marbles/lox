@@ -172,6 +172,7 @@ impl<'source> Iterator for Scanner<'source> {
                 '+' => break 'scan self.make_token(TokenKind::Plus),
                 ';' => break 'scan self.make_token(TokenKind::Semicolon),
                 '*' => break 'scan self.make_token(TokenKind::Star),
+                '%' => break 'scan self.make_token(TokenKind::Percent),
                 '!' => TokenKind::Bang,
                 '>' => TokenKind::Greater,
                 '<' => TokenKind::Less,
@@ -339,6 +340,7 @@ pub enum TokenKind {
     Semicolon,
     Slash,
     Star,
+    Percent,
 
     // One or two character tokens.
     Bang,
@@ -431,6 +433,7 @@ impl Display for TokenKind {
             NaN => write!(f, "NaN"),
             #[cfg(feature = "nan_inf_consts")]
             INF => write!(f, "INF"),
+            Percent => write!(f, "%"),
         }
     }
 }

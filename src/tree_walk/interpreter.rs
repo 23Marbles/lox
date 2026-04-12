@@ -1,6 +1,10 @@
 //! Interpreter for the Lox language.
 
-use std::{collections::HashMap, ops::Neg, rc::Rc};
+use std::{
+    collections::HashMap,
+    ops::{Neg, Rem},
+    rc::Rc,
+};
 
 use crate::{
     error::{
@@ -303,7 +307,7 @@ impl Interpreter {
             } => {
                 let right_var = self.evaluate_expr(*right)?;
                 match operator {
-                    TokenKind::Minus => (&right_var).neg().map_err(|e| {
+                    TokenKind::Minus => right_var.neg().map_err(|e| {
                         EvaluateError::new(
                             EvaluateErrorKind::IncompatableUnaryOperator {
                                 operator: TokenKind::Minus,
@@ -396,6 +400,9 @@ impl Interpreter {
                     Star => left_var
                         .mul(&right_var)
                         .map_err(|(l, r)| EvaluateError::bin_eval_error(span, Star, l, r).into()),
+                    Percent => left_var.rem(&right_var).map_err(|(l, r)| {
+                        EvaluateError::bin_eval_error(span, Percent, l, r).into()
+                    }),
                     Plus => left_var
                         .add(&right_var)
                         .map_err(|(l, r)| EvaluateError::bin_eval_error(span, Plus, l, r).into()),

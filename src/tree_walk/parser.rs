@@ -530,7 +530,7 @@ impl<'source> Parser<'source> {
         let mut expr = self.unary()?;
 
         use TokenKind::*;
-        while self.match_any([Slash, Star]) {
+        while self.match_any([Slash, Star, Percent]) {
             expr = Expr::binary(expr, self.previous().clone(), self.unary()?)
         }
 

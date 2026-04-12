@@ -393,13 +393,6 @@ impl LoxVar {
         self.into()
     }
 
-    fn expect_number(&self) -> Option<f64> {
-        match self {
-            Self::Number(n) => Some(*n),
-            _ => None,
-        }
-    }
-
     /// Returns `true` if this variable is truthy, `false` otherwise.
     pub fn is_truthy(&self) -> bool {
         match self {
@@ -507,13 +500,18 @@ macro_rules! bin_num_op_impl {
             type Output = Result<LoxVar, (Self, Self)>;
 
             fn $fn(self, rhs: Self) -> Self::Output {
-                let ln = self.expect_number().ok_or((self, rhs))?;
-                let rn = rhs.expect_number().ok_or((self, rhs))?;
-                Ok(LoxVar::Number(ln.$fn(rn)))
+                match (self, rhs) {
+                    (LoxVar::Number(ln), LoxVar::Number(rn)) => Ok(LoxVar::Number(ln.$fn(rn))),
+                    (l, r) => Err((l, r)),
+                }
             }
         }
     };
 }
+
+bin_num_op_impl!(Rem, rem);
+bin_num_op_impl!(Sub, sub);
+bin_num_op_impl!(Div, div);
 
 impl Add for &LoxVar {
     type Output = Result<LoxVar, (Self, Self)>;
@@ -524,15 +522,24 @@ impl Add for &LoxVar {
             (LoxVar::String(ls), LoxVar::String(rs)) => Ok(LoxVar::String(ls.to_owned() + rs)),
             #[cfg(feature = "implicit_converions")]
             (LoxVar::String(s), other) => Ok(LoxVar::String(s.to_owned() + &other.to_string())),
-            #[cfg(feature = "implicit_converions")]
-            (other, LoxVar::String(s)) => Ok(LoxVar::String(other.to_string() + &s)),
             (l, r) => Err((l, r)),
         }
     }
 }
-bin_num_op_impl!(Sub, sub);
-bin_num_op_impl!(Div, div);
-bin_num_op_impl!(Mul, mul);
+impl Mul for &LoxVar {
+    type Output = Result<LoxVar, (Self, Self)>;
+    /// This has precision loss when working with multiplying a string by a number.
+    /// This is because the number is truncated to an integer before the string is repeated.
+    fn mul(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (LoxVar::Number(ln), LoxVar::Number(rn)) => Ok(LoxVar::Number(ln * rn)),
+            (LoxVar::String(s), LoxVar::Number(n)) => {
+                Ok(LoxVar::String(s.to_owned().repeat(*n as usize)))
+            }
+            (l, r) => Err((l, r)),
+        }
+    }
+}
 
 impl Neg for &LoxVar {
     type Output = Result<LoxVar, Self>;
