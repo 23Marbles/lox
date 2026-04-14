@@ -10,8 +10,10 @@ use crate::{
     error::{
         ToCodespan as _,
         eval_err::{EvaluateError, EvaluateErrorKind},
+        fn_err::FunctionError,
         runtime_err::RuntimeError,
     },
+    lox_files::FileIdent,
     tree_walk::{
         ast::{
             Literal,
@@ -38,24 +40,46 @@ pub struct Interpreter {
     /// The environment in which the interpreter executes.
     pub env: Env,
     call_depth: usize,
-    file_id: usize,
+    pub(crate) file_id: FileIdent,
+}
+
+#[derive(Debug, Clone)]
+/// Represents the type of a line of output, either normal or an error.
+pub enum LineType {
+    /// A normal line of output.
+    Normal,
+    /// An error line of output.
+    Error,
 }
 
 #[derive(Debug, Clone, Default)]
 /// Represents the output of an interpreter, consisting of a list of lines.
 pub struct InterpOut {
-    lines: Vec<String>,
+    lines: Vec<(String, LineType)>,
 }
 
 impl InterpOut {
     /// Returns the lines of output as a vector of strings.
-    pub fn lines(&self) -> Vec<String> {
+    pub fn fall_lines(&self) -> Vec<String> {
+        self.lines.clone().into_iter().map(|(s, _)| s).collect()
+    }
+
+    /// Returns the lines of output as a vector of (string, line type) pairs.
+    pub fn marked_lines(&self) -> Vec<(String, LineType)> {
         self.lines.clone()
     }
 
+    /// Pushes a string to the output buffer, marking it as a normal line.
     fn println(&mut self, value: impl ToString) {
         for s in value.to_string().lines() {
-            self.lines.push(s.to_owned());
+            self.lines.push((s.to_owned(), LineType::Normal));
+        }
+    }
+
+    /// Pushes a string to the output buffer, marking it as an error line.
+    fn eprintln(&mut self, value: impl ToString) {
+        for s in value.to_string().lines() {
+            self.lines.push((s.to_owned(), LineType::Error));
         }
     }
 
@@ -80,7 +104,7 @@ impl Iterator for Interpreter {
 
 impl Interpreter {
     /// Creates a new interpreter with the given file ID.
-    pub fn new(file_id: usize) -> Self {
+    pub fn new(file_id: FileIdent) -> Self {
         Self {
             statements: Vec::new(),
             env: Env::new_env(None),
@@ -127,11 +151,20 @@ impl Interpreter {
         self
     }
 
+    /// Prints an error to the output buffer.
+    pub fn eprintln(&mut self, err: impl ToString) {
+        self.out_buf.eprintln(err);
+    }
+
+    /// Prints a value to the output buffer.
+    pub fn println(&mut self, err: impl ToString) {
+        self.out_buf.println(err);
+    }
+
     /// Runs the interpreter and returns the output.
     pub fn run(&mut self) -> crate::Result<Vec<InterpOut>> {
-        let id = self.file_id;
         self.into_iter()
-            .map(|r| r.map_err(|e| vec![e.to_codespan(id)]))
+            .map(|r| r.map_err(|e| vec![e.to_codespan()]))
             .collect::<Result<Vec<_>, _>>()
     }
 
@@ -467,13 +500,27 @@ impl Interpreter {
                     .iter()
                     .map(|expr| self.evaluate_expr(expr.clone()))
                     .collect::<Result<_, _>>()?;
+
                 let res = match self.evaluate_expr(*callee)? {
                     LoxVar::Callable(func) => {
-                        let ret = func.call(self, &arguments).map_err(|mut err| {
-                            err.call_span = Some(Box::new(span));
-                            err.input_args = arguments;
+                        if arguments.len() != func.arity() as usize {
+                            return Err(EvaluateError::new(
+                                EvaluateErrorKind::IncorrectArity {
+                                    expected: func.arity(),
+                                    got: arguments.len(),
+                                },
+                                span.clone(),
+                            )
+                            .into());
+                        }
 
-                            err
+                        let ret = func.call(self, &arguments).map_err(|err| {
+                            FunctionError::from_runtime_error(
+                                err,
+                                func.signature(),
+                                arguments.clone(),
+                                span.clone(),
+                            )
                         })?;
 
                         if self.call_depth > MAX_CALL_DEPTH {
@@ -483,11 +530,24 @@ impl Interpreter {
                         Ok(ret)
                     }
                     LoxVar::Class(class) => {
-                        let ret = class.call(self, &arguments).map_err(|mut err| {
-                            err.call_span = Some(Box::new(span));
-                            err.input_args = arguments;
+                        if arguments.len() != class.arity() as usize {
+                            return Err(EvaluateError::new(
+                                EvaluateErrorKind::IncorrectArity {
+                                    expected: class.arity(),
+                                    got: arguments.len(),
+                                },
+                                span.clone(),
+                            )
+                            .into());
+                        }
 
-                            err
+                        let ret = class.call(self, &arguments).map_err(|err| {
+                            FunctionError::from_runtime_error(
+                                err,
+                                class.name.clone(),
+                                arguments.clone(),
+                                span.clone(),
+                            )
                         })?;
 
                         if self.call_depth > MAX_CALL_DEPTH {

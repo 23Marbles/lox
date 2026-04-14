@@ -1,15 +1,18 @@
 //! Token types for Lox source code.
 
 use core::fmt::Display;
-use core::ops::Range;
 
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 
-use crate::error::{ToErrorCode as _, scan_err::ScanErrorKind};
+use crate::{
+    Span,
+    error::{ToErrorCode as _, scan_err::ScanErrorKind},
+    lox_files::FileIdent,
+};
 
 /// A scanner that tokenizes a source string.
 pub struct Scanner<'source> {
-    file_id: usize,
+    file_id: FileIdent,
     source: &'source str,
     start: usize,
     current: usize,
@@ -29,7 +32,7 @@ fn normalize_char(c: char) -> char {
 
 impl<'source> Scanner<'source> {
     /// Creates a new scanner with the given source string and file id.
-    pub fn new(source: &'source str, file_id: usize) -> Self {
+    pub fn new(source: &'source str, file_id: FileIdent) -> Self {
         Self {
             file_id,
             source,
@@ -40,8 +43,8 @@ impl<'source> Scanner<'source> {
     }
 
     /// Scans the source string and returns a vector of tokens or a vector of errors.
-    pub fn scan_tokens(&mut self) -> Result<Vec<Token<'source>>, Vec<Diagnostic<usize>>> {
-        let mut errors: Vec<Diagnostic<usize>> = Vec::new();
+    pub fn scan_tokens(&mut self) -> crate::Result<Vec<Token<'source>>> {
+        let mut errors: Vec<Diagnostic<FileIdent>> = Vec::new();
 
         let tokens: Vec<Token<'_>> = self
             .filter_map(|v| match v {
@@ -72,11 +75,11 @@ impl<'source> Scanner<'source> {
         Token {
             kind,
             lexeme: self.lexeme_with_bounds(start, end),
-            span: Range { start, end },
+            span: Span::new(start..end, self.file_id),
         }
     }
 
-    fn error(&self, kind: ScanErrorKind) -> Diagnostic<usize> {
+    fn error(&self, kind: ScanErrorKind) -> Diagnostic<FileIdent> {
         Diagnostic::error()
             .with_code(kind.error_code())
             .with_message(kind.to_string())
@@ -139,7 +142,7 @@ impl<'source> Scanner<'source> {
 }
 
 impl<'source> Iterator for Scanner<'source> {
-    type Item = Result<Token<'source>, Diagnostic<usize>>;
+    type Item = Result<Token<'source>, Diagnostic<FileIdent>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.eof {
@@ -149,10 +152,7 @@ impl<'source> Iterator for Scanner<'source> {
             return Some(Ok(Token {
                 kind: TokenKind::Eof,
                 lexeme: "\0",
-                span: Range {
-                    start: self.current,
-                    end: self.current,
-                },
+                span: Span::new(self.current..self.current, self.file_id),
             }));
         }
 
@@ -239,8 +239,8 @@ impl<'source> Iterator for Scanner<'source> {
                         self.start + 1,
                         self.current - 1,
                     );
-                    token.span.end += 1;
-                    token.span.start -= 1;
+                    token.span.range.end += 1;
+                    token.span.range.start -= 1;
                     break 'scan token;
                 }
                 TokenKind::Slash => {
@@ -311,7 +311,7 @@ pub struct Token<'a> {
     /// The lexeme of the token tied to the source code.
     pub lexeme: &'a str,
     /// The span of the token in the source code.
-    pub span: Range<usize>,
+    pub span: Span,
 }
 
 impl<'a> Display for Token<'a> {
@@ -475,9 +475,10 @@ mod tests {
 
     #[test]
     fn test_eof_span() {
+        const FILE_ID: FileIdent = FileIdent::new(0);
         let source = "hello";
         let mut scanner = Scanner {
-            file_id: 0,
+            file_id: FILE_ID,
             source,
             start: 0,
             current: 0,
@@ -488,16 +489,17 @@ mod tests {
             &Token {
                 kind: TokenKind::Eof,
                 lexeme: "\0",
-                span: 5..5
+                span: Span::new(5..5, FILE_ID)
             }
         );
     }
 
     #[test]
     fn test_eof_span_newline() {
+        const FILE_ID: FileIdent = FileIdent::new(0);
         let source = "hello\n";
         let mut scanner = Scanner {
-            file_id: 0,
+            file_id: FILE_ID,
             source,
             start: 0,
             current: 0,
@@ -508,16 +510,17 @@ mod tests {
             &Token {
                 kind: TokenKind::Eof,
                 lexeme: "\0",
-                span: 6..6
+                span: Span::new(6..6, FILE_ID)
             }
         );
     }
 
     #[test]
     fn test_mandarin_identifier() {
+        const FILE_ID: FileIdent = FileIdent::new(0);
         let source = "你好啊";
         let mut scanner = Scanner {
-            file_id: 0,
+            file_id: FILE_ID,
             source,
             start: 0,
             current: 0,
@@ -530,12 +533,12 @@ mod tests {
                     kind: TokenKind::Identifier,
                     lexeme: "你好啊",
                     // mandarin characters span multiple bytes
-                    span: 0..9
+                    span: Span::new(0..9, FILE_ID)
                 },
                 Token {
                     kind: TokenKind::Eof,
                     lexeme: "\0",
-                    span: 9..9
+                    span: Span::new(9..9, FILE_ID)
                 }
             ]),
             "The identifier token should have a span that includes the entire lexeme plus the quotes for strings"
@@ -544,9 +547,10 @@ mod tests {
 
     #[test]
     fn test_mandarin_string() {
+        const FILE_ID: FileIdent = FileIdent::new(0);
         let source = "\"你好啊\"";
         let mut scanner = Scanner {
-            file_id: 0,
+            file_id: FILE_ID,
             source,
             start: 0,
             current: 0,
@@ -560,12 +564,12 @@ mod tests {
                     // Strings dont include the quotes in the lexeme
                     lexeme: "你好啊",
                     // mandarin characters span multiple bytes, include the quotes in the span
-                    span: 0..11
+                    span: Span::new(0..11, FILE_ID)
                 },
                 Token {
                     kind: TokenKind::Eof,
                     lexeme: "\0",
-                    span: 11..11
+                    span: Span::new(11..11, FILE_ID)
                 }
             ])
         );

@@ -20,7 +20,7 @@ pub mod functions {
     use std::{fmt::Debug, rc::Rc};
 
     use crate::{
-        error::fn_err::{FunctionError, FunctionErrorKind},
+        error::runtime_err::RuntimeError,
         tree_walk::{
             ast::stmt::{ControlFlow, Stmt},
             interpreter::{
@@ -38,10 +38,13 @@ pub mod functions {
             &self,
             interpreter: &mut Interpreter,
             arguments: &[LoxVar],
-        ) -> Result<LoxVar, FunctionError>;
+        ) -> Result<LoxVar, RuntimeError>;
 
         /// Returns the signature of the function, including parameter names and types.
         fn signature(&self) -> String;
+
+        /// Returns the arity of the function, i.e. the number of parameters it takes.
+        fn arity(&self) -> u8;
     }
 
     /// Represents a Lox function defined in the Lox code.
@@ -127,14 +130,7 @@ pub mod functions {
             &self,
             interpreter: &mut Interpreter,
             arguments: &[LoxVar],
-        ) -> Result<LoxVar, FunctionError> {
-            if arguments.len() != self.arity as usize {
-                return Err(FunctionError::new(FunctionErrorKind::IncorrectArity {
-                    expected: self.arity,
-                    got: arguments.len(),
-                }));
-            }
-
+        ) -> Result<LoxVar, RuntimeError> {
             let new_env = Env::new_env(Some(self.closure.clone()));
 
             for (name, arg) in self.parameters.iter().zip(arguments) {
@@ -191,6 +187,10 @@ pub mod functions {
 
             sig
         }
+
+        fn arity(&self) -> u8 {
+            self.parameters.len() as u8
+        }
     }
 }
 
@@ -199,7 +199,7 @@ pub mod class {
     use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
     use crate::{
-        error::fn_err::{FunctionError, FunctionErrorKind},
+        error::runtime_err::RuntimeError,
         tree_walk::{interpreter::Interpreter, lox_var::functions::LoxFunc},
     };
 
@@ -238,11 +238,6 @@ pub mod class {
                 self.super_class.as_ref()?.find_method(name)
             }
         }
-
-        /// Returns the arity of the `init` method, if one exists.
-        fn arity(&self) -> Option<u8> {
-            Some(self.find_method("init")?.arity())
-        }
     }
 
     impl LoxCallable for LoxClass {
@@ -250,14 +245,7 @@ pub mod class {
             &self,
             interpreter: &mut Interpreter,
             arguments: &[LoxVar],
-        ) -> Result<LoxVar, FunctionError> {
-            if arguments.len() != self.arity().unwrap_or(0) as usize {
-                return Err(FunctionError::new(FunctionErrorKind::IncorrectArity {
-                    expected: self.arity().unwrap_or(0),
-                    got: arguments.len(),
-                }));
-            }
-
+        ) -> Result<LoxVar, RuntimeError> {
             let instance = Rc::new(RefCell::new(LoxInstance::new(Rc::new(self.clone()))));
 
             if let Some(init) = self.find_method("init") {
@@ -269,6 +257,10 @@ pub mod class {
 
         fn signature(&self) -> String {
             format!("{}()", self.name)
+        }
+
+        fn arity(&self) -> u8 {
+            self.find_method("init").map(|f| f.arity()).unwrap_or(0)
         }
     }
 

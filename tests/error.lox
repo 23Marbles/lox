@@ -1,0 +1,1 @@
+true * false; // error: 22

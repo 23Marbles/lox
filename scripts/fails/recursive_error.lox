@@ -1,0 +1,13 @@
+fun foo() {
+    bar();
+}
+
+fun bar() {
+    led();
+}
+
+fun led() {
+    print true / nil;
+}
+
+foo();

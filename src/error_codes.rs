@@ -38,6 +38,9 @@ pub enum ErrorCode {
     UndefinedProperty = 28,
     NotInstance = 29,
     UninitializedVariable = 30,
+    IncorrectArgType = 31,
+    CouldNotConvert = 32,
+    UserForcedError = 33,
 }
 
 impl Display for ErrorCode {

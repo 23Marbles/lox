@@ -1,9 +1,9 @@
 use core::fmt::Display;
-use std::{error::Error, ops::Range};
+use std::error::Error;
 
-use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle, Severity};
+use codespan_reporting::diagnostic::{Diagnostic, Label, Severity};
 
-use crate::error_codes::ErrorCode;
+use crate::{error_codes::ErrorCode, lox_files::FileIdent};
 
 pub trait ToErrorCode {
     fn error_code(&self) -> ErrorCode;
@@ -14,8 +14,7 @@ pub trait ErrorLevel {
 }
 
 pub trait ToCodespan: ToErrorCode + ErrorLevel + Display {
-    #[expect(unused)]
-    fn to_codespan<I: Copy>(&self, file_id: I) -> Diagnostic<I> {
+    fn to_codespan(&self) -> Diagnostic<FileIdent> {
         Diagnostic::new(self.severity())
             .with_message(self.to_string())
             .with_code(self.error_code())
@@ -29,29 +28,14 @@ pub fn diag_fom_err<T>(from: impl Error) -> Diagnostic<T> {
         .with_code("CE0001")
 }
 
-fn to_codespan<
-    T: Display + ErrorLevel + ToErrorCode,
-    K: IntoIterator<Item = (LabelStyle, Range<usize>, Option<impl Display>)>,
-    I: Copy,
->(
+fn to_codespan<T: Display + ErrorLevel + ToErrorCode, I: Copy, K: IntoIterator<Item = Label<I>>>(
     from: &T,
-    file_id: I,
     labels: K,
 ) -> Diagnostic<I> {
     Diagnostic::new(from.severity())
         .with_message(from.to_string())
         .with_code(from.error_code())
-        .with_labels(
-            labels
-                .into_iter()
-                .map(|(s, r, m)| Label {
-                    style: s,
-                    file_id,
-                    range: r,
-                    message: m.map(|d| d.to_string()).unwrap_or(String::new()),
-                })
-                .collect(),
-        )
+        .with_labels(labels.into_iter().collect())
 }
 
 pub mod scan_err {
@@ -108,13 +92,14 @@ pub mod scan_err {
 
 pub mod parse_err {
     use core::fmt::Display;
-    use core::ops::Range;
 
     use codespan_reporting::diagnostic::{Label, LabelStyle, Severity};
 
     use crate::{
+        Span,
         error::{ErrorLevel, ToCodespan, ToErrorCode},
         error_codes::ErrorCode,
+        lox_files::FileIdent,
         tree_walk::token::TokenKind,
     };
 
@@ -123,29 +108,29 @@ pub mod parse_err {
         UnexpectedTokenKind {
             got: TokenKind,
             expected: Vec<TokenKind>,
-            span: Range<usize>,
+            span: Span,
         },
         ExpectedTokenKind {
             got: TokenKind,
             expected: TokenKind,
-            span: Range<usize>,
+            span: Span,
         },
         InvalidAssignTarget {
             target: String,
-            span: Range<usize>,
+            span: Span,
         },
         TooManyArguments {
-            spans: Vec<Range<usize>>,
+            spans: Vec<Span>,
         },
         ExpectedName {
             name: Named,
             after: TokenKind,
-            prev_span: Range<usize>,
-            span: Range<usize>,
+            prev_span: Span,
+            span: Span,
         },
         ExpectedNumber {
             input: String,
-            span: Range<usize>,
+            span: Span,
         },
     }
 
@@ -176,16 +161,15 @@ pub mod parse_err {
     }
 
     impl ToCodespan for ParseError {
-        fn to_codespan<I: Copy>(
-            &self,
-            file_id: I,
-        ) -> codespan_reporting::diagnostic::Diagnostic<I> {
+        fn to_codespan(&self) -> codespan_reporting::diagnostic::Diagnostic<FileIdent> {
             match self {
                 ParseError::UnexpectedTokenKind { span, expected, .. } => {
+                    let file_id = span.file_id;
+                    let range = span.range.clone();
                     codespan_reporting::diagnostic::Diagnostic::new(self.severity())
                         .with_message(self.to_string())
                         .with_code(self.error_code())
-                        .with_label(Label::new(LabelStyle::Primary, file_id, span.clone()))
+                        .with_label(Label::new(LabelStyle::Primary, file_id, range))
                         .with_note(format!(
                             "Expected one of [{}]",
                             expected
@@ -199,11 +183,11 @@ pub mod parse_err {
                     codespan_reporting::diagnostic::Diagnostic::new(self.severity())
                         .with_message(self.to_string())
                         .with_code(self.error_code())
-                        .with_labels_iter(
-                            spans.iter().map(|span| {
-                                Label::new(LabelStyle::Secondary, file_id, span.clone())
-                            }),
-                        )
+                        .with_labels_iter(spans.iter().map(|span| {
+                            let file_id = span.file_id;
+                            let range = span.range.clone();
+                            Label::new(LabelStyle::Secondary, file_id, range)
+                        }))
                 }
                 ParseError::ExpectedName {
                     span,
@@ -213,10 +197,18 @@ pub mod parse_err {
                 } => codespan_reporting::diagnostic::Diagnostic::new(self.severity())
                     .with_message(self.to_string())
                     .with_code(self.error_code())
-                    .with_label(Label::new(LabelStyle::Primary, file_id, span.clone()))
+                    .with_label(Label::new(
+                        LabelStyle::Primary,
+                        span.file_id,
+                        span.range.clone(),
+                    ))
                     .with_label(
-                        Label::new(LabelStyle::Secondary, file_id, prev_span.clone())
-                            .with_message(format!("Expected after `{after:?}`")),
+                        Label::new(
+                            LabelStyle::Secondary,
+                            prev_span.file_id,
+                            prev_span.range.clone(),
+                        )
+                        .with_message(format!("Expected after `{after:?}`")),
                     ),
                 ParseError::ExpectedTokenKind { span, .. }
                 | ParseError::InvalidAssignTarget { span, .. }
@@ -224,7 +216,11 @@ pub mod parse_err {
                     codespan_reporting::diagnostic::Diagnostic::new(self.severity())
                         .with_message(self.to_string())
                         .with_code(self.error_code())
-                        .with_label(Label::new(LabelStyle::Primary, file_id, span.clone()))
+                        .with_label(Label::new(
+                            LabelStyle::Primary,
+                            span.file_id,
+                            span.range.clone(),
+                        ))
                 }
             }
         }
@@ -281,25 +277,26 @@ pub mod parse_err {
 
 pub mod anaylysis_err {
     use core::fmt::Display;
-    use core::ops::Range;
 
-    use codespan_reporting::diagnostic::{LabelStyle, Severity};
+    use codespan_reporting::diagnostic::{Label, LabelStyle, Severity};
 
     use crate::{
+        Span,
         error::{ErrorLevel, ToCodespan, ToErrorCode, to_codespan},
         error_codes::ErrorCode,
+        lox_files::FileIdent,
     };
 
     #[derive(Debug, Clone)]
     pub enum ResolverErr {
-        ReadInOwnInitializer(Range<usize>),
-        DefinedMultipleTimes(String, Vec<Range<usize>>),
-        ReturnFromTop(Range<usize>),
+        ReadInOwnInitializer(Span),
+        DefinedMultipleTimes(String, Vec<Span>),
+        ReturnFromTop(Span),
         /// [Return pos, Init pos]
-        ReturnValueFromInit([Range<usize>; 2]),
-        ThisOutsideClass(Range<usize>),
-        SelfReferentialInheritance(Range<usize>),
-        SuperOutsideSubclass(Range<usize>),
+        ReturnValueFromInit([Span; 2]),
+        ThisOutsideClass(Span),
+        SelfReferentialInheritance(Span),
+        SuperOutsideSubclass(Span),
     }
 
     impl ToErrorCode for ResolverErr {
@@ -331,56 +328,61 @@ pub mod anaylysis_err {
     }
 
     impl ToCodespan for ResolverErr {
-        fn to_codespan<I: Copy>(
-            &self,
-            file_id: I,
-        ) -> codespan_reporting::diagnostic::Diagnostic<I> {
+        fn to_codespan(&self) -> codespan_reporting::diagnostic::Diagnostic<FileIdent> {
             match self {
-                ResolverErr::DefinedMultipleTimes(_, ranges) => {
-                    let labels = core::iter::once((
-                        LabelStyle::Primary,
-                        ranges.first().unwrap().clone(),
-                        Some("First defined here".to_owned()),
-                    ))
-                    .chain(core::iter::once((
-                        LabelStyle::Secondary,
-                        ranges[1].clone(),
-                        Some("Redefined here".to_owned()),
-                    )))
-                    .chain(ranges.iter().skip(2).map(|span| {
-                        (
-                            LabelStyle::Secondary,
-                            span.clone(),
-                            Some("And here".to_owned()),
-                        )
-                    }));
-
-                    to_codespan(self, file_id, labels)
-                }
-                ResolverErr::ReturnValueFromInit([return_range, init_range]) => to_codespan(
-                    self,
-                    file_id,
-                    [
-                        (
+                ResolverErr::DefinedMultipleTimes(_, spans) => {
+                    let labels: Vec<_> = core::iter::once(
+                        Label::new(
                             LabelStyle::Primary,
-                            return_range.clone(),
-                            Some("Tried to return here".to_owned()),
-                        ),
-                        (
+                            spans.first().unwrap().file_id,
+                            spans.first().unwrap().range.clone(),
+                        )
+                        .with_message("First defined here"),
+                    )
+                    .chain(core::iter::once(
+                        Label::new(
                             LabelStyle::Secondary,
-                            init_range.clone(),
-                            Some("Initializer defined here".to_owned()),
-                        ),
+                            spans[1].file_id,
+                            spans[1].range.clone(),
+                        )
+                        .with_message("Redefined here"),
+                    ))
+                    .chain(spans.iter().skip(2).map(|span| {
+                        Label::new(LabelStyle::Secondary, span.file_id, span.range.clone())
+                            .with_message("And here")
+                    }))
+                    .collect();
+
+                    to_codespan(self, labels)
+                }
+                ResolverErr::ReturnValueFromInit([return_span, init_span]) => to_codespan(
+                    self,
+                    [
+                        Label::new(
+                            LabelStyle::Primary,
+                            return_span.file_id,
+                            return_span.range.clone(),
+                        )
+                        .with_message("Tried to return here"),
+                        Label::new(
+                            LabelStyle::Secondary,
+                            init_span.file_id,
+                            init_span.range.clone(),
+                        )
+                        .with_message("Initializer defined here"),
                     ],
                 ),
-                ResolverErr::ReadInOwnInitializer(range)
-                | ResolverErr::ReturnFromTop(range)
-                | ResolverErr::ThisOutsideClass(range)
-                | ResolverErr::SelfReferentialInheritance(range)
-                | ResolverErr::SuperOutsideSubclass(range) => to_codespan(
+                ResolverErr::ReadInOwnInitializer(span)
+                | ResolverErr::ReturnFromTop(span)
+                | ResolverErr::ThisOutsideClass(span)
+                | ResolverErr::SelfReferentialInheritance(span)
+                | ResolverErr::SuperOutsideSubclass(span) => to_codespan(
                     self,
-                    file_id,
-                    [(LabelStyle::Primary, range.clone(), None::<String>)],
+                    [Label::new(
+                        LabelStyle::Primary,
+                        span.file_id,
+                        span.range.clone(),
+                    )],
                 ),
             }
         }
@@ -417,15 +419,17 @@ pub mod anaylysis_err {
 
 pub mod runtime_err {
     use core::fmt::Display;
-    use core::ops::Range;
 
-    use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle, Severity};
+    use codespan_reporting::diagnostic::{Diagnostic, Label, Severity};
 
     use crate::{
+        Span,
         error::{
             ErrorLevel, ToCodespan, ToErrorCode, eval_err::EvaluateError, fn_err::FunctionError,
+            to_codespan,
         },
         error_codes::ErrorCode,
+        lox_files::FileIdent,
         tree_walk::lox_var::LoxVar,
     };
 
@@ -433,9 +437,14 @@ pub mod runtime_err {
     pub enum RuntimeError {
         EvaluateError(EvaluateError),
         FunctionError(FunctionError),
-        Over255Arguments(usize, Range<usize>),
-        SuperClassIsNotAClass(LoxVar, Range<usize>),
+        Over255Arguments(usize, Span),
+        SuperClassIsNotAClass(LoxVar, Span),
         StackOverflow,
+        InternalFunctionError {
+            msg: String,
+            code: ErrorCode,
+            sev: Severity,
+        },
     }
 
     impl From<EvaluateError> for RuntimeError {
@@ -454,10 +463,11 @@ pub mod runtime_err {
         fn error_code(&self) -> ErrorCode {
             match self {
                 RuntimeError::EvaluateError(evaluate_error) => evaluate_error.error_code(),
-                RuntimeError::FunctionError(function_error) => function_error.error_code(),
+                RuntimeError::FunctionError(function_error) => function_error.reason().error_code(),
                 RuntimeError::Over255Arguments(..) => ErrorCode::Over255Arguments,
                 RuntimeError::SuperClassIsNotAClass(..) => ErrorCode::SuperClassIsNotAClass,
                 RuntimeError::StackOverflow => ErrorCode::StackOverflow,
+                RuntimeError::InternalFunctionError { code, .. } => *code,
             }
         }
     }
@@ -466,30 +476,70 @@ pub mod runtime_err {
         fn severity(&self) -> codespan_reporting::diagnostic::Severity {
             match self {
                 RuntimeError::EvaluateError(evaluate_error) => evaluate_error.severity(),
-                RuntimeError::FunctionError(function_error) => function_error.severity(),
+                RuntimeError::FunctionError(function_error) => function_error.reason().severity(),
                 RuntimeError::Over255Arguments(..) => Severity::Warning,
                 RuntimeError::SuperClassIsNotAClass(..) => Severity::Error,
                 RuntimeError::StackOverflow => Severity::Error,
+                RuntimeError::InternalFunctionError { sev, .. } => *sev,
             }
         }
     }
 
     impl ToCodespan for RuntimeError {
-        fn to_codespan<I: Copy>(
-            &self,
-            file_id: I,
-        ) -> codespan_reporting::diagnostic::Diagnostic<I> {
+        fn to_codespan(&self) -> Diagnostic<FileIdent> {
             match self {
-                RuntimeError::EvaluateError(evaluate_error) => evaluate_error.to_codespan(file_id),
-                RuntimeError::FunctionError(function_error) => function_error.to_codespan(file_id),
-                RuntimeError::Over255Arguments(_, range)
-                | RuntimeError::SuperClassIsNotAClass(_, range) => Diagnostic::new(self.severity())
-                    .with_code(self.error_code())
-                    .with_message(self.to_string())
-                    .with_label(Label::new(LabelStyle::Primary, file_id, range.clone())),
-                RuntimeError::StackOverflow => Diagnostic::new(self.severity())
-                    .with_code(self.error_code())
-                    .with_message(self.to_string()),
+                RuntimeError::EvaluateError(evaluate_error) => evaluate_error.to_codespan(),
+                RuntimeError::Over255Arguments(_, span)
+                | RuntimeError::SuperClassIsNotAClass(_, span) => to_codespan(
+                    self,
+                    [Label::new(
+                        codespan_reporting::diagnostic::LabelStyle::Secondary,
+                        span.file_id,
+                        span.range.clone(),
+                    )],
+                ),
+                RuntimeError::FunctionError(function_error) => to_codespan(
+                    &function_error.reason(),
+                    function_error
+                        .function_base_labels()
+                        .iter()
+                        .cloned()
+                        .chain((|| {
+                            let original_error = function_error.reason();
+                            if let RuntimeError::InternalFunctionError { .. } = original_error {
+                                return [].to_vec();
+                            }
+                            let span = match &original_error {
+                                RuntimeError::EvaluateError(evaluate_error) => {
+                                    evaluate_error.span.clone()
+                                }
+                                RuntimeError::Over255Arguments(_, span)
+                                | RuntimeError::SuperClassIsNotAClass(_, span) => span.clone(),
+                                RuntimeError::InternalFunctionError { .. } => {
+                                    *function_error.call_span.clone()
+                                }
+                                RuntimeError::StackOverflow | RuntimeError::FunctionError(..) => {
+                                    unreachable!(
+                                        "Stack overflow ignores stack, functions are never the base"
+                                    )
+                                }
+                            };
+                            [Label::new(
+                                codespan_reporting::diagnostic::LabelStyle::Primary,
+                                span.file_id,
+                                span.range.clone(),
+                            )
+                            .with_message("Actual error occurred here")]
+                            .to_vec()
+                        })()),
+                )
+                .with_notes({
+                    let mut stack_trace = vec!["Stack trace (most recent first):".to_string()];
+                    stack_trace.append(&mut function_error.stack_trace());
+                    stack_trace
+                }),
+                RuntimeError::StackOverflow => to_codespan(self, []),
+                RuntimeError::InternalFunctionError { .. } => to_codespan(self, []),
             }
         }
     }
@@ -509,17 +559,21 @@ pub mod runtime_err {
                     write!(f, "The super class `{not_class}` must be a class")
                 }
                 RuntimeError::StackOverflow => write!(f, "Max call depth reached"),
+                RuntimeError::InternalFunctionError { msg, .. } => {
+                    write!(f, "Internal function error: {msg}")
+                }
             }
         }
     }
 }
 
 pub mod eval_err {
-    use core::ops::Range;
     use core::{error::Error, fmt::Display};
 
     use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle, Severity};
 
+    use crate::Span;
+    use crate::lox_files::FileIdent;
     use crate::{
         error::{ErrorLevel, ToCodespan, ToErrorCode},
         error_codes::ErrorCode,
@@ -532,16 +586,16 @@ pub mod eval_err {
     #[derive(Debug, Clone)]
     pub struct EvaluateError {
         kind: EvaluateErrorKind,
-        pub(super) span: Range<usize>,
+        pub(super) span: Span,
     }
 
     impl EvaluateError {
-        pub fn new(kind: EvaluateErrorKind, pos: Range<usize>) -> Self {
+        pub fn new(kind: EvaluateErrorKind, pos: Span) -> Self {
             Self { kind, span: pos }
         }
 
         pub fn bin_eval_error(
-            pos: Range<usize>,
+            pos: Span,
             kind: TokenKind,
             left_var: &LoxVar,
             right_var: &LoxVar,
@@ -642,11 +696,15 @@ pub mod eval_err {
     }
 
     impl ToCodespan for EvaluateError {
-        fn to_codespan<I: Copy>(&self, file_id: I) -> Diagnostic<I> {
+        fn to_codespan(&self) -> Diagnostic<FileIdent> {
             Diagnostic::new(self.severity())
                 .with_message(self.to_string())
                 .with_code(self.error_code())
-                .with_label(Label::new(LabelStyle::Primary, file_id, self.span.clone()))
+                .with_label(Label::new(
+                    LabelStyle::Primary,
+                    self.span.file_id,
+                    self.span.range.clone(),
+                ))
         }
     }
 
@@ -704,31 +762,82 @@ pub mod eval_err {
 }
 
 pub mod fn_err {
-    use core::ops::Range;
     use core::{error::Error, fmt::Display};
 
-    use codespan_reporting::diagnostic::{Label, LabelStyle, Severity};
+    use codespan_reporting::diagnostic::Label;
 
-    use crate::{
-        error::{ErrorLevel, ToCodespan, ToErrorCode, runtime_err::RuntimeError},
-        tree_walk::lox_var::LoxVar,
-    };
-
-    use crate::error_codes::ErrorCode;
+    use crate::Span;
+    use crate::lox_files::FileIdent;
+    use crate::{error::runtime_err::RuntimeError, tree_walk::lox_var::LoxVar};
 
     #[derive(Debug, Clone)]
     pub struct FunctionError {
-        pub call_span: Option<Box<Range<usize>>>,
+        pub(super) call_span: Box<Span>,
+        name: String,
         pub input_args: Vec<LoxVar>,
-        kind: FunctionErrorKind,
+        kind: Box<RuntimeError>,
     }
 
     impl FunctionError {
-        pub fn new(kind: FunctionErrorKind) -> Self {
+        pub fn from_runtime_error(
+            err: RuntimeError,
+            signature: String,
+            input_args: Vec<LoxVar>,
+            call_span: Span,
+        ) -> Self {
             Self {
-                kind,
-                call_span: None,
-                input_args: Vec::new(),
+                call_span: Box::new(call_span),
+                name: signature,
+                input_args,
+                kind: Box::new(err),
+            }
+        }
+
+        pub fn with_call_span(mut self, call_span: Span) -> Self {
+            self.call_span = Box::new(call_span);
+            self
+        }
+
+        pub fn reason(&self) -> RuntimeError {
+            match *(&self).kind.clone() {
+                RuntimeError::FunctionError(function_error) => function_error.reason(),
+                o => o,
+            }
+        }
+
+        pub fn function_base_labels(&self) -> [Label<FileIdent>; 2] {
+            match *(&self).kind.clone() {
+                RuntimeError::FunctionError(function_error) => {
+                    function_error.function_base_labels()
+                }
+                _ => [
+                    Label::new(
+                        codespan_reporting::diagnostic::LabelStyle::Primary,
+                        self.call_span.file_id,
+                        (*self.call_span).range.clone(),
+                    )
+                    .with_message("Error happened in this function"),
+                    Label::new(
+                        codespan_reporting::diagnostic::LabelStyle::Primary,
+                        self.call_span.file_id,
+                        (*self.call_span).range.clone(),
+                    )
+                    .with_message(format!(
+                        "Function called with arguments: {:?}",
+                        self.input_args
+                    )),
+                ],
+            }
+        }
+
+        pub fn stack_trace(&self) -> Vec<String> {
+            match *(&self).kind.clone() {
+                RuntimeError::FunctionError(function_error) => {
+                    let mut stack_trace = function_error.stack_trace();
+                    stack_trace.append(&mut vec![self.name.to_string()]);
+                    stack_trace
+                }
+                _ => vec![self.name.to_string()],
             }
         }
     }
@@ -738,98 +847,6 @@ pub mod fn_err {
     impl Display for FunctionError {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             write!(f, "{}", self.kind)
-        }
-    }
-
-    impl ErrorLevel for FunctionError {
-        fn severity(&self) -> codespan_reporting::diagnostic::Severity {
-            match &self.kind {
-                FunctionErrorKind::IncorrectArity { .. } => Severity::Error,
-                FunctionErrorKind::SubError(sub_error) => sub_error.severity(),
-            }
-        }
-    }
-
-    impl ToErrorCode for FunctionError {
-        fn error_code(&self) -> ErrorCode {
-            match &self.kind {
-                FunctionErrorKind::IncorrectArity { .. } => ErrorCode::IncorrectArity,
-                FunctionErrorKind::SubError(runtime_error) => runtime_error.error_code(),
-            }
-        }
-    }
-
-    impl ToCodespan for FunctionError {
-        fn to_codespan<I: Copy>(
-            &self,
-            file_id: I,
-        ) -> codespan_reporting::diagnostic::Diagnostic<I> {
-            match &self.kind {
-                FunctionErrorKind::IncorrectArity { .. } => {
-                    let err = codespan_reporting::diagnostic::Diagnostic::new(self.severity())
-                        .with_message(self.to_string())
-                        .with_code(self.error_code());
-
-                    if let Some(span) = &self.call_span {
-                        err.with_label(Label::new(LabelStyle::Primary, file_id, *span.clone()))
-                    } else {
-                        err
-                    }
-                }
-                FunctionErrorKind::SubError(runtime_error) => {
-                    let err = runtime_error.to_codespan(file_id);
-
-                    if let Some(span) = &self.call_span {
-                        err.with_label(Label::new(LabelStyle::Secondary, file_id, *span.clone()))
-                    } else {
-                        err
-                    }
-                }
-            }
-            .with_note(format!(
-                "Called with args: [{}]",
-                self.input_args
-                    .iter()
-                    .map(|arg| arg.to_string())
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            ))
-        }
-    }
-
-    impl From<RuntimeError> for FunctionError {
-        fn from(runtime_error: RuntimeError) -> Self {
-            Self {
-                call_span: match &runtime_error {
-                    RuntimeError::EvaluateError(evaluate_error) => {
-                        Some(Box::new(evaluate_error.span.clone()))
-                    }
-                    RuntimeError::FunctionError(function_error) => function_error.call_span.clone(),
-                    RuntimeError::Over255Arguments(_, span) => Some(Box::new(span.clone())),
-                    RuntimeError::SuperClassIsNotAClass(_, span) => Some(Box::new(span.clone())),
-                    RuntimeError::StackOverflow => None,
-                },
-                input_args: Vec::new(),
-                kind: FunctionErrorKind::SubError(Box::new(runtime_error)),
-            }
-        }
-    }
-
-    #[derive(Debug, Clone)]
-    pub enum FunctionErrorKind {
-        IncorrectArity { expected: u8, got: usize },
-        SubError(Box<RuntimeError>),
-    }
-
-    impl Display for FunctionErrorKind {
-        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            match self {
-                FunctionErrorKind::IncorrectArity { expected, got } => write!(
-                    f,
-                    "Icorrect number of arguments for function call, expected {expected} got {got}"
-                ),
-                FunctionErrorKind::SubError(runtime_error) => write!(f, "{}", runtime_error),
-            }
         }
     }
 }

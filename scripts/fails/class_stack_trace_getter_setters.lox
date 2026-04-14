@@ -1,0 +1,29 @@
+var PI = 3;
+
+class Circle {
+  init(radius) {
+    this.radius = radius;
+  }
+
+  get radius() {
+    return this._radius;
+  }
+
+  set radius(value) {
+    if (value <= 0) {
+      error("radius must be positive");
+    }
+    this._radius = value;
+  }
+
+  get area() {
+    return PI * this.radius * this.radius;
+  }
+}
+
+fun main() {
+  var c = Circle(-1);
+  print c.area;
+}
+
+main();

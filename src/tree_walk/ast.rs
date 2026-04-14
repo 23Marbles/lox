@@ -10,7 +10,7 @@ use crate::tree_walk::{
 
 /// Module for statement AST nodes.
 pub mod stmt {
-    use core::ops::Range;
+    use crate::Span;
 
     use super::*;
     #[derive(Debug, Clone, PartialEq)]
@@ -24,7 +24,7 @@ pub mod stmt {
         /// Represents a variable declaration statement.
         Var {
             /// The span of the variable declaration in the source code.
-            span: Range<usize>,
+            span: Span,
             /// The name of the variable being declared.
             name: String,
             /// The initializer expression for the variable, if any.
@@ -52,7 +52,7 @@ pub mod stmt {
         /// Represents a function declaration.
         Function {
             /// The span of the function declaration in the source code.
-            span: Range<usize>,
+            span: Span,
             /// The name of the function being declared.
             name: String,
             /// The parameters of the function.
@@ -65,7 +65,7 @@ pub mod stmt {
             /// The value being returned, if any.
             value: Option<Expr>,
             /// The span of the return statement in the source code.
-            span: Range<usize>,
+            span: Span,
         },
         /// Represents a class declaration.
         Class {
@@ -76,7 +76,7 @@ pub mod stmt {
             /// The methods of the class.
             methods: Vec<Stmt>,
             /// The span of the class declaration in the source code.
-            span: Range<usize>,
+            span: Span,
         },
     }
 
@@ -179,7 +179,7 @@ pub mod stmt {
 
 /// Module for expressions in the AST.
 pub mod expr {
-    use core::ops::Range;
+    use crate::Span;
 
     use super::*;
     #[derive(Debug, Clone, PartialEq)]
@@ -193,7 +193,7 @@ pub mod expr {
             /// The operator of the unary expression.
             operator: TokenKind,
             /// The span of the unary expression in the source code.
-            span: Range<usize>,
+            span: Span,
             /// The right-hand side expression of the unary expression.
             right: Box<Expr>,
         },
@@ -207,7 +207,7 @@ pub mod expr {
             /// The right-hand side expression of the binary expression.
             right: Box<Expr>,
             /// The span of the binary expression in the source code.
-            span: Range<usize>,
+            span: Span,
         },
 
         /// Represents a grouping expression in the AST. Contains an [`Expr`] expression.
@@ -217,7 +217,7 @@ pub mod expr {
         /// This is set in the resolver and used during evaluation.
         Variable {
             /// The span of the variable expression in the source code.
-            span: Range<usize>,
+            span: Span,
             /// The name of the variable.
             name: String,
             /// The distance from the current scope for lookup. If it is `None`, the variable is a global variable.
@@ -232,7 +232,7 @@ pub mod expr {
             /// The distance from the current scope for lookup. If it is `None`, the variable is a global variable.
             distance: Option<usize>,
             /// The span of the assignment expression in the source code.
-            span: Range<usize>,
+            span: Span,
             /// The value being assigned to the variable.
             value: Box<Expr>,
         },
@@ -254,7 +254,7 @@ pub mod expr {
             /// The list of arguments to the function call.
             args: Vec<Expr>,
             /// The span of the function call expression in the source code.
-            span: Range<usize>,
+            span: Span,
         },
 
         /// Represents a get expression in the AST. Contains an [`object`][`Expr`] expression and a [`name`] string.
@@ -264,7 +264,7 @@ pub mod expr {
             /// The name of the property being accessed.
             name: String,
             /// The span of the get expression in the source code.
-            span: Range<usize>,
+            span: Span,
         },
 
         /// Represents a set expression in the AST. Contains an [`object`][`Expr`] expression, a [`name`] string, and a [`value`][`Expr`] expression.
@@ -276,7 +276,7 @@ pub mod expr {
             /// The value being set.
             value: Box<Expr>,
             /// The span of the set expression in the source code.
-            span: Range<usize>,
+            span: Span,
         },
 
         /// Represents a super expression in the AST. Contains a [`method_name`] string and an optional [`distance`] usize.
@@ -287,7 +287,7 @@ pub mod expr {
             /// If `None`, distance is to the global scope.
             distance: Option<usize>,
             /// The span of the super expression in the source code.
-            span: Range<usize>,
+            span: Span,
         },
 
         /// Represents a `this` expression in the AST. Contains an optional [`distance`] usize.
@@ -296,7 +296,7 @@ pub mod expr {
             /// If `None`, distance is to the global scope.
             distance: Option<usize>,
             /// The span of the `this` expression in the source code.
-            span: Range<usize>,
+            span: Span,
         },
     }
 

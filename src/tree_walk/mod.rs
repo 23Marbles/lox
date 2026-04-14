@@ -3,7 +3,7 @@
 
 use std::{
     env,
-    io::{Write, stdin, stdout},
+    io::{self, Write, stdin, stdout},
     path::Path,
     process::exit,
     rc::Rc,
@@ -14,6 +14,7 @@ use crate::tree_walk::interpreter::env::EnvironmentImpl as _;
 use crate::{
     Runner,
     error::{ToCodespan as _, diag_fom_err},
+    lox_files::FileIdent,
     tree_walk::{
         interpreter::Interpreter, lox_var::functions::LoxCallable, parser::Parser,
         static_analysis::Resolver, token::Scanner,
@@ -49,7 +50,8 @@ pub fn run_file_with_writer<W: Write + Send + 'static>(
     #[cfg(debug_assertions)]
     let _ = writeln!(writer, "script opened at {:?}", file_path);
 
-    let mut runner = Runner::new_with_writer(Box::new(writer)).with_globals(globals);
+    let mut runner =
+        Runner::new_with_writers(Box::new(writer), Box::new(io::stderr())).with_globals(globals);
 
     if let Err(errs) = runner.run_file(file_path) {
         let _ = runner.write_errors(errs);
@@ -112,8 +114,13 @@ pub fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) {
 
 #[expect(dead_code)]
 #[deprecated = "Use [`Runner`] instead"]
-fn run(source: &str, interpreter: &mut Interpreter, writer: &mut impl Write) -> crate::Result<()> {
-    const DEPRECATED_PLACEHOLDER: usize = 0;
+fn run(
+    source: &str,
+    interpreter: &mut Interpreter,
+    writer: &mut impl Write,
+    e_writer: &mut impl Write,
+) -> crate::Result<()> {
+    const DEPRECATED_PLACEHOLDER: FileIdent = FileIdent::new(0);
 
     let mut scanner = Scanner::new(source, DEPRECATED_PLACEHOLDER);
 
@@ -138,7 +145,7 @@ fn run(source: &str, interpreter: &mut Interpreter, writer: &mut impl Write) -> 
         }
     }
 
-    let mut resolver = Resolver::new(DEPRECATED_PLACEHOLDER);
+    let mut resolver = Resolver::new();
     resolver.resolve_stmts(&mut parsed)?;
 
     #[cfg(debug_assertions)]
@@ -154,14 +161,20 @@ fn run(source: &str, interpreter: &mut Interpreter, writer: &mut impl Write) -> 
     for res in &mut *interpreter {
         match res {
             Ok(out) => {
-                for l in out.lines() {
-                    let _ = writeln!(writer, "{l}").map_err(|e| vec![diag_fom_err::<usize>(e)]);
+                for l in out.marked_lines() {
+                    let _ = match l.1 {
+                        interpreter::LineType::Normal => {
+                            writeln!(writer, "{}", l.0).map_err(|e| vec![diag_fom_err::<usize>(e)])
+                        }
+                        interpreter::LineType::Error => writeln!(e_writer, "{}", l.0)
+                            .map_err(|e| vec![diag_fom_err::<usize>(e)]),
+                    };
                 }
             }
             Err(err) => {
                 #[cfg(debug_assertions)]
                 interpreter.env.debug_print_env();
-                return Err(vec![err.to_codespan(DEPRECATED_PLACEHOLDER)]);
+                return Err(vec![err.to_codespan()]);
             }
         }
     }

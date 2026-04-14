@@ -1,14 +1,14 @@
 //! Parser for Lox source code.
 
-use core::ops::Range;
-
 use codespan_reporting::diagnostic::Diagnostic;
 
 use crate::{
+    Span,
     error::{
         ToCodespan as _,
         parse_err::{Named, ParseError},
     },
+    lox_files::FileIdent,
     tree_walk::{
         ast::{Literal, expr::Expr, stmt::Stmt},
         token::{Token, TokenKind},
@@ -19,12 +19,12 @@ use crate::{
 pub struct Parser<'source> {
     tokens: Vec<Token<'source>>,
     current: usize,
-    errors: Vec<Diagnostic<usize>>,
-    file_id: usize,
+    errors: Vec<Diagnostic<FileIdent>>,
+    file_id: FileIdent,
 }
 
 impl<'source> Iterator for Parser<'source> {
-    type Item = Result<Stmt, Diagnostic<usize>>;
+    type Item = Result<Stmt, Diagnostic<FileIdent>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.is_at_end() {
@@ -43,7 +43,7 @@ impl<'source> Iterator for Parser<'source> {
 
 impl<'source> Parser<'source> {
     /// Creates a new parser from a sequence of tokens and a file id.
-    pub fn new(tokens: Vec<Token<'source>>, file_id: usize) -> Self {
+    pub fn new(tokens: Vec<Token<'source>>, file_id: FileIdent) -> Self {
         Self {
             tokens,
             current: 0,
@@ -53,8 +53,8 @@ impl<'source> Parser<'source> {
     }
 
     #[must_use]
-    fn error(&mut self, kind: ParseError) -> Diagnostic<usize> {
-        let err = kind.to_codespan(self.file_id);
+    fn error(&mut self, kind: ParseError) -> Diagnostic<FileIdent> {
+        let err = kind.to_codespan();
 
         self.errors.push(err.clone());
 
@@ -112,7 +112,7 @@ impl<'source> Parser<'source> {
     /// Parses the tokens into a stream of statements.
     pub fn parse(&mut self) -> crate::Result<Vec<Stmt>> {
         let statements = self
-            .filter_map(|res: Result<Stmt, Diagnostic<usize>>| res.ok())
+            .filter_map(|res: Result<Stmt, Diagnostic<FileIdent>>| res.ok())
             .collect();
 
         if self.errors.is_empty() {
@@ -122,7 +122,7 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn declaration(&mut self) -> Result<Stmt, Diagnostic<usize>> {
+    fn declaration(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
         if self.match_any([TokenKind::Var]) {
             self.var_declaration()
         } else if self.match_any([TokenKind::Fun]) {
@@ -134,7 +134,7 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn class_declaration(&mut self) -> Result<Stmt, Diagnostic<usize>> {
+    fn class_declaration(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
         let name_token = self.consume(
             TokenKind::Identifier,
             ParseError::ExpectedName {
@@ -185,7 +185,7 @@ impl<'source> Parser<'source> {
         })
     }
 
-    fn fun_declaration(&mut self, kind: Named) -> Result<Stmt, Diagnostic<usize>> {
+    fn fun_declaration(&mut self, kind: Named) -> Result<Stmt, Diagnostic<FileIdent>> {
         let name = self
             .consume(
                 TokenKind::Identifier,
@@ -202,11 +202,11 @@ impl<'source> Parser<'source> {
             )?
             .lexeme;
 
-        let start_pos: usize = self.expect(TokenKind::LeftParen)?.span.start;
+        let start_pos: usize = self.expect(TokenKind::LeftParen)?.span.range.start;
 
         let mut parameters: Vec<&'source str> = Vec::new();
 
-        let mut offending_spans: Vec<Range<usize>> = Vec::new();
+        let mut offending_spans: Vec<Span> = Vec::new();
 
         if !self.check(TokenKind::RightParen) {
             'collect_arguments: loop {
@@ -237,7 +237,7 @@ impl<'source> Parser<'source> {
             }
         }
 
-        let end_pos: usize = self.expect(TokenKind::RightParen)?.span.end;
+        let end_pos: usize = self.expect(TokenKind::RightParen)?.span.range.end;
 
         if !offending_spans.is_empty() {
             let _ = self.error(ParseError::TooManyArguments {
@@ -257,14 +257,11 @@ impl<'source> Parser<'source> {
                 .map(|param| param.to_owned())
                 .collect(),
             body,
-            span: Range {
-                start: start_pos,
-                end: end_pos,
-            },
+            span: Span::new(start_pos..end_pos, self.file_id),
         })
     }
 
-    fn var_declaration(&mut self) -> Result<Stmt, Diagnostic<usize>> {
+    fn var_declaration(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
         let token = self.expect(TokenKind::Identifier)?;
 
         let initializer = if self.match_any([TokenKind::Equal]) {
@@ -282,7 +279,7 @@ impl<'source> Parser<'source> {
         })
     }
 
-    fn statement(&mut self) -> Result<Stmt, Diagnostic<usize>> {
+    fn statement(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
         use TokenKind::*;
 
         if self.match_any([Print]) {
@@ -302,8 +299,8 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn return_statement(&mut self) -> Result<Stmt, Diagnostic<usize>> {
-        let start_pos: usize = self.previous().span.start;
+    fn return_statement(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
+        let start_pos: usize = self.previous().span.range.start;
 
         let value = if !self.check(TokenKind::Semicolon) {
             Some(self.expression()?)
@@ -311,18 +308,15 @@ impl<'source> Parser<'source> {
             None
         };
 
-        let end_pos: usize = self.expect(TokenKind::Semicolon)?.span.end;
+        let end_pos: usize = self.expect(TokenKind::Semicolon)?.span.range.end;
 
         Ok(Stmt::Return {
             value,
-            span: Range {
-                start: start_pos,
-                end: end_pos,
-            },
+            span: Span::new(start_pos..end_pos, self.file_id),
         })
     }
 
-    fn for_statement(&mut self) -> Result<Stmt, Diagnostic<usize>> {
+    fn for_statement(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
         self.expect(TokenKind::LeftParen)?;
 
         let initializer = if self.match_any([TokenKind::Semicolon]) {
@@ -367,7 +361,7 @@ impl<'source> Parser<'source> {
         Ok(body)
     }
 
-    fn while_statement(&mut self) -> Result<Stmt, Diagnostic<usize>> {
+    fn while_statement(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
         self.expect(TokenKind::LeftParen)?;
         let condition = self.expression()?;
         self.expect(TokenKind::RightParen)?;
@@ -377,7 +371,7 @@ impl<'source> Parser<'source> {
         })
     }
 
-    fn if_statement(&mut self) -> Result<Stmt, Diagnostic<usize>> {
+    fn if_statement(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
         self.expect(TokenKind::LeftParen)?;
         let condition = self.expression()?;
         self.expect(TokenKind::RightParen)?;
@@ -396,7 +390,7 @@ impl<'source> Parser<'source> {
         })
     }
 
-    fn block(&mut self) -> Result<Vec<Stmt>, Diagnostic<usize>> {
+    fn block(&mut self) -> Result<Vec<Stmt>, Diagnostic<FileIdent>> {
         let mut statements = Vec::new();
 
         while !self.check(TokenKind::RightBrace) && !self.is_at_end() {
@@ -408,25 +402,25 @@ impl<'source> Parser<'source> {
         Ok(statements)
     }
 
-    fn print_statement(&mut self) -> Result<Stmt, Diagnostic<usize>> {
+    fn print_statement(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
         let value = self.expression()?;
         self.expect(TokenKind::Semicolon)?;
 
         Ok(Stmt::Print(value))
     }
 
-    fn expression_statement(&mut self) -> Result<Stmt, Diagnostic<usize>> {
+    fn expression_statement(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
         let value = self.expression()?;
         self.expect(TokenKind::Semicolon)?;
 
         Ok(Stmt::Expression(value))
     }
 
-    fn expression(&mut self) -> Result<Expr, Diagnostic<usize>> {
+    fn expression(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
         self.assignment()
     }
 
-    fn assignment(&mut self) -> Result<Expr, Diagnostic<usize>> {
+    fn assignment(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
         let expr = self.logic_or()?;
 
         if self.match_any([TokenKind::Equal]) {
@@ -453,7 +447,7 @@ impl<'source> Parser<'source> {
                     span: equals.span,
                 };
 
-                let err = kind.to_codespan(self.file_id);
+                let err = kind.to_codespan();
 
                 self.errors.push(err.clone());
 
@@ -464,7 +458,7 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn logic_or(&mut self) -> Result<Expr, Diagnostic<usize>> {
+    fn logic_or(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
         let mut expr = self.logic_and()?;
 
         while self.match_any([TokenKind::Or]) {
@@ -478,7 +472,7 @@ impl<'source> Parser<'source> {
         Ok(expr)
     }
 
-    fn logic_and(&mut self) -> Result<Expr, Diagnostic<usize>> {
+    fn logic_and(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
         let mut expr = self.equality()?;
 
         while self.match_any([TokenKind::And]) {
@@ -492,7 +486,7 @@ impl<'source> Parser<'source> {
         Ok(expr)
     }
 
-    fn equality(&mut self) -> Result<Expr, Diagnostic<usize>> {
+    fn equality(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
         let mut expr = self.comparison()?;
 
         use TokenKind::*;
@@ -504,7 +498,7 @@ impl<'source> Parser<'source> {
         Ok(expr)
     }
 
-    fn comparison(&mut self) -> Result<Expr, Diagnostic<usize>> {
+    fn comparison(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
         let mut expr = self.term()?;
 
         use TokenKind::*;
@@ -515,7 +509,7 @@ impl<'source> Parser<'source> {
         Ok(expr)
     }
 
-    fn term(&mut self) -> Result<Expr, Diagnostic<usize>> {
+    fn term(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
         let mut expr = self.factor()?;
 
         use TokenKind::*;
@@ -526,7 +520,7 @@ impl<'source> Parser<'source> {
         Ok(expr)
     }
 
-    fn factor(&mut self) -> Result<Expr, Diagnostic<usize>> {
+    fn factor(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
         let mut expr = self.unary()?;
 
         use TokenKind::*;
@@ -537,7 +531,7 @@ impl<'source> Parser<'source> {
         Ok(expr)
     }
 
-    fn unary(&mut self) -> Result<Expr, Diagnostic<usize>> {
+    fn unary(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
         use TokenKind::*;
         if self.match_any([Bang, Minus]) {
             Ok(Expr::unary(self.previous().clone(), self.unary()?))
@@ -546,7 +540,7 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn call(&mut self) -> Result<Expr, Diagnostic<usize>> {
+    fn call(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
         let mut expr = self.primary()?;
 
         loop {
@@ -555,8 +549,8 @@ impl<'source> Parser<'source> {
                     expr,
                     match &self.tokens[self.current - 2] {
                         // No panicking (Just trust me bro)
-                        ident if ident.kind == TokenKind::Identifier => ident.span.start,
-                        _ => self.previous().span.start,
+                        ident if ident.kind == TokenKind::Identifier => ident.span.range.start,
+                        _ => self.previous().span.range.start,
                     },
                 )?;
             } else if self.match_any([TokenKind::Dot]) {
@@ -583,10 +577,14 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn finish_call(&mut self, calee: Expr, start_pos: usize) -> Result<Expr, Diagnostic<usize>> {
+    fn finish_call(
+        &mut self,
+        calee: Expr,
+        start_pos: usize,
+    ) -> Result<Expr, Diagnostic<FileIdent>> {
         let mut args = Vec::new();
 
-        let mut offending_spans: Vec<Range<usize>> = Vec::new();
+        let mut offending_spans: Vec<Span> = Vec::new();
 
         if !self.check(TokenKind::RightParen) {
             loop {
@@ -602,7 +600,7 @@ impl<'source> Parser<'source> {
             }
         }
 
-        let end_pos: usize = self.expect(TokenKind::RightParen)?.span.end;
+        let end_pos: usize = self.expect(TokenKind::RightParen)?.span.range.end;
 
         if !offending_spans.is_empty() {
             let _ = self.error(ParseError::TooManyArguments {
@@ -610,10 +608,7 @@ impl<'source> Parser<'source> {
             });
         }
 
-        let span = Range {
-            start: start_pos,
-            end: end_pos,
-        };
+        let span = Span::new(start_pos..end_pos, self.file_id);
 
         Ok(Expr::Call {
             callee: Box::new(calee),
@@ -622,7 +617,7 @@ impl<'source> Parser<'source> {
         })
     }
 
-    fn primary(&mut self) -> Result<Expr, Diagnostic<usize>> {
+    fn primary(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
         use crate::tree_walk::ast::Literal;
         use TokenKind::*;
         match self.peek().kind {
@@ -669,7 +664,7 @@ impl<'source> Parser<'source> {
                 Ok(Expr::Grouping(Box::new(expr)))
             }
             Super => {
-                let start_pos = self.advance().span.start;
+                let start_pos = self.advance().span.range.start;
 
                 self.expect(TokenKind::Dot)?;
 
@@ -690,10 +685,7 @@ impl<'source> Parser<'source> {
                 Ok(Expr::Super {
                     method_name: ident_token.lexeme.to_owned(),
                     distance: None,
-                    span: Range {
-                        start: start_pos,
-                        end: ident_token.span.end,
-                    },
+                    span: Span::new(start_pos..ident_token.span.range.end, self.file_id),
                 })
             }
             This => {
@@ -745,7 +737,7 @@ impl<'source> Parser<'source> {
         &mut self,
         kind: TokenKind,
         err: ParseError,
-    ) -> Result<Token<'source>, Diagnostic<usize>> {
+    ) -> Result<Token<'source>, Diagnostic<FileIdent>> {
         if self.check(kind) {
             Ok(self.advance().clone())
         } else {
@@ -753,7 +745,7 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn expect(&mut self, expected: TokenKind) -> Result<Token<'source>, Diagnostic<usize>> {
+    fn expect(&mut self, expected: TokenKind) -> Result<Token<'source>, Diagnostic<FileIdent>> {
         self.consume(
             expected,
             ParseError::ExpectedTokenKind {

@@ -1,23 +1,24 @@
 //! Static analysis for Lox source code.
 
-use std::{collections::HashMap, ops::Range};
+use std::collections::HashMap;
 
 use codespan_reporting::diagnostic::Diagnostic;
 
 use crate::{
+    Span,
     error::{ToCodespan as _, anaylysis_err::ResolverErr},
+    lox_files::FileIdent,
     tree_walk::ast::{expr::Expr, stmt::Stmt},
 };
 
 /// A resolver that performs static analysis on a stream of statements.
 pub struct Resolver {
-    scopes: Vec<HashMap<String, (bool, Range<usize>)>>,
-    errors: Vec<Diagnostic<usize>>,
+    scopes: Vec<HashMap<String, (bool, Span)>>,
+    errors: Vec<Diagnostic<FileIdent>>,
     func_path: Vec<FunctionKind>,
     class_path: Vec<ClassKind>,
-    file_id: usize,
     /// Each vec *MUST* have at least two elements
-    def_mul_times: Vec<HashMap<String, Vec<Range<usize>>>>,
+    def_mul_times: Vec<HashMap<String, Vec<Span>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,7 +26,7 @@ enum FunctionKind {
     None,
     Method,
     Function,
-    Initializer(Range<usize>),
+    Initializer(Span),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,8 +37,8 @@ enum ClassKind {
 }
 
 impl Resolver {
-    /// Creates a new resolver with the given file id.
-    pub fn new(file_id: usize) -> Self {
+    /// Creates a new resolver.
+    pub fn new() -> Self {
         Self {
             scopes: Vec::new(),
             errors: Vec::new(),
@@ -51,7 +52,6 @@ impl Resolver {
                 vec.push(ClassKind::None);
                 vec
             },
-            file_id,
             def_mul_times: Vec::new(),
         }
     }
@@ -70,7 +70,7 @@ impl Resolver {
     }
 
     fn error(&mut self, kind: ResolverErr) {
-        self.errors.push(kind.to_codespan(self.file_id));
+        self.errors.push(kind.to_codespan());
     }
 
     fn begin_scope(&mut self) {
@@ -88,7 +88,7 @@ impl Resolver {
         self.def_mul_times.pop();
     }
 
-    fn decalare(&mut self, name: String, span: Range<usize>) {
+    fn decalare(&mut self, name: String, span: Span) {
         if let Some(scope) = self.scopes.iter_mut().last() {
             if let Some((_, p_span)) = scope.get(&name) {
                 let def_scope = self
@@ -120,7 +120,7 @@ impl Resolver {
     fn resolve_function(
         &mut self,
         parameters: &[String],
-        span: Range<usize>,
+        span: Span,
         body: &mut [Stmt],
         kind: FunctionKind,
     ) {
@@ -219,10 +219,14 @@ impl Resolver {
                 }) = super_class.clone()
                 {
                     if *name == s_name {
-                        self.error(ResolverErr::SelfReferentialInheritance(Range {
-                            start: span.start,
-                            end: s_span.end,
-                        }));
+                        assert_eq!(
+                            s_span.file_id, span.file_id,
+                            "Superclass must be defined in the same file as the if there is a self-referential inheritance"
+                        );
+                        self.error(ResolverErr::SelfReferentialInheritance(Span::new(
+                            span.range.start..s_span.range.end,
+                            span.file_id,
+                        )));
                     }
 
                     #[expect(clippy::unwrap_used)]

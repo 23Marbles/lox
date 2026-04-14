@@ -233,7 +233,7 @@ fn read_file_expectation(path: &Path) -> Result<Expectation, Box<dyn Error>> {
 fn check_file(path: &Path, expectation: Expectation) -> Result<(), Failed> {
     let writer = SharedWriter::default();
 
-    let out = Runner::new_with_writer(Box::new(writer.clone()))
+    let out = Runner::new_with_writers(Box::new(writer.clone()), Box::new(writer.clone()))
         .with_globals(lox::std_lib::default_lib())
         .run_file(path)
         .map(|_| writer.read())
