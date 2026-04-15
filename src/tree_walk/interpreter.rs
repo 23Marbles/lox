@@ -17,14 +17,15 @@ use crate::{
     tree_walk::{
         ast::{
             Literal,
-            expr::Expr,
+            expr::{AccessType, Expr},
             stmt::{ControlFlow, Stmt},
         },
         interpreter::env::{Env, EnvironmentImpl as _},
         lox_var::{
-            LoxVar,
-            class::{InstanceImpl as _, LoxClass},
+            LoxVar, PropertyAccess as _,
+            class::LoxClass,
             functions::{LoxCallable, LoxFunc},
+            list::{ListAccessKind, LoxList},
         },
     },
 };
@@ -454,7 +455,6 @@ impl Interpreter {
                 .borrow()
                 .get(&name, distance)
                 .map_err(|k| EvaluateError::new(k, span).into()),
-
             Expr::Assign {
                 name,
                 span,
@@ -569,22 +569,31 @@ impl Interpreter {
 
                 res
             }
-            Expr::Get { object, name, span } => {
+            Expr::Get {
+                object,
+                name,
+                span,
+                get_type,
+            } => {
                 let obj = self.evaluate_expr(*object)?;
 
-                if let LoxVar::Instance(inst) = obj {
-                    if let Some(property) = inst.get(&name) {
-                        Ok(property)
-                    } else if let Some(method) = inst.borrow().class().find_method(&name) {
-                        Ok(LoxVar::Callable(method))
-                    } else {
-                        Err(
-                            EvaluateError::new(EvaluateErrorKind::UndefinedProperty(name), span)
-                                .into(),
-                        )
-                    }
-                } else {
-                    Err(EvaluateError::new(EvaluateErrorKind::NotInstance(obj.into()), span).into())
+                match obj {
+                    LoxVar::Instance(inst) => inst
+                        .get(&name)
+                        .or_else(|_| {
+                            Ok(LoxVar::Callable(inst.borrow().class().find_method(&name)?))
+                        })
+                        .map_err(|e| RuntimeError::AccessError(e, span)),
+                    LoxVar::List(list) => list
+                        .get(&match get_type {
+                            AccessType::Index => ListAccessKind::Index(name),
+                            AccessType::Property => ListAccessKind::Property(name),
+                        })
+                        .map_err(|e| RuntimeError::AccessError(e, span)),
+                    _ => Err(
+                        EvaluateError::new(EvaluateErrorKind::NonContainer(obj.into()), span)
+                            .into(),
+                    ),
                 }
             }
             Expr::Set {
@@ -592,17 +601,37 @@ impl Interpreter {
                 name,
                 value,
                 span,
+                set_type,
             } => {
                 let obj = self.evaluate_expr(*object)?;
 
-                if let LoxVar::Instance(mut inst) = obj {
-                    let val = self.evaluate_expr(*value)?;
+                match obj {
+                    LoxVar::Instance(mut inst) => {
+                        let val = self.evaluate_expr(*value)?;
 
-                    inst.set(name, val.clone());
+                        inst.set(name, val.clone())
+                            .map_err(|e| RuntimeError::AccessError(e, span))?;
 
-                    Ok(val)
-                } else {
-                    Err(EvaluateError::new(EvaluateErrorKind::NotInstance(obj.into()), span).into())
+                        Ok(val)
+                    }
+                    LoxVar::List(mut list) => {
+                        let val = self.evaluate_expr(*value)?;
+
+                        list.set(
+                            match set_type {
+                                AccessType::Index => ListAccessKind::Index(name),
+                                AccessType::Property => ListAccessKind::Property(name),
+                            },
+                            val.clone(),
+                        )
+                        .map_err(|e| RuntimeError::AccessError(e, span))?;
+
+                        Ok(val)
+                    }
+                    _ => Err(
+                        EvaluateError::new(EvaluateErrorKind::NonContainer(obj.into()), span)
+                            .into(),
+                    ),
                 }
             }
             Expr::This { distance, .. } => Ok(self
@@ -639,13 +668,18 @@ impl Interpreter {
 
                 let method = superclass
                     .find_method(&method_name)
-                    .ok_or(EvaluateError::new(
-                        EvaluateErrorKind::UndefinedProperty(method_name.to_owned()),
-                        span,
-                    ))?;
+                    .map_err(|k| RuntimeError::AccessError(k, span))?;
 
                 Ok(LoxVar::Callable(method.bind(instance)))
             }
+            Expr::List { parts, .. } => Ok(LoxVar::List(LoxList::from(
+                parts
+                    .into_iter()
+                    .map(|ex| self.evaluate_expr(ex))
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .collect::<Result<Vec<_>, _>>()?,
+            ))),
         }
     }
 }

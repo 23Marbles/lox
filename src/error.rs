@@ -425,8 +425,8 @@ pub mod runtime_err {
     use crate::{
         Span,
         error::{
-            ErrorLevel, ToCodespan, ToErrorCode, eval_err::EvaluateError, fn_err::FunctionError,
-            to_codespan,
+            ErrorLevel, ToCodespan, ToErrorCode, access_error::AccessError,
+            eval_err::EvaluateError, fn_err::FunctionError, to_codespan,
         },
         error_codes::ErrorCode,
         lox_files::FileIdent,
@@ -439,6 +439,7 @@ pub mod runtime_err {
         FunctionError(FunctionError),
         Over255Arguments(usize, Span),
         SuperClassIsNotAClass(LoxVar, Span),
+        AccessError(AccessError, Span),
         StackOverflow,
         InternalFunctionError {
             msg: String,
@@ -468,6 +469,7 @@ pub mod runtime_err {
                 RuntimeError::SuperClassIsNotAClass(..) => ErrorCode::SuperClassIsNotAClass,
                 RuntimeError::StackOverflow => ErrorCode::StackOverflow,
                 RuntimeError::InternalFunctionError { code, .. } => *code,
+                RuntimeError::AccessError(access_error, ..) => access_error.error_code(),
             }
         }
     }
@@ -481,6 +483,7 @@ pub mod runtime_err {
                 RuntimeError::SuperClassIsNotAClass(..) => Severity::Error,
                 RuntimeError::StackOverflow => Severity::Error,
                 RuntimeError::InternalFunctionError { sev, .. } => *sev,
+                RuntimeError::AccessError(access_error, ..) => access_error.severity(),
             }
         }
     }
@@ -490,7 +493,8 @@ pub mod runtime_err {
             match self {
                 RuntimeError::EvaluateError(evaluate_error) => evaluate_error.to_codespan(),
                 RuntimeError::Over255Arguments(_, span)
-                | RuntimeError::SuperClassIsNotAClass(_, span) => to_codespan(
+                | RuntimeError::SuperClassIsNotAClass(_, span)
+                | RuntimeError::AccessError(_, span) => to_codespan(
                     self,
                     [Label::new(
                         codespan_reporting::diagnostic::LabelStyle::Secondary,
@@ -514,7 +518,8 @@ pub mod runtime_err {
                                     evaluate_error.span.clone()
                                 }
                                 RuntimeError::Over255Arguments(_, span)
-                                | RuntimeError::SuperClassIsNotAClass(_, span) => span.clone(),
+                                | RuntimeError::SuperClassIsNotAClass(_, span)
+                                | RuntimeError::AccessError(_, span) => span.clone(),
                                 RuntimeError::InternalFunctionError { .. } => {
                                     *function_error.call_span.clone()
                                 }
@@ -549,6 +554,7 @@ pub mod runtime_err {
             match self {
                 RuntimeError::EvaluateError(err) => write!(f, "{err}"),
                 RuntimeError::FunctionError(err) => write!(f, "{err}"),
+                RuntimeError::AccessError(err, ..) => write!(f, "{err}"),
                 RuntimeError::Over255Arguments(got, ..) => {
                     write!(
                         f,
@@ -646,8 +652,7 @@ pub mod eval_err {
         },
         #[cfg(feature = "div_zero_error")]
         DivisionByZero,
-        UndefinedProperty(String),
-        NotInstance(LoxVarKind),
+        NonContainer(LoxVarKind),
         UninitializedVariable {
             name: String,
         },
@@ -670,8 +675,7 @@ pub mod eval_err {
                 }
                 #[cfg(feature = "div_zero_error")]
                 EvaluateErrorKind::DivisionByZero => ErrorCode::DivisionByZero,
-                EvaluateErrorKind::UndefinedProperty(_) => ErrorCode::UndefinedProperty,
-                EvaluateErrorKind::NotInstance(_) => ErrorCode::NotInstance,
+                EvaluateErrorKind::NonContainer(_) => ErrorCode::NotContainer,
                 EvaluateErrorKind::UninitializedVariable { .. } => ErrorCode::UninitializedVariable,
             }
         }
@@ -688,8 +692,7 @@ pub mod eval_err {
                 EvaluateErrorKind::IncompatableConversion { .. } => Severity::Error,
                 #[cfg(feature = "div_zero_error")]
                 EvaluateErrorKind::DivisionByZero => Severity::Warning,
-                EvaluateErrorKind::UndefinedProperty(_) => Severity::Error,
-                EvaluateErrorKind::NotInstance(_) => Severity::Error,
+                EvaluateErrorKind::NonContainer(_) => Severity::Error,
                 EvaluateErrorKind::UninitializedVariable { .. } => Severity::Warning,
             }
         }
@@ -740,13 +743,10 @@ pub mod eval_err {
                 }
                 #[cfg(feature = "div_zero_error")]
                 EvaluateErrorKind::DivisionByZero => write!(f, "Tried to divide by zero"),
-                EvaluateErrorKind::UndefinedProperty(name) => {
-                    write!(f, "Property `{name}` is not defined")
-                }
-                EvaluateErrorKind::NotInstance(kind) => {
+                EvaluateErrorKind::NonContainer(kind) => {
                     write!(
                         f,
-                        "Tried to access a property of a non-instance, is of type `{kind:?}` instead"
+                        "Tried to access a property of a non-container, is of type `{kind:?}` instead"
                     )
                 }
                 EvaluateErrorKind::UninitializedVariable { name } => {
@@ -847,6 +847,43 @@ pub mod fn_err {
     impl Display for FunctionError {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             write!(f, "{}", self.kind)
+        }
+    }
+}
+
+pub mod access_error {
+    use super::*;
+
+    #[derive(Debug, Clone)]
+    pub enum AccessError {
+        OutOfBounds { tried: String, max: usize },
+        NonIntegerIndex { tried: String },
+        NonExistentField { name: String },
+    }
+
+    impl ErrorLevel for AccessError {
+        fn severity(&self) -> Severity {
+            match self {
+                AccessError::OutOfBounds { .. } => Severity::Error,
+                AccessError::NonIntegerIndex { .. } => Severity::Error,
+                AccessError::NonExistentField { .. } => Severity::Error,
+            }
+        }
+    }
+
+    impl ToErrorCode for AccessError {
+        fn error_code(&self) -> ErrorCode {
+            match self {
+                AccessError::OutOfBounds { .. } => ErrorCode::OutOfBounds,
+                AccessError::NonIntegerIndex { .. } => ErrorCode::NonIntegerIndex,
+                AccessError::NonExistentField { .. } => ErrorCode::NonExistentField,
+            }
+        }
+    }
+
+    impl Display for AccessError {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            write!(f, "")
         }
     }
 }

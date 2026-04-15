@@ -72,6 +72,7 @@ pub fn default_lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
                         LoxVar::Class(_) => "Class",
                         LoxVar::Instance(_) => "Instance",
                         LoxVar::Nil => "Nil",
+                        LoxVar::List(_) => "List",
                         LoxVar::Uninitialized => {
                             return Err(RuntimeError::InternalFunctionError {
                                 msg: "Cannot determine type of uninitialized variable".to_string(),

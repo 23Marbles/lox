@@ -35,12 +35,15 @@ pub enum ErrorCode {
     IncompatibleConversion = 26,
     #[cfg(feature = "div_zero_error")]
     DivisionByZero = 27,
-    UndefinedProperty = 28,
-    NotInstance = 29,
+    NonExistentField = 28,
+    NotContainer = 29,
     UninitializedVariable = 30,
     IncorrectArgType = 31,
     CouldNotConvert = 32,
     UserForcedError = 33,
+    OutOfBounds = 34,
+    NonIntegerIndex = 35,
+    TriedToSetAnImmutable = 36,
 }
 
 impl Display for ErrorCode {
@@ -111,9 +114,14 @@ impl TryFrom<u8> for ErrorCode {
             26 => Ok(Self::IncompatibleConversion),
             #[cfg(feature = "div_zero_error")]
             27 => Ok(Self::DivisionByZero),
-            28 => Ok(Self::UndefinedProperty),
-            29 => Ok(Self::NotInstance),
+            28 => Ok(Self::NonExistentField),
+            29 => Ok(Self::NotContainer),
             30 => Ok(Self::UninitializedVariable),
+            31 => Ok(Self::IncorrectArgType),
+            32 => Ok(Self::CouldNotConvert),
+            33 => Ok(Self::UserForcedError),
+            34 => Ok(Self::OutOfBounds),
+            35 => Ok(Self::NonIntegerIndex),
             _ => Err(ErrorCodeFromStrErr::InvalidDiscriminant),
         }
     }

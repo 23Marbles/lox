@@ -166,6 +166,8 @@ impl<'source> Iterator for Scanner<'source> {
                 ')' => break 'scan self.make_token(TokenKind::RightParen),
                 '{' => break 'scan self.make_token(TokenKind::LeftBrace),
                 '}' => break 'scan self.make_token(TokenKind::RightBrace),
+                '[' => break 'scan self.make_token(TokenKind::LeftBracket),
+                ']' => break 'scan self.make_token(TokenKind::RightBracket),
                 ',' => break 'scan self.make_token(TokenKind::Comma),
                 '.' => break 'scan self.make_token(TokenKind::Dot),
                 '-' => break 'scan self.make_token(TokenKind::Minus),
@@ -333,6 +335,8 @@ pub enum TokenKind {
     RightParen,
     LeftBrace,
     RightBrace,
+    LeftBracket,
+    RightBracket,
     Comma,
     Dot,
     Minus,
@@ -434,6 +438,8 @@ impl Display for TokenKind {
             #[cfg(feature = "nan_inf_consts")]
             INF => write!(f, "INF"),
             Percent => write!(f, "%"),
+            LeftBracket => write!(f, "["),
+            RightBracket => write!(f, "]"),
         }
     }
 }

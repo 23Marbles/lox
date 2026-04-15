@@ -365,6 +365,12 @@ impl Resolver {
                 }
                 "super"
             }
+            Expr::List { parts, .. } => {
+                for part in parts {
+                    self.resolve_expr(part);
+                }
+                return;
+            }
         };
 
         self.resolve_local(expr, name);

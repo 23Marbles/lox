@@ -1,0 +1,15 @@
+class Test {
+    init(x) {
+        this.x = x;
+    }
+
+    call() {
+        return this.x;
+    }
+}
+
+var test = Test(6);
+
+var list = [1, "potato", Test, test, test.call(), test.call, nil, false];
+
+print list; // expect: [1, potato, Test, Test instance, 6, <fn call()>, nil, false]

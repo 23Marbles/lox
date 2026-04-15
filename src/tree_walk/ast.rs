@@ -181,13 +181,28 @@ pub mod stmt {
 pub mod expr {
     use crate::Span;
 
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    /// Represents the type of access, either by property or index.
+    pub enum AccessType {
+        /// Represents a property-based access.
+        Property,
+        /// Represents an index-based access.
+        Index,
+    }
+
     use super::*;
     #[derive(Debug, Clone, PartialEq)]
     /// Represents an expression in the AST.
     pub enum Expr {
         /// Represents a literal value in the AST. Contains a [`Literal`] value.
         Literal(Literal),
-
+        /// Represents a list literal in the AST. Contains a list of [`Expr`] expressions.
+        List {
+            /// The list of expressions in the list literal.
+            parts: Vec<Expr>,
+            /// The span of the list literal in the source code.
+            span: Span,
+        },
         /// Represents a unary expression in the AST. Contains an [`operator`][`TokenKind`] and a [`right`][`Expr`] expression.
         Unary {
             /// The operator of the unary expression.
@@ -261,6 +276,8 @@ pub mod expr {
         Get {
             /// The object expression being accessed.
             object: Box<Expr>,
+            /// The type of get operation (property or index).
+            get_type: AccessType,
             /// The name of the property being accessed.
             name: String,
             /// The span of the get expression in the source code.
@@ -271,6 +288,8 @@ pub mod expr {
         Set {
             /// The object expression being set.
             object: Box<Expr>,
+            /// The type of set operation (property or index).
+            set_type: AccessType,
             /// The name of the property being set.
             name: String,
             /// The value being set.
@@ -378,6 +397,14 @@ pub mod expr {
                 } => object.string() + "." + name + " = " + &value.to_string(),
                 Expr::This { .. } => "this".to_owned(),
                 Expr::Super { method_name, .. } => "super.".to_owned() + method_name,
+                Expr::List { parts, .. } => format!(
+                    "[{}]",
+                    parts
+                        .iter()
+                        .map(|ex| ex.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
             }
         }
     }
@@ -425,6 +452,15 @@ pub mod expr {
                 } => write!(f, "(set ({object} {name}) {value})"),
                 Expr::This { .. } => write!(f, "(this)"),
                 Expr::Super { .. } => write!(f, "super"),
+                Expr::List { parts, .. } => write!(
+                    f,
+                    "([{}])",
+                    parts
+                        .iter()
+                        .map(|ex| ex.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
             }
         }
     }

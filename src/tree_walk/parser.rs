@@ -434,12 +434,19 @@ impl<'source> Parser<'source> {
                     distance: None,
                     span: equals.span,
                 })
-            } else if let Expr::Get { object, name, span } = expr {
+            } else if let Expr::Get {
+                object,
+                name,
+                span,
+                get_type,
+            } = expr
+            {
                 Ok(Expr::Set {
                     object,
                     name,
                     value: Box::new(value),
                     span,
+                    set_type: get_type,
                 })
             } else {
                 let kind = ParseError::InvalidAssignTarget {
@@ -570,6 +577,7 @@ impl<'source> Parser<'source> {
                     object: Box::new(expr),
                     name: token.lexeme.to_owned(),
                     span: token.span,
+                    get_type: super::ast::expr::AccessType::Property,
                 };
             } else {
                 break Ok(expr);
@@ -657,6 +665,10 @@ impl<'source> Parser<'source> {
             String => Ok(Expr::Literal(Literal::String(
                 self.advance().lexeme.to_owned(),
             ))),
+            LeftBracket => {
+                self.advance();
+                self.list_expression()
+            }
             LeftParen => {
                 self.advance();
                 let expr = self.expression()?;
@@ -712,6 +724,32 @@ impl<'source> Parser<'source> {
                 span: self.peek().span.clone(),
             })),
         }
+    }
+
+    fn list_expression(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
+        let start_pos: usize = self.previous().span.range.start;
+
+        let mut parts: Vec<Expr> = Vec::new();
+
+        if !self.check(TokenKind::RightBracket) {
+            'collect_arguments: loop {
+                parts.push(self.expression()?);
+
+                if !self.match_any([TokenKind::Comma]) {
+                    break 'collect_arguments;
+                }
+            }
+        }
+
+        let end_pos: usize = self.expect(TokenKind::RightBracket)?.span.range.end;
+
+        Ok(Expr::List {
+            parts,
+            span: Span {
+                range: start_pos..end_pos,
+                file_id: self.file_id,
+            },
+        })
     }
 
     /// Move to the function boundary
