@@ -1,0 +1,5 @@
+var a = [1, 2, 3];
+a.length = 2;
+print a; // expect: [1, 2]
+a.length = 5;
+print a; // expect: [1, 2, <uninitialized>, <uninitialized>, <uninitialized>]

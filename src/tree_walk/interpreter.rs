@@ -1,6 +1,7 @@
 //! Interpreter for the Lox language.
 
 use std::{
+    cell::RefCell,
     collections::HashMap,
     ops::{Neg, Rem},
     rc::Rc,
@@ -672,14 +673,14 @@ impl Interpreter {
 
                 Ok(LoxVar::Callable(method.bind(instance)))
             }
-            Expr::List { parts, .. } => Ok(LoxVar::List(LoxList::from(
+            Expr::List { parts, .. } => Ok(LoxVar::List(Rc::new(RefCell::new(LoxList::from(
                 parts
                     .into_iter()
                     .map(|ex| self.evaluate_expr(ex))
                     .collect::<Vec<_>>()
                     .into_iter()
                     .collect::<Result<Vec<_>, _>>()?,
-            ))),
+            ))))),
         }
     }
 }

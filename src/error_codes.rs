@@ -44,6 +44,7 @@ pub enum ErrorCode {
     OutOfBounds = 34,
     NonIntegerIndex = 35,
     TriedToSetAnImmutable = 36,
+    IncorrectType = 37,
 }
 
 impl Display for ErrorCode {

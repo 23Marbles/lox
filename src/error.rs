@@ -852,13 +852,26 @@ pub mod fn_err {
 }
 
 pub mod access_error {
+    use crate::tree_walk::lox_var::LoxVarKind;
+
     use super::*;
 
     #[derive(Debug, Clone)]
     pub enum AccessError {
-        OutOfBounds { tried: String, max: usize },
-        NonIntegerIndex { tried: String },
-        NonExistentField { name: String },
+        OutOfBounds {
+            tried: String,
+            max: usize,
+        },
+        NonIntegerIndex {
+            tried: String,
+        },
+        NonExistentField {
+            name: String,
+        },
+        IncorrectType {
+            expected: LoxVarKind,
+            got: LoxVarKind,
+        },
     }
 
     impl ErrorLevel for AccessError {
@@ -867,6 +880,7 @@ pub mod access_error {
                 AccessError::OutOfBounds { .. } => Severity::Error,
                 AccessError::NonIntegerIndex { .. } => Severity::Error,
                 AccessError::NonExistentField { .. } => Severity::Error,
+                AccessError::IncorrectType { .. } => Severity::Error,
             }
         }
     }
@@ -877,13 +891,31 @@ pub mod access_error {
                 AccessError::OutOfBounds { .. } => ErrorCode::OutOfBounds,
                 AccessError::NonIntegerIndex { .. } => ErrorCode::NonIntegerIndex,
                 AccessError::NonExistentField { .. } => ErrorCode::NonExistentField,
+                AccessError::IncorrectType { .. } => ErrorCode::IncorrectType,
             }
         }
     }
 
     impl Display for AccessError {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            write!(f, "")
+            match self {
+                AccessError::OutOfBounds { tried, max } => {
+                    write!(f, "Index {} out of bounds. Max index: {}", tried, max)
+                }
+                AccessError::NonIntegerIndex { tried } => {
+                    write!(f, "Index {} is not an integer", tried)
+                }
+                AccessError::NonExistentField { name } => {
+                    write!(f, "Field {} does not exist", name)
+                }
+                AccessError::IncorrectType { expected, got } => {
+                    write!(
+                        f,
+                        "Incorrect type for property: expected {:?}, got {:?}",
+                        expected, got
+                    )
+                }
+            }
         }
     }
 }

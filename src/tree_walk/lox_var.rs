@@ -14,6 +14,7 @@ use crate::{
         lox_var::{
             class::{InstanceRef, LoxClass},
             functions::LoxCallable,
+            list::LoxListRef,
         },
     },
 };
@@ -334,11 +335,11 @@ pub mod class {
 
 /// Represents a Lox list.
 pub mod list {
-    use std::{fmt::Display, num::IntErrorKind, ops::Deref};
+    use std::{cell::RefCell, fmt::Display, num::IntErrorKind, ops::Deref, rc::Rc};
 
     use crate::{
         error::access_error::{self, AccessError},
-        tree_walk::lox_var::{LoxVar, PropertyAccess},
+        tree_walk::lox_var::{LoxVar, LoxVarKind, PropertyAccess},
     };
 
     #[derive(Clone, Debug, PartialEq)]
@@ -369,7 +370,9 @@ pub mod list {
         Property(String),
     }
 
-    impl PropertyAccess for LoxList {
+    pub(crate) type LoxListRef = Rc<RefCell<LoxList>>;
+
+    impl PropertyAccess for LoxListRef {
         type Key = ListAccessKind;
 
         fn get(&self, key: &Self::Key) -> Result<LoxVar, access_error::AccessError> {
@@ -384,7 +387,7 @@ pub mod list {
                         IntErrorKind::NegOverflow | IntErrorKind::PosOverflow => {
                             access_error::AccessError::OutOfBounds {
                                 tried: index.clone(),
-                                max: self.values.len(),
+                                max: self.borrow().values.len(),
                             }
                         }
                         IntErrorKind::Zero => {
@@ -392,15 +395,17 @@ pub mod list {
                         }
                         _ => unreachable!("Required catch all integer parsing errors"),
                     })?;
-                    self.values
+                    self.borrow()
+                        .values
                         .get(idx)
                         .ok_or(access_error::AccessError::OutOfBounds {
                             tried: index.clone(),
-                            max: self.values.len(),
+                            max: self.borrow().values.len(),
                         })
                         .cloned()
                 }
-                ListAccessKind::Property(name) => match name {
+                ListAccessKind::Property(name) => match name.as_str() {
+                    "length" => Ok(LoxVar::Number(self.borrow().values.len() as f64)),
                     _ => Err(AccessError::NonExistentField { name: name.clone() }),
                 },
             }
@@ -409,7 +414,7 @@ pub mod list {
         fn set(&mut self, key: Self::Key, value: LoxVar) -> Result<(), access_error::AccessError> {
             match key {
                 ListAccessKind::Index(index) => {
-                    let max_idx = self.values.len() - 1;
+                    let max_idx = self.borrow().values.len() - 1;
                     let idx = index.parse::<usize>().map_err(|e| match e.kind() {
                         IntErrorKind::Empty | IntErrorKind::InvalidDigit => {
                             access_error::AccessError::NonIntegerIndex {
@@ -427,13 +432,28 @@ pub mod list {
                         }
                         _ => unreachable!("Required catch all integer parsing errors"),
                     })?;
-                    *self.values.get_mut(idx).ok_or(AccessError::OutOfBounds {
-                        tried: index,
-                        max: max_idx,
-                    })? = value;
+                    *self
+                        .borrow_mut()
+                        .values
+                        .get_mut(idx)
+                        .ok_or(AccessError::OutOfBounds {
+                            tried: index,
+                            max: max_idx,
+                        })? = value;
                     Ok(())
                 }
-                ListAccessKind::Property(name) => match name {
+                ListAccessKind::Property(name) => match name.as_str() {
+                    "length" => match value {
+                        LoxVar::Number(n) => {
+                            let len = n as usize;
+                            self.borrow_mut().values.resize(len, LoxVar::Uninitialized);
+                            Ok(())
+                        }
+                        _ => Err(AccessError::IncorrectType {
+                            expected: LoxVarKind::Number,
+                            got: value.kind(),
+                        }),
+                    },
                     _ => Err(AccessError::NonExistentField { name: name.clone() }),
                 },
             }
@@ -471,7 +491,7 @@ pub enum LoxVar {
     /// Represents a Lox instance.
     Instance(InstanceRef),
     /// Represents a Lox list.
-    List(list::LoxList),
+    List(LoxListRef),
     /// Represents a nil value.
     Nil,
     /// Represents an uninitialized variable.
@@ -622,7 +642,7 @@ impl Display for LoxVar {
                 write!(f, "{} instance", i.borrow().class().name)
             }
             LoxVar::Uninitialized => write!(f, "<uninitialized>"),
-            LoxVar::List(lox_list) => write!(f, "{lox_list}"),
+            LoxVar::List(lox_list) => write!(f, "{}", lox_list.borrow()),
         }
     }
 }
