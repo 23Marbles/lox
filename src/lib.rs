@@ -60,7 +60,7 @@ use crate::{
             InterpOut, Interpreter, LineType,
             env::{Env, EnvironmentImpl as _},
         },
-        lox_var::functions::LoxCallable,
+        lox_var::{LoxVar, functions::LoxCallable},
         parser::Parser,
         static_analysis::Resolver,
         token::{Scanner, Token},
@@ -131,6 +131,7 @@ impl Default for Runner {
         Self::new()
     }
 }
+
 mod lox_files;
 impl Runner {
     /// Creates a new [`Runner`] with the default configuration.
@@ -167,7 +168,7 @@ impl Runner {
     }
 
     /// Sets the globals for the runner.
-    pub fn with_globals(mut self, globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Self {
+    pub fn with_globals(mut self, globals: Vec<(&'static str, LoxVar)>) -> Self {
         self.interpreter = self.interpreter.with_globals(globals);
         self
     }

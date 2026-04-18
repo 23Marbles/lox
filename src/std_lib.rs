@@ -1,6 +1,7 @@
 //! The way you create native functions for lox
 
 use std::{
+    cell::RefCell,
     process::exit,
     rc::Rc,
     time::{SystemTime, UNIX_EPOCH},
@@ -13,19 +14,17 @@ use crate::{
     error_codes::ErrorCode,
     tree_walk::{
         interpreter::Interpreter,
-        lox_var::{LoxVar, functions::LoxCallable},
+        lox_var::{LoxVar, functions::LoxCallable, list::LoxList},
     },
 };
 
-/// The default library implemented in the crafting interpreters book.
-///
 /// # Returns
-/// Returns a Vec<(name, function)>.
-pub fn default_lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
+/// Returns a Vec<(name, loxvar)>.
+pub fn default_lib() -> Vec<(&'static str, LoxVar)> {
     vec![
         (
             "clock",
-            Rc::new(NativeFunc {
+            LoxVar::Callable(Rc::new(NativeFunc {
                 func: |_, _| {
                     Ok(LoxVar::Number(
                         SystemTime::now()
@@ -36,11 +35,11 @@ pub fn default_lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
                 },
                 signature: "clock() -> Number",
                 arity: 0,
-            }),
+            })),
         ),
         (
             "sleep",
-            Rc::new(NativeFunc {
+            LoxVar::Callable(Rc::new(NativeFunc {
                 func: |_, args| match args[0] {
                     LoxVar::Number(secs) => {
                         std::thread::sleep(std::time::Duration::from_secs_f64(secs));
@@ -54,11 +53,11 @@ pub fn default_lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
                 },
                 signature: "sleep(Number) -> Nil",
                 arity: 1,
-            }),
+            })),
         ),
         (
             "type",
-            Rc::new(NativeFunc {
+            LoxVar::Callable(Rc::new(NativeFunc {
                 func: |_, args| {
                     let ty = match args.get(0).ok_or(RuntimeError::InternalFunctionError {
                         msg: "Expected an argument".to_string(),
@@ -85,11 +84,11 @@ pub fn default_lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
                 },
                 signature: "type() -> String",
                 arity: 1,
-            }),
+            })),
         ),
         (
             "parseNumber",
-            Rc::new(NativeFunc {
+            LoxVar::Callable(Rc::new(NativeFunc {
                 func: |_, args| match args.get(0) {
                     Some(LoxVar::String(s)) => {
                         let num = s.parse::<f64>();
@@ -110,11 +109,11 @@ pub fn default_lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
                 },
                 signature: "parseNumber(String) -> Number",
                 arity: 1,
-            }),
+            })),
         ),
         (
             "string",
-            Rc::new(NativeFunc {
+            LoxVar::Callable(Rc::new(NativeFunc {
                 func: |_, args| match args.get(0).ok_or(RuntimeError::InternalFunctionError {
                     msg: "Expected an argument".to_string(),
                     code: ErrorCode::IncorrectArgType,
@@ -129,11 +128,11 @@ pub fn default_lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
                 },
                 signature: "string(any) -> string",
                 arity: 1,
-            }),
+            })),
         ),
         (
             "error",
-            Rc::new(NativeFunc {
+            LoxVar::Callable(Rc::new(NativeFunc {
                 func: |_, args| match args.get(0).ok_or(RuntimeError::InternalFunctionError {
                     msg: "Expected an argument".to_string(),
                     code: ErrorCode::IncorrectArgType,
@@ -152,11 +151,11 @@ pub fn default_lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
                 },
                 signature: "error(any)",
                 arity: 1,
-            }),
+            })),
         ),
         (
             "printErr",
-            Rc::new(NativeFunc {
+            LoxVar::Callable(Rc::new(NativeFunc {
                 func: |interp, args| match args.get(0).ok_or(
                     RuntimeError::InternalFunctionError {
                         msg: "Expected an argument".to_string(),
@@ -176,11 +175,11 @@ pub fn default_lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
                 },
                 signature: "printErr(any) -> nil",
                 arity: 1,
-            }),
+            })),
         ),
         (
             "exit",
-            Rc::new(NativeFunc {
+            LoxVar::Callable(Rc::new(NativeFunc {
                 func: |_, args| match args.get(0).ok_or(RuntimeError::InternalFunctionError {
                     msg: "Expected an argument".to_string(),
                     code: ErrorCode::IncorrectArgType,
@@ -200,11 +199,11 @@ pub fn default_lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
                 },
                 signature: "exit(number)",
                 arity: 1,
-            }),
+            })),
         ),
         (
             "assert",
-            Rc::new(NativeFunc {
+            LoxVar::Callable(Rc::new(NativeFunc {
                 func: |_, args| match args.get(0).ok_or(RuntimeError::InternalFunctionError {
                     msg: "Expected an argument".to_string(),
                     code: ErrorCode::IncorrectArgType,
@@ -234,11 +233,11 @@ pub fn default_lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
                 },
                 signature: "assert(bool) -> nil",
                 arity: 1,
-            }),
+            })),
         ),
         (
             "assertEq",
-            Rc::new(NativeFunc {
+            LoxVar::Callable(Rc::new(NativeFunc {
                 func: |_, args| match (
                     args.get(0).ok_or(RuntimeError::InternalFunctionError {
                         msg: "Expected an argument".to_string(),
@@ -275,7 +274,16 @@ pub fn default_lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
                 },
                 signature: "assertEq(any, any) -> nil",
                 arity: 2,
-            }),
+            })),
+        ),
+        (
+            "argv",
+            LoxVar::List(Rc::new(RefCell::new(LoxList::new(
+                std::env::args()
+                    .skip(1)
+                    .map(|s| LoxVar::String(s))
+                    .collect::<Vec<_>>(),
+            )))),
         ),
     ]
 }

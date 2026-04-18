@@ -16,8 +16,11 @@ use crate::{
     error::{ToCodespan as _, diag_fom_err},
     lox_files::FileIdent,
     tree_walk::{
-        interpreter::Interpreter, lox_var::functions::LoxCallable, parser::Parser,
-        static_analysis::Resolver, token::Scanner,
+        interpreter::Interpreter,
+        lox_var::{LoxVar, functions::LoxCallable},
+        parser::Parser,
+        static_analysis::Resolver,
+        token::Scanner,
     },
 };
 pub mod ast;
@@ -28,13 +31,10 @@ pub mod static_analysis;
 pub mod token;
 
 /// The entry point for the tree-walk interpreter.
-pub fn main(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) {
+pub fn main(globals: Vec<(&'static str, LoxVar)>) {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() > 2 {
-        println!("usage: rlox [script]");
-        exit(64)
-    } else if args.len() == 2 {
+    if args.len() >= 2 {
         run_file_with_writer(Path::new(&args[1]), globals, Box::new(stdout()));
     } else {
         run_prompt(globals);
@@ -44,7 +44,7 @@ pub fn main(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) {
 /// Runs a Lox script file with the given globals and writes output to the provided writer.
 pub fn run_file_with_writer<W: Write + Send + 'static>(
     file_path: &Path,
-    globals: Vec<(&'static str, Rc<dyn LoxCallable>)>,
+    globals: Vec<(&'static str, LoxVar)>,
     mut writer: W,
 ) {
     #[cfg(debug_assertions)]
@@ -59,7 +59,7 @@ pub fn run_file_with_writer<W: Write + Send + 'static>(
 }
 
 /// Runs a Lox prompt with the given globals.
-pub fn run_prompt(globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) {
+pub fn run_prompt(globals: Vec<(&'static str, LoxVar)>) {
     let mut line_buf = String::new();
 
     let mut runner = Runner::new()

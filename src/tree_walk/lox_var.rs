@@ -367,10 +367,8 @@ pub mod list {
     }
 
     impl LoxList {
-        pub fn new(list: Vec<impl Into<LoxVar>>) -> Self {
-            Self {
-                values: list.into_iter().map(|v| v.into()).collect::<Vec<_>>(),
-            }
+        pub fn new(list: Vec<LoxVar>) -> Self {
+            Self { values: list }
         }
 
         pub fn values(&self) -> &Vec<LoxVar> {

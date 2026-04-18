@@ -142,12 +142,12 @@ impl Interpreter {
     }
 
     /// Returns a new interpreter with the given globals.
-    pub fn with_globals(mut self, globals: Vec<(&'static str, Rc<dyn LoxCallable>)>) -> Self {
+    pub fn with_globals(mut self, globals: Vec<(&'static str, LoxVar)>) -> Self {
         self.env = Env::new_with_globals(
             globals
                 .iter()
                 .cloned()
-                .map(|(name, func)| (name, LoxVar::Callable(func)))
+                .map(|(name, var)| (name, var))
                 .collect(),
         );
         self
