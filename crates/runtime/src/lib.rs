@@ -34,7 +34,7 @@
 use std::{
     fs,
     hint::black_box,
-    io,
+    io::{self, Write},
     path::Path,
     sync::{Arc, Mutex},
     time::Duration,
@@ -43,7 +43,10 @@ use std::{
 use codespan_reporting::{
     diagnostic::Diagnostic,
     files::Files as _,
-    term::{self, Config as ErrWriteConfig},
+    term::{
+        self, Config as ErrWriteConfig,
+        termcolor::{ColorChoice, NoColor, StandardStream, WriteColor},
+    },
 };
 
 use crate::{
@@ -64,14 +67,16 @@ use crate::{
 
 mod error;
 pub mod error_codes;
+pub mod lox_files;
 pub mod std_lib;
+
 #[cfg(feature = "ast")]
 pub mod tree_walk;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 /// Represents a span of text in a file.
 pub struct Span {
-    range: core::ops::Range<usize>,
+    pub range: core::ops::Range<usize>,
     file_id: FileIdent,
 }
 
@@ -107,6 +112,32 @@ impl RunnerConfig {
     }
 }
 
+pub enum RunnerOutput {
+    Terminal(StandardStream),
+    Plain(NoColor<Box<dyn Write + Send>>),
+}
+
+impl RunnerOutput {
+    pub fn stdout_terminal() -> Self {
+        Self::Terminal(StandardStream::stdout(ColorChoice::Auto))
+    }
+
+    pub fn stderr_terminal() -> Self {
+        Self::Terminal(StandardStream::stderr(ColorChoice::Auto))
+    }
+
+    pub fn plain<W: Write + Send + 'static>(w: W) -> Self {
+        Self::Plain(NoColor::new(Box::new(w)))
+    }
+
+    pub fn lock(&mut self) -> Box<dyn WriteColor + '_> {
+        match self {
+            RunnerOutput::Terminal(stream) => Box::new(stream.lock()),
+            RunnerOutput::Plain(writer) => Box::new(writer),
+        }
+    }
+}
+
 #[derive(Clone)]
 /// Used to construct and run a file.
 ///
@@ -127,8 +158,8 @@ impl RunnerConfig {
 /// # }
 /// ```
 pub struct Runner {
-    ok_out: Arc<Mutex<dyn io::Write + Send>>,
-    err_out: Arc<Mutex<dyn io::Write + Send>>,
+    ok_out: Arc<Mutex<RunnerOutput>>,
+    err_out: Arc<Mutex<RunnerOutput>>,
     files: lox_files::LoxFiles,
     current_id: FileIdent,
     interpreter: Interpreter,
@@ -144,13 +175,12 @@ impl Default for Runner {
     }
 }
 
-mod lox_files;
 impl Runner {
     /// Creates a new [`Runner`] with the default configuration.
     pub fn new() -> Self {
         Self {
-            ok_out: Arc::new(Mutex::new(io::stdout())),
-            err_out: Arc::new(Mutex::new(io::stderr())),
+            ok_out: Arc::new(Mutex::new(RunnerOutput::stdout_terminal())),
+            err_out: Arc::new(Mutex::new(RunnerOutput::stderr_terminal())),
             files: lox_files::LoxFiles::new(),
             interpreter: Interpreter::new(FileIdent::default()),
             current_id: FileIdent::default(),
@@ -159,10 +189,7 @@ impl Runner {
     }
 
     /// Creates a new [`Runner`] with the given writer.
-    pub fn new_with_writers(
-        ok_writer: Box<dyn io::Write + Send>,
-        err_writer: Box<dyn io::Write + Send>,
-    ) -> Self {
+    pub fn new_with_writers(ok_writer: RunnerOutput, err_writer: RunnerOutput) -> Self {
         Self {
             ok_out: Arc::new(Mutex::new(ok_writer)),
             err_out: Arc::new(Mutex::new(err_writer)),
@@ -273,11 +300,11 @@ impl Runner {
         &mut self,
         errs: impl IntoIterator<Item = Diagnostic<FileIdent>>,
     ) -> Result<()> {
+        let mut out = self.err_out.lock().map_err(|e| vec![diag_fom_err(e)])?;
+        let mut out = out.lock();
         for err in errs {
-            let mut err_str = String::new();
-            term::emit_to_string(&mut err_str, &self.cfg.err_cfg, &self.files, &err)
+            term::emit_to_write_style(&mut out, &self.cfg.err_cfg, &self.files, &err)
                 .map_err(|e| vec![diag_fom_err(e)])?;
-            self.write_to_err_out(&err_str)?;
         }
         Ok(())
     }
@@ -300,23 +327,21 @@ impl Runner {
         self.update_current_id(FileIdent::default());
     }
 
-    /// Writes a line to the output stream.
     fn write_to_ok_out(&mut self, line: &str) -> Result<()> {
-        self.ok_out
-            .lock()
-            .map_err(|e| vec![diag_fom_err(e)])?
-            .write(format!("{}\n", line).as_bytes())
-            .map_err(|e| vec![diag_fom_err(e)])?;
+        let mut out = self.ok_out.lock().map_err(|e| vec![diag_fom_err(e)])?;
+        let mut out = out.lock();
+
+        writeln!(out, "{line}").map_err(|e| vec![diag_fom_err(e)])?;
+
         Ok(())
     }
 
-    /// Writes a line to the error stream.
     fn write_to_err_out(&mut self, line: &str) -> Result<()> {
-        self.err_out
-            .lock()
-            .map_err(|e| vec![diag_fom_err(e)])?
-            .write(format!("{}\n", line).as_bytes())
-            .map_err(|e| vec![diag_fom_err(e)])?;
+        let mut out = self.err_out.lock().map_err(|e| vec![diag_fom_err(e)])?;
+        let mut out = out.lock();
+
+        writeln!(out, "{line}").map_err(|e| vec![diag_fom_err(e)])?;
+
         Ok(())
     }
 
@@ -411,8 +436,10 @@ mod tests {
         ) {
             let writer = SharedWriter::default();
 
-            let mut runner =
-                Runner::new_with_writers(Box::new(writer.clone()), Box::new(writer.clone()));
+            let mut runner = Runner::new_with_writers(
+                RunnerOutput::plain(Box::new(writer.clone())),
+                RunnerOutput::plain(Box::new(writer.clone())),
+            );
 
             for (snippet, exp_out) in zip(snippets, expected_output) {
                 match runner.run_snippet(snippet) {

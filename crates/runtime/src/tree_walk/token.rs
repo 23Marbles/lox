@@ -10,6 +10,7 @@ use crate::{
     lox_files::FileIdent,
 };
 
+#[derive(Debug, Clone)]
 /// A scanner that tokenizes a source string.
 pub struct Scanner<'source> {
     file_id: FileIdent,
@@ -471,6 +472,36 @@ impl TokenKind {
             #[cfg(feature = "nan_inf_consts")]
             "INF" => Some(INF),
             _ => None,
+        }
+    }
+
+    pub fn is_keyword(&self) -> bool {
+        match self {
+            TokenKind::And
+            | TokenKind::Class
+            | TokenKind::Else
+            | TokenKind::Fun
+            | TokenKind::For
+            | TokenKind::If
+            | TokenKind::Or
+            | TokenKind::Print
+            | TokenKind::Return
+            | TokenKind::Super
+            | TokenKind::This
+            | TokenKind::Var
+            | TokenKind::While => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_literal(&self) -> bool {
+        match self {
+            TokenKind::String
+            | TokenKind::Number
+            | TokenKind::False
+            | TokenKind::Nil
+            | TokenKind::True => true,
+            _ => false,
         }
     }
 }

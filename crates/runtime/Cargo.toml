@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = ["ast", "nicer_repl"]
+default = ["ast"]
+coloured = []
 ast = []
 bytecode = []
 challenges = ["implicit_helpers", "repl_expr_print", "inline_comments", "break"]

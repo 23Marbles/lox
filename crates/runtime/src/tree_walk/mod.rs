@@ -3,14 +3,14 @@
 
 use std::{
     env,
-    io::{self, Write, stdin, stdout},
+    io::{Write, stdin, stdout},
     path::Path,
 };
 
 #[cfg(debug_assertions)]
 use crate::tree_walk::interpreter::env::EnvironmentImpl as _;
 use crate::{
-    Runner,
+    Runner, RunnerOutput,
     error::{ToCodespan as _, diag_fom_err},
     lox_files::FileIdent,
     tree_walk::{
@@ -46,7 +46,8 @@ pub fn run_file_with_writer<W: Write + Send + 'static>(
     let _ = writeln!(writer, "script opened at {:?}", file_path);
 
     let mut runner =
-        Runner::new_with_writers(Box::new(writer), Box::new(io::stderr())).with_globals(globals);
+        Runner::new_with_writers(RunnerOutput::plain(writer), RunnerOutput::stderr_terminal())
+            .with_globals(globals);
 
     if let Err(errs) = runner.run_file(file_path) {
         let _ = runner.write_errors(errs);

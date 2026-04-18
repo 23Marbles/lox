@@ -1,5 +1,5 @@
 [workspace]
-members = [
+members = ["crates/cli", "crates/editor",
     "crates/runtime"
 ]
 resolver = "3"
