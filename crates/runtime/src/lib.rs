@@ -1,12 +1,8 @@
 #![warn(missing_docs)]
-#![warn(clippy::restriction)]
 #![warn(clippy::panic_in_result_fn)]
 #![warn(clippy::unnecessary_to_owned)]
 #![warn(clippy::redundant_clone)]
 #![warn(clippy::unwrap_used)]
-#![allow(clippy::question_mark_used)]
-#![allow(clippy::min_ident_chars)]
-#![allow(clippy::implicit_return)]
 #![warn(clippy::copy_iterator)]
 #![warn(clippy::trivially_copy_pass_by_ref)]
 #![warn(clippy::new_without_default)]
@@ -266,7 +262,7 @@ impl Runner {
         &self,
         source: &str,
     ) -> core::result::Result<Duration, Vec<Diagnostic<FileIdent>>> {
-        let ref mut temp = self.clone();
+        let mut temp = self.clone();
         let start = std::time::Instant::now();
         black_box(temp.run_snippet(source)?);
         Ok(start.elapsed())
@@ -372,6 +368,8 @@ pub struct SharedWriter(Arc<Mutex<TestWriter>>);
 impl SharedWriter {
     /// Reads the contents of the writer.
     pub fn read(&self) -> String {
+        // only used for debugging
+        #[expect(clippy::unwrap_used)]
         let guard = self
             .0
             .lock()

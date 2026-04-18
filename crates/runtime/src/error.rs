@@ -1,5 +1,5 @@
-use core::fmt::Display;
 use core::error::Error;
+use core::fmt::Display;
 
 use codespan_reporting::diagnostic::{Diagnostic, Label, Severity};
 
@@ -334,7 +334,9 @@ pub mod anaylysis_err {
                     let labels: Vec<_> = core::iter::once(
                         Label::new(
                             LabelStyle::Primary,
+                            #[expect(clippy::unwrap_used)]
                             spans.first().unwrap().file_id,
+                            #[expect(clippy::unwrap_used)]
                             spans.first().unwrap().range.clone(),
                         )
                         .with_message("First defined here"),

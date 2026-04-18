@@ -544,11 +544,9 @@ pub mod list {
                         })
                     }
                 }
-                ListAccessKind::Property(name) => match name.as_str() {
-                    _ => Err(AccessError::CannotSetProperties {
-                        kind: LoxVarKind::List,
-                    }),
-                },
+                ListAccessKind::Property(_) => Err(AccessError::CannotSetProperties {
+                    kind: LoxVarKind::List,
+                }),
             }
         }
     }

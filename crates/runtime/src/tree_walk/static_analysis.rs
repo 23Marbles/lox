@@ -39,6 +39,12 @@ enum ClassKind {
     SubClass,
 }
 
+impl Default for Resolver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Resolver {
     /// Creates a new resolver.
     pub fn new() -> Self {
