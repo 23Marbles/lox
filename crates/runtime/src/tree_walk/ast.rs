@@ -191,7 +191,7 @@ pub mod expr {
     }
 
     impl Display for FieldAccess {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             match self {
                 FieldAccess::Property(name) => write!(f, "(prop {name})"),
                 FieldAccess::Index(idx) => write!(f, "(prop {idx})"),

@@ -46,7 +46,7 @@ use std::{
 
 use codespan_reporting::{
     diagnostic::Diagnostic,
-    files::Files,
+    files::Files as _,
     term::{self, Config as ErrWriteConfig},
 };
 
@@ -75,13 +75,13 @@ pub mod tree_walk;
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 /// Represents a span of text in a file.
 pub struct Span {
-    range: std::ops::Range<usize>,
+    range: core::ops::Range<usize>,
     file_id: FileIdent,
 }
 
 impl Span {
     /// Creates a new [`Span`] with the given range and file identifier.
-    pub fn new(range: std::ops::Range<usize>, file_id: FileIdent) -> Self {
+    pub fn new(range: core::ops::Range<usize>, file_id: FileIdent) -> Self {
         Self { range, file_id }
     }
 }
@@ -206,7 +206,7 @@ impl Runner {
 impl Runner {
     /// Runs a snippet and writes the output to the configured writer.
     pub fn run_snippet(&mut self, snippet: &str) -> Result<()> {
-        let new_id = self.files.add(format!("snippet"), snippet.into());
+        let new_id = self.files.add("snippet".to_string(), snippet.into());
         self.update_current_id(new_id);
         self.write_source_output(snippet)
     }
@@ -253,7 +253,7 @@ impl Runner {
     pub fn get_run_time(
         &self,
         source: &str,
-    ) -> std::result::Result<Duration, Vec<Diagnostic<FileIdent>>> {
+    ) -> core::result::Result<Duration, Vec<Diagnostic<FileIdent>>> {
         let mut interpreter = self.interpreter.clone();
         interpreter.set_stmts(&self.get_resolved_stmts(source)?);
         let start = std::time::Instant::now();
@@ -265,7 +265,7 @@ impl Runner {
     pub fn get_full_time(
         &self,
         source: &str,
-    ) -> std::result::Result<Duration, Vec<Diagnostic<FileIdent>>> {
+    ) -> core::result::Result<Duration, Vec<Diagnostic<FileIdent>>> {
         let ref mut temp = self.clone();
         let start = std::time::Instant::now();
         black_box(temp.run_snippet(source)?);
@@ -326,7 +326,7 @@ impl Runner {
 
     /// Gets the source code for the given file ID.
     pub fn get_source(&self, file_id: FileIdent) -> Option<&str> {
-        Some(self.files.source(file_id).ok()?)
+        self.files.source(file_id).ok()
     }
 
     /// Gets the tokens for the given source.
@@ -348,7 +348,7 @@ impl Runner {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct TestWriter {
+pub(in crate) struct TestWriter {
     str_buf: String,
 }
 

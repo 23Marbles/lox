@@ -5,7 +5,7 @@ use core::{error::Error, fmt::Display, str::FromStr};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 #[non_exhaustive]
-#[allow(missing_docs)]
+#[expect(missing_docs)]
 pub enum ErrorCode {
     CoreErrorFromString = 1,
     UnexpectedCharacter = 2,

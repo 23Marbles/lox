@@ -42,11 +42,11 @@ pub fn default_lib() -> Vec<(&'static str, LoxVar)> {
             LoxVar::Callable(Rc::new(NativeFunc {
                 func: |_, args| match args[0] {
                     LoxVar::Number(secs) => {
-                        std::thread::sleep(std::time::Duration::from_secs_f64(secs));
+                        std::thread::sleep(core::time::Duration::from_secs_f64(secs));
                         Ok(LoxVar::Nil)
                     }
                     _ => Err(RuntimeError::InternalFunctionError {
-                        msg: "Expected a Number argument".to_string(),
+                        msg: "Expected a Number argument".to_owned(),
                         code: ErrorCode::IncorrectArgType,
                         sev: Severity::Error,
                     }),
@@ -59,8 +59,8 @@ pub fn default_lib() -> Vec<(&'static str, LoxVar)> {
             "type",
             LoxVar::Callable(Rc::new(NativeFunc {
                 func: |_, args| {
-                    let ty = match args.get(0).ok_or(RuntimeError::InternalFunctionError {
-                        msg: "Expected an argument".to_string(),
+                    let ty = match args.first().ok_or(RuntimeError::InternalFunctionError {
+                        msg: "Expected an argument".to_owned(),
                         code: ErrorCode::IncorrectArity,
                         sev: Severity::Error,
                     })? {
@@ -74,13 +74,13 @@ pub fn default_lib() -> Vec<(&'static str, LoxVar)> {
                         LoxVar::List(_) => "List",
                         LoxVar::Uninitialized => {
                             return Err(RuntimeError::InternalFunctionError {
-                                msg: "Cannot determine type of uninitialized variable".to_string(),
+                                msg: "Cannot determine type of uninitialized variable".to_owned(),
                                 code: ErrorCode::IncorrectArgType,
                                 sev: Severity::Error,
                             });
                         }
                     };
-                    Ok(LoxVar::String(ty.to_string()))
+                    Ok(LoxVar::String(ty.to_owned()))
                 },
                 signature: "type() -> String",
                 arity: 1,
@@ -89,20 +89,20 @@ pub fn default_lib() -> Vec<(&'static str, LoxVar)> {
         (
             "parseNumber",
             LoxVar::Callable(Rc::new(NativeFunc {
-                func: |_, args| match args.get(0) {
+                func: |_, args| match args.first() {
                     Some(LoxVar::String(s)) => {
                         let num = s.parse::<f64>();
                         match num {
                             Ok(n) => Ok(LoxVar::Number(n)),
                             Err(_) => Err(RuntimeError::InternalFunctionError {
-                                msg: "Invalid number".to_string(),
+                                msg: "Invalid number".to_owned(),
                                 code: ErrorCode::CouldNotConvert,
                                 sev: Severity::Error,
                             }),
                         }
                     }
                     _ => Err(RuntimeError::InternalFunctionError {
-                        msg: "Expected a string argument".to_string(),
+                        msg: "Expected a string argument".to_owned(),
                         code: ErrorCode::IncorrectArgType,
                         sev: Severity::Error,
                     }),
@@ -114,13 +114,13 @@ pub fn default_lib() -> Vec<(&'static str, LoxVar)> {
         (
             "string",
             LoxVar::Callable(Rc::new(NativeFunc {
-                func: |_, args| match args.get(0).ok_or(RuntimeError::InternalFunctionError {
-                    msg: "Expected an argument".to_string(),
+                func: |_, args| match args.first().ok_or(RuntimeError::InternalFunctionError {
+                    msg: "Expected an argument".to_owned(),
                     code: ErrorCode::IncorrectArgType,
                     sev: Severity::Error,
                 })? {
                     LoxVar::Uninitialized => Err(RuntimeError::InternalFunctionError {
-                        msg: "Cannot read from uninitialized variable".to_string(),
+                        msg: "Cannot read from uninitialized variable".to_owned(),
                         code: ErrorCode::IncorrectArgType,
                         sev: Severity::Error,
                     }),
@@ -133,13 +133,13 @@ pub fn default_lib() -> Vec<(&'static str, LoxVar)> {
         (
             "error",
             LoxVar::Callable(Rc::new(NativeFunc {
-                func: |_, args| match args.get(0).ok_or(RuntimeError::InternalFunctionError {
-                    msg: "Expected an argument".to_string(),
+                func: |_, args| match args.first().ok_or(RuntimeError::InternalFunctionError {
+                    msg: "Expected an argument".to_owned(),
                     code: ErrorCode::IncorrectArgType,
                     sev: Severity::Error,
                 })? {
                     LoxVar::Uninitialized => Err(RuntimeError::InternalFunctionError {
-                        msg: "Cannot read from uninitialized variable".to_string(),
+                        msg: "Cannot read from uninitialized variable".to_owned(),
                         code: ErrorCode::IncorrectArgType,
                         sev: Severity::Error,
                     }),
@@ -156,15 +156,15 @@ pub fn default_lib() -> Vec<(&'static str, LoxVar)> {
         (
             "printErr",
             LoxVar::Callable(Rc::new(NativeFunc {
-                func: |interp, args| match args.get(0).ok_or(
+                func: |interp, args| match args.first().ok_or(
                     RuntimeError::InternalFunctionError {
-                        msg: "Expected an argument".to_string(),
+                        msg: "Expected an argument".to_owned(),
                         code: ErrorCode::IncorrectArity,
                         sev: Severity::Error,
                     },
                 )? {
                     LoxVar::Uninitialized => Err(RuntimeError::InternalFunctionError {
-                        msg: "Cannot read from uninitialized variable".to_string(),
+                        msg: "Cannot read from uninitialized variable".to_owned(),
                         code: ErrorCode::IncorrectArgType,
                         sev: Severity::Error,
                     }),
@@ -180,19 +180,19 @@ pub fn default_lib() -> Vec<(&'static str, LoxVar)> {
         (
             "exit",
             LoxVar::Callable(Rc::new(NativeFunc {
-                func: |_, args| match args.get(0).ok_or(RuntimeError::InternalFunctionError {
-                    msg: "Expected an argument".to_string(),
+                func: |_, args| match args.first().ok_or(RuntimeError::InternalFunctionError {
+                    msg: "Expected an argument".to_owned(),
                     code: ErrorCode::IncorrectArgType,
                     sev: Severity::Error,
                 })? {
                     LoxVar::Uninitialized => Err(RuntimeError::InternalFunctionError {
-                        msg: "Cannot read from uninitialized variable".to_string(),
+                        msg: "Cannot read from uninitialized variable".to_owned(),
                         code: ErrorCode::IncorrectArgType,
                         sev: Severity::Error,
                     }),
                     LoxVar::Number(code) => exit(*code as i32),
                     _ => Err(RuntimeError::InternalFunctionError {
-                        msg: "Expected a number".to_string(),
+                        msg: "Expected a number".to_owned(),
                         code: ErrorCode::IncorrectArgType,
                         sev: Severity::Error,
                     }),
@@ -204,13 +204,13 @@ pub fn default_lib() -> Vec<(&'static str, LoxVar)> {
         (
             "assert",
             LoxVar::Callable(Rc::new(NativeFunc {
-                func: |_, args| match args.get(0).ok_or(RuntimeError::InternalFunctionError {
-                    msg: "Expected an argument".to_string(),
+                func: |_, args| match args.first().ok_or(RuntimeError::InternalFunctionError {
+                    msg: "Expected an argument".to_owned(),
                     code: ErrorCode::IncorrectArgType,
                     sev: Severity::Error,
                 })? {
                     LoxVar::Uninitialized => Err(RuntimeError::InternalFunctionError {
-                        msg: "Cannot read from uninitialized variable".to_string(),
+                        msg: "Cannot read from uninitialized variable".to_owned(),
                         code: ErrorCode::IncorrectArgType,
                         sev: Severity::Error,
                     }),
@@ -219,14 +219,14 @@ pub fn default_lib() -> Vec<(&'static str, LoxVar)> {
                             Ok(LoxVar::Nil)
                         } else {
                             Err(RuntimeError::InternalFunctionError {
-                                msg: "Assertion failed".to_string(),
+                                msg: "Assertion failed".to_owned(),
                                 code: ErrorCode::AssertionFailed,
                                 sev: Severity::Error,
                             })
                         }
                     }
                     _ => Err(RuntimeError::InternalFunctionError {
-                        msg: "Expected a bool".to_string(),
+                        msg: "Expected a bool".to_owned(),
                         code: ErrorCode::IncorrectArgType,
                         sev: Severity::Error,
                     }),
@@ -239,24 +239,24 @@ pub fn default_lib() -> Vec<(&'static str, LoxVar)> {
             "assertEq",
             LoxVar::Callable(Rc::new(NativeFunc {
                 func: |_, args| match (
-                    args.get(0).ok_or(RuntimeError::InternalFunctionError {
-                        msg: "Expected an argument".to_string(),
+                    args.first().ok_or(RuntimeError::InternalFunctionError {
+                        msg: "Expected an argument".to_owned(),
                         code: ErrorCode::IncorrectArgType,
                         sev: Severity::Error,
                     })?,
                     args.get(1).ok_or(RuntimeError::InternalFunctionError {
-                        msg: "Expected an argument".to_string(),
+                        msg: "Expected an argument".to_owned(),
                         code: ErrorCode::IncorrectArgType,
                         sev: Severity::Error,
                     })?,
                 ) {
                     (LoxVar::Uninitialized, _) => Err(RuntimeError::InternalFunctionError {
-                        msg: "Cannot read from uninitialized variable".to_string(),
+                        msg: "Cannot read from uninitialized variable".to_owned(),
                         code: ErrorCode::IncorrectArgType,
                         sev: Severity::Error,
                     }),
                     (_, LoxVar::Uninitialized) => Err(RuntimeError::InternalFunctionError {
-                        msg: "Cannot read from uninitialized variable".to_string(),
+                        msg: "Cannot read from uninitialized variable".to_owned(),
                         code: ErrorCode::IncorrectArgType,
                         sev: Severity::Error,
                     }),
@@ -281,7 +281,7 @@ pub fn default_lib() -> Vec<(&'static str, LoxVar)> {
             LoxVar::List(Rc::new(RefCell::new(LoxList::new(
                 std::env::args()
                     .skip(1)
-                    .map(|s| LoxVar::String(s))
+                    .map(LoxVar::String)
                     .collect::<Vec<_>>(),
             )))),
         ),

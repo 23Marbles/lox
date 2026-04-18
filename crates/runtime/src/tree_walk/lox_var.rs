@@ -167,7 +167,7 @@ pub mod functions {
                     }
                     Err(e) => {
                         interpreter.env = previous;
-                        return Err(e.into());
+                        return Err(e);
                     }
                 }
             }
@@ -253,7 +253,7 @@ pub mod class {
                 self.super_class
                     .as_ref()
                     .ok_or(AccessError::NonExistentField {
-                        name: name.to_string(),
+                        name: name.to_owned(),
                     })?
                     .find_method(name)
             }
@@ -307,7 +307,7 @@ pub mod class {
         }
     }
 
-    pub(crate) type InstanceRef = Rc<RefCell<LoxInstance>>;
+    pub(in crate) type InstanceRef = Rc<RefCell<LoxInstance>>;
 
     impl PropertyAccess for InstanceRef {
         type Key = String;
@@ -327,7 +327,7 @@ pub mod class {
             &mut self,
             key: Self::Key,
             value: LoxVar,
-        ) -> std::result::Result<(), access_error::AccessError> {
+        ) -> core::result::Result<(), access_error::AccessError> {
             self.borrow_mut().fields.insert(key, value);
             Ok(())
         }
@@ -412,7 +412,7 @@ pub mod list {
         }
     }
 
-    pub(crate) type LoxListRef = Rc<RefCell<LoxList>>;
+    pub(in crate) type LoxListRef = Rc<RefCell<LoxList>>;
 
     impl PropertyAccess for LoxListRef {
         type Key = ListAccessKind;
@@ -454,8 +454,8 @@ pub mod list {
                         signature: "push(Any) -> nil",
                         arity: 1,
                         func: |_, list, args| {
-                            let val = args.get(0).ok_or(RuntimeError::InternalFunctionError {
-                                msg: "Expected an argument".to_string(),
+                            let val = args.first().ok_or(RuntimeError::InternalFunctionError {
+                                msg: "Expected an argument".to_owned(),
                                 code: ErrorCode::IncorrectArity,
                                 sev: Severity::Error,
                             })?;
@@ -473,7 +473,7 @@ pub mod list {
                                 Ok(v)
                             } else {
                                 Err(RuntimeError::InternalFunctionError {
-                                    msg: "Cannot pop from empty list".to_string(),
+                                    msg: "Cannot pop from empty list".to_owned(),
                                     code: ErrorCode::PopEmptyList,
                                     sev: Severity::Warning,
                                 })
@@ -486,8 +486,8 @@ pub mod list {
                         arity: 1,
                         func: |_, list, args| {
                             let join_val =
-                                args.get(0).ok_or(RuntimeError::InternalFunctionError {
-                                    msg: "Expected an argument".to_string(),
+                                args.first().ok_or(RuntimeError::InternalFunctionError {
+                                    msg: "Expected an argument".to_owned(),
                                     code: ErrorCode::IncorrectArity,
                                     sev: Severity::Error,
                                 })?;
@@ -502,7 +502,7 @@ pub mod list {
                                 ))
                             } else {
                                 Err(RuntimeError::InternalFunctionError {
-                                    msg: "Expected a String argument".to_string(),
+                                    msg: "Expected a String argument".to_owned(),
                                     code: ErrorCode::IncorrectArgType,
                                     sev: Severity::Error,
                                 })
@@ -554,7 +554,7 @@ pub mod list {
     }
 
     impl Display for LoxList {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             write!(
                 f,
                 "[{}]",

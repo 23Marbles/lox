@@ -1,5 +1,5 @@
 use core::fmt::Display;
-use std::error::Error;
+use core::error::Error;
 
 use codespan_reporting::diagnostic::{Diagnostic, Label, Severity};
 
@@ -532,14 +532,14 @@ pub mod runtime_err {
                             [Label::new(
                                 codespan_reporting::diagnostic::LabelStyle::Primary,
                                 span.file_id,
-                                span.range.clone(),
+                                span.range,
                             )
                             .with_message("Actual error occurred here")]
                             .to_vec()
                         })()),
                 )
                 .with_notes({
-                    let mut stack_trace = vec!["Stack trace (most recent first):".to_string()];
+                    let mut stack_trace = vec!["Stack trace (most recent first):".to_owned()];
                     stack_trace.append(&mut function_error.stack_trace());
                     stack_trace
                 }),
@@ -829,14 +829,14 @@ pub mod fn_err {
         }
 
         pub fn reason(&self) -> RuntimeError {
-            match *(&self).kind.clone() {
+            match *self.kind.clone() {
                 RuntimeError::FunctionError(function_error) => function_error.reason(),
                 o => o,
             }
         }
 
         pub fn function_base_labels(&self) -> [Label<FileIdent>; 2] {
-            match *(&self).kind.clone() {
+            match *self.kind.clone() {
                 RuntimeError::FunctionError(function_error) => {
                     function_error.function_base_labels()
                 }
@@ -844,13 +844,13 @@ pub mod fn_err {
                     Label::new(
                         codespan_reporting::diagnostic::LabelStyle::Primary,
                         self.call_span.file_id,
-                        (*self.call_span).range.clone(),
+                        self.call_span.range.clone(),
                     )
                     .with_message("Error happened in this function"),
                     Label::new(
                         codespan_reporting::diagnostic::LabelStyle::Primary,
                         self.call_span.file_id,
-                        (*self.call_span).range.clone(),
+                        self.call_span.range.clone(),
                     )
                     .with_message(format!(
                         "Function called with arguments: {:?}",
@@ -861,7 +861,7 @@ pub mod fn_err {
         }
 
         pub fn stack_trace(&self) -> Vec<String> {
-            match *(&self).kind.clone() {
+            match *self.kind.clone() {
                 RuntimeError::FunctionError(function_error) => {
                     let mut stack_trace = function_error.stack_trace();
                     stack_trace.append(&mut vec![self.name.to_string()]);
@@ -945,7 +945,7 @@ pub mod access_error {
                         "{}",
                         match (tried.is_sign_positive(), len) {
                             (false, _) => format!("Index `{}` must not be negative", tried),
-                            (true, 0) => format!("Cannot index into an empty list"),
+                            (true, 0) => "Cannot index into an empty list".to_string(),
                             (true, l) =>
                                 format!("Index `{}` out of bounds. Max index: `{}`", tried, l - 1),
                         }

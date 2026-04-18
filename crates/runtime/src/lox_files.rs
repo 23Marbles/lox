@@ -14,7 +14,7 @@ impl FileIdent {
 }
 
 #[derive(Default, Clone)]
-pub(crate) struct LoxFiles {
+pub(in crate) struct LoxFiles {
     files: HashMap<FileIdent, SimpleFile<String, String>>,
 }
 
@@ -50,20 +50,18 @@ impl<'me> Files<'me> for LoxFiles {
         self.files
             .get(&id)
             .ok_or(codespan_reporting::files::Error::FileMissing)
-            .map(|f| f.line_index((), byte_index))
-            .flatten()
+            .and_then(|f| f.line_index((), byte_index))
     }
 
     fn line_range(
         &'me self,
         id: Self::FileId,
         line_index: usize,
-    ) -> Result<std::ops::Range<usize>, codespan_reporting::files::Error> {
+    ) -> Result<core::ops::Range<usize>, codespan_reporting::files::Error> {
         self.files
             .get(&id)
             .ok_or(codespan_reporting::files::Error::FileMissing)
-            .map(|f| f.line_range((), line_index))
-            .flatten()
+            .and_then(|f| f.line_range((), line_index))
     }
 }
 
@@ -80,7 +78,7 @@ impl LoxFiles {
         let unique_id = self.files.len();
         let ident = FileIdent { unique_id };
         self.files
-            .insert(ident.clone(), SimpleFile::new(name, content));
+            .insert(ident, SimpleFile::new(name, content));
         ident
     }
 }

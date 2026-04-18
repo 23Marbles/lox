@@ -3,7 +3,7 @@
 use std::{
     cell::RefCell,
     collections::HashMap,
-    ops::{Neg, Rem},
+    ops::{Neg as _, Rem as _},
     rc::Rc,
 };
 
@@ -25,7 +25,7 @@ use crate::{
         lox_var::{
             BinErrReason, LoxVar, LoxVarKind, PropertyAccess as _,
             class::LoxClass,
-            functions::{LoxCallable, LoxFunc},
+            functions::{LoxCallable as _, LoxFunc},
             list::{ListAccessKind, LoxList},
         },
     },
@@ -147,7 +147,6 @@ impl Interpreter {
             globals
                 .iter()
                 .cloned()
-                .map(|(name, var)| (name, var))
                 .collect(),
         );
         self
@@ -523,7 +522,7 @@ impl Interpreter {
                                     expected: func.arity(),
                                     got: arguments.len(),
                                 },
-                                span.clone(),
+                                span,
                             )
                             .into());
                         }
@@ -550,7 +549,7 @@ impl Interpreter {
                                     expected: class.arity(),
                                     got: arguments.len(),
                                 },
-                                span.clone(),
+                                span,
                             )
                             .into());
                         }
@@ -737,7 +736,7 @@ pub mod env {
     use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
     use super::*;
-    pub(crate) trait EnvironmentImpl
+    pub(in crate) trait EnvironmentImpl
     where
         Self: Sized,
     {
@@ -746,7 +745,7 @@ pub mod env {
         fn new_with_globals(globals: Vec<(&'static str, LoxVar)>) -> Self;
     }
 
-    pub(crate) type Env = Rc<RefCell<Environment>>;
+    pub(in crate) type Env = Rc<RefCell<Environment>>;
 
     impl EnvironmentImpl for Env {
         fn new_env(enclosing: Option<Self>) -> Self {
