@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use lox::{Runner, std_lib};
+use lox_runtime::{Runner, std_lib};
 
 /// Recursively collects all .lox files in the given directory and its subdirectories.
 fn recurse_build_check(dir: PathBuf) -> Vec<PathBuf> {
@@ -31,7 +31,7 @@ fn recurse_build_check(dir: PathBuf) -> Vec<PathBuf> {
 }
 
 fn main() {
-    for path in recurse_build_check(PathBuf::from("benches/scripts")) {
+    for path in recurse_build_check(PathBuf::from("../../benches/scripts")) {
         bench(&path);
     }
 }
@@ -43,4 +43,5 @@ fn bench(path: &Path) {
         .with_globals(std_lib::default_lib())
         .run_file(path)
         .unwrap();
+    println!("==== FINISHED BENCH ====")
 }

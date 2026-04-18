@@ -246,7 +246,7 @@ pub mod expr {
         /// Represents a grouping expression in the AST. Contains an [`Expr`] expression.
         Grouping(Box<Expr>),
 
-        /// Represents a variable expression in the AST. Contains a [`name`] and an optional [`distance`] for lookup.
+        /// Represents a variable expression in the AST. Contains a `name` and an optional `distance` for lookup.
         /// This is set in the resolver and used during evaluation.
         Variable {
             /// The span of the variable expression in the source code.
@@ -257,7 +257,7 @@ pub mod expr {
             distance: Option<usize>,
         },
 
-        /// Represents an assignment expression in the AST. Contains a [`name`], [`distance`], [`value`] and an optional [`distance`] for lookup.
+        /// Represents an assignment expression in the AST. Contains a `name`, `distance`, [`value`][`Expr`] and an optional `distance` for lookup.
         /// This is set in the resolver and used during evaluation.
         Assign {
             /// The name of the variable being assigned.
@@ -270,7 +270,7 @@ pub mod expr {
             value: Box<Expr>,
         },
 
-        /// Represents a logical expression in the AST. Contains a [`left`][`Expr`] expression, an [`operator`], and a [`right`][`Expr`] expression.
+        /// Represents a logical expression in the AST. Contains a [`left`][`Expr`] expression, an `operator`, and a [`right`][`Expr`] expression.
         Logical {
             /// The left-hand side expression of the logical expression.
             left: Box<Expr>,

@@ -5,8 +5,6 @@ use std::{
     env,
     io::{self, Write, stdin, stdout},
     path::Path,
-    process::exit,
-    rc::Rc,
 };
 
 #[cfg(debug_assertions)]
@@ -16,10 +14,7 @@ use crate::{
     error::{ToCodespan as _, diag_fom_err},
     lox_files::FileIdent,
     tree_walk::{
-        interpreter::Interpreter,
-        lox_var::{LoxVar, functions::LoxCallable},
-        parser::Parser,
-        static_analysis::Resolver,
+        interpreter::Interpreter, lox_var::LoxVar, parser::Parser, static_analysis::Resolver,
         token::Scanner,
     },
 };

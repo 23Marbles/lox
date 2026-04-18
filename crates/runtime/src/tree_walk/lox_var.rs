@@ -367,10 +367,12 @@ pub mod list {
     }
 
     impl LoxList {
+        /// Creates a new list from a vector of [`LoxVar`].
         pub fn new(list: Vec<LoxVar>) -> Self {
             Self { values: list }
         }
 
+        /// Gets a reference to the values stored in a [`LoxList`]
         pub fn values(&self) -> &Vec<LoxVar> {
             &self.values
         }
@@ -761,8 +763,11 @@ impl PartialEq for LoxVar {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The reason a binary operation error has occurred
 pub enum BinErrReason {
+    /// The operands were incompatible
     Incompatible,
+    /// A non-negative integer was expected but not recieved
     NotPositiveInteger,
 }
 

@@ -12,7 +12,7 @@ use std::{
 };
 
 use libtest_with::{Failed, Measurement};
-use lox::{
+use lox_runtime::{
     Runner, SharedWriter,
     error_codes::{self, ErrorCode},
 };
@@ -25,6 +25,8 @@ fn test_main() {
     main();
 }
 
+const BASE: &'static str = "..\\..\\";
+
 fn main() {
     use libtest_with::{Arguments, Trial};
 
@@ -33,15 +35,21 @@ fn main() {
 
     let tests: Vec<Trial> = recurse_build_check({
         let optional_root = std::env::var("TEST_ROOT");
-        if let Ok(path) = optional_root {
-            Path::new(&path).to_path_buf()
+
+        Path::new(BASE).join(if let Ok(path) = optional_root {
+            Path::new(if path.is_empty() { "tests" } else { &path }).to_path_buf()
         } else {
             Path::new("tests").to_path_buf()
-        }
+        })
     })
     .into_iter()
     .map(|(path, ignored)| {
-        let test_name = path.as_os_str().to_string_lossy().to_string();
+        let test_name = path
+            .strip_prefix(BASE)
+            .unwrap()
+            .as_os_str()
+            .to_string_lossy()
+            .to_string();
         Trial::test(test_name, move || {
             match std::panic::catch_unwind(|| {
                 check_file(
@@ -234,7 +242,7 @@ fn check_file(path: &Path, expectation: Expectation) -> Result<(), Failed> {
     let writer = SharedWriter::default();
 
     let out = Runner::new_with_writers(Box::new(writer.clone()), Box::new(writer.clone()))
-        .with_globals(lox::std_lib::default_lib())
+        .with_globals(lox_runtime::std_lib::default_lib())
         .run_file(path)
         .map(|_| writer.read())
         .map_err(|errs| {

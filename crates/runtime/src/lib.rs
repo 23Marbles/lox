@@ -40,7 +40,6 @@ use std::{
     hint::black_box,
     io,
     path::Path,
-    rc::Rc,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -60,7 +59,7 @@ use crate::{
             InterpOut, Interpreter, LineType,
             env::{Env, EnvironmentImpl as _},
         },
-        lox_var::{LoxVar, functions::LoxCallable},
+        lox_var::LoxVar,
         parser::Parser,
         static_analysis::Resolver,
         token::{Scanner, Token},
@@ -114,6 +113,23 @@ impl RunnerConfig {
 
 #[derive(Clone)]
 /// Used to construct and run a file.
+///
+/// # Basic usage
+/// ```rust
+/// # fn main() {
+/// use lox_runtime::Runner;
+/// let mut runner = Runner::new().with_default_globals();
+///
+/// // Prints the name of the script
+/// // in this case that would be snippet as as all snippets are called that
+/// let output = runner.run_snippet(r#"print "script name: " + argv[0];"#);
+///
+/// match output {
+///     Err(errors) => runner.write_errors(errors).unwrap(),
+///     Ok(_) => (),
+/// }
+/// # }
+/// ```
 pub struct Runner {
     ok_out: Arc<Mutex<dyn io::Write + Send>>,
     err_out: Arc<Mutex<dyn io::Write + Send>>,
@@ -170,6 +186,12 @@ impl Runner {
     /// Sets the globals for the runner.
     pub fn with_globals(mut self, globals: Vec<(&'static str, LoxVar)>) -> Self {
         self.interpreter = self.interpreter.with_globals(globals);
+        self
+    }
+
+    /// Sets the globals for the runner.
+    pub fn with_default_globals(mut self) -> Self {
+        self.interpreter = self.interpreter.with_globals(std_lib::default_lib());
         self
     }
 
@@ -488,8 +510,8 @@ mod tests {
     /// Tests that the file runner removes previous snippets with errors.
     fn test_file_removes_errs() {
         let files = [
-            PathBuf::from("tests/error.lox"),
-            PathBuf::from("tests/hello_world.lox"),
+            PathBuf::from("../../tests/error.lox"),
+            PathBuf::from("../../tests/hello_world.lox"),
         ];
 
         let mut runner = Runner::new();
