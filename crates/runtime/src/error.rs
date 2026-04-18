@@ -945,7 +945,7 @@ pub mod access_error {
                         "{}",
                         match (tried.is_sign_positive(), len) {
                             (false, _) => format!("Index `{}` must not be negative", tried),
-                            (true, 0) => "Cannot index into an empty list".to_string(),
+                            (true, 0) => "Cannot index into an empty list".to_owned(),
                             (true, l) =>
                                 format!("Index `{}` out of bounds. Max index: `{}`", tried, l - 1),
                         }

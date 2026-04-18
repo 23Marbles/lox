@@ -307,7 +307,7 @@ pub mod class {
         }
     }
 
-    pub(in crate) type InstanceRef = Rc<RefCell<LoxInstance>>;
+    pub(crate) type InstanceRef = Rc<RefCell<LoxInstance>>;
 
     impl PropertyAccess for InstanceRef {
         type Key = String;
@@ -412,7 +412,7 @@ pub mod list {
         }
     }
 
-    pub(in crate) type LoxListRef = Rc<RefCell<LoxList>>;
+    pub(crate) type LoxListRef = Rc<RefCell<LoxList>>;
 
     impl PropertyAccess for LoxListRef {
         type Key = ListAccessKind;

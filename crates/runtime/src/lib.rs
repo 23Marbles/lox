@@ -206,7 +206,7 @@ impl Runner {
 impl Runner {
     /// Runs a snippet and writes the output to the configured writer.
     pub fn run_snippet(&mut self, snippet: &str) -> Result<()> {
-        let new_id = self.files.add("snippet".to_string(), snippet.into());
+        let new_id = self.files.add("snippet".to_owned(), snippet.into());
         self.update_current_id(new_id);
         self.write_source_output(snippet)
     }
@@ -348,7 +348,7 @@ impl Runner {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(in crate) struct TestWriter {
+pub(crate) struct TestWriter {
     str_buf: String,
 }
 

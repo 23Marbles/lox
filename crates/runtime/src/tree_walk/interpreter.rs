@@ -144,10 +144,7 @@ impl Interpreter {
     /// Returns a new interpreter with the given globals.
     pub fn with_globals(mut self, globals: Vec<(&'static str, LoxVar)>) -> Self {
         self.env = Env::new_with_globals(
-            globals
-                .iter()
-                .cloned()
-                .collect(),
+            globals.to_vec(),
         );
         self
     }
@@ -736,7 +733,7 @@ pub mod env {
     use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
     use super::*;
-    pub(in crate) trait EnvironmentImpl
+    pub(crate) trait EnvironmentImpl
     where
         Self: Sized,
     {
@@ -745,7 +742,7 @@ pub mod env {
         fn new_with_globals(globals: Vec<(&'static str, LoxVar)>) -> Self;
     }
 
-    pub(in crate) type Env = Rc<RefCell<Environment>>;
+    pub(crate) type Env = Rc<RefCell<Environment>>;
 
     impl EnvironmentImpl for Env {
         fn new_env(enclosing: Option<Self>) -> Self {
