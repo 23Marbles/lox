@@ -1,4 +1,4 @@
 fun foo() {}
-print foo; // expect: <fn foo()>
+print foo; // prints: <fn foo()>
 
-print clock; // expect: <fn clock() -> Number>
+print clock; // prints: <fn clock() -> Number>

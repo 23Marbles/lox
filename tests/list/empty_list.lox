@@ -1,1 +1,1 @@
-print []; // expect: []
+print []; // prints: []

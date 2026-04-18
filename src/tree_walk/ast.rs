@@ -181,13 +181,31 @@ pub mod stmt {
 pub mod expr {
     use crate::Span;
 
-    #[derive(Debug, Clone, Copy, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     /// Represents the type of access, either by property or index.
-    pub enum AccessType {
+    pub enum FieldAccess {
         /// Represents a property-based access.
-        Property,
+        Property(String),
         /// Represents an index-based access.
-        Index,
+        Index(Box<Expr>),
+    }
+
+    impl Display for FieldAccess {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                FieldAccess::Property(name) => write!(f, "(prop {name})"),
+                FieldAccess::Index(idx) => write!(f, "(prop {idx})"),
+            }
+        }
+    }
+
+    impl FieldAccess {
+        fn string(&self) -> String {
+            match self {
+                FieldAccess::Property(name) => format!(".{name}"),
+                FieldAccess::Index(idx) => format!("[{idx}]"),
+            }
+        }
     }
 
     use super::*;
@@ -272,26 +290,22 @@ pub mod expr {
             span: Span,
         },
 
-        /// Represents a get expression in the AST. Contains an [`object`][`Expr`] expression and a [`name`] string.
+        /// Represents a get expression in the AST. Contains an [`object`][`Expr`] expression and a [`get_type`][`PropertyAccess`].
         Get {
             /// The object expression being accessed.
             object: Box<Expr>,
             /// The type of get operation (property or index).
-            get_type: AccessType,
-            /// The name of the property being accessed.
-            name: String,
+            get_type: FieldAccess,
             /// The span of the get expression in the source code.
             span: Span,
         },
 
-        /// Represents a set expression in the AST. Contains an [`object`][`Expr`] expression, a [`name`] string, and a [`value`][`Expr`] expression.
+        /// Represents a set expression in the AST. Contains an [`object`][`Expr`] expression, a [`set_type`][`PropertyAccess`], and a [`value`][`Expr`] expression.
         Set {
             /// The object expression being set.
             object: Box<Expr>,
             /// The type of set operation (property or index).
-            set_type: AccessType,
-            /// The name of the property being set.
-            name: String,
+            set_type: FieldAccess,
             /// The value being set.
             value: Box<Expr>,
             /// The span of the set expression in the source code.
@@ -388,13 +402,15 @@ pub mod expr {
 
                     base_string
                 }
-                Expr::Get { object, name, .. } => object.string() + "." + name,
+                Expr::Get {
+                    object, get_type, ..
+                } => object.string() + &get_type.string(),
                 Expr::Set {
                     object,
-                    name,
                     value,
+                    set_type,
                     ..
-                } => object.string() + "." + name + " = " + &value.to_string(),
+                } => object.string() + &set_type.string() + " = " + &value.to_string(),
                 Expr::This { .. } => "this".to_owned(),
                 Expr::Super { method_name, .. } => "super.".to_owned() + method_name,
                 Expr::List { parts, .. } => format!(
@@ -443,13 +459,15 @@ pub mod expr {
                     write!(f, "))")?;
                     Ok(())
                 }
-                Expr::Get { object, name, .. } => write!(f, "(get ({object} {name}))"),
+                Expr::Get {
+                    object, get_type, ..
+                } => write!(f, "(get ({object} {get_type}))"),
                 Expr::Set {
                     object,
-                    name,
+                    set_type,
                     value,
                     ..
-                } => write!(f, "(set ({object} {name}) {value})"),
+                } => write!(f, "(set ({object} {set_type}) {value})"),
                 Expr::This { .. } => write!(f, "(this)"),
                 Expr::Super { .. } => write!(f, "super"),
                 Expr::List { parts, .. } => write!(

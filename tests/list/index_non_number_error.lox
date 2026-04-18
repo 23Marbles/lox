@@ -1,0 +1,2 @@
+var list = [];
+list["foo"]; // error: 39

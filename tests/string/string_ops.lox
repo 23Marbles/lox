@@ -1,5 +1,4 @@
-print 3 * "ab"; // expect: ababab
-print "cd" * 3; // expect: cdcdcd
+print "cd" * 3; // prints: cdcdcd
 
-print "a" > "b"; // expect: false
-print "b" > "a"; // expect: true
+print "a" > "b"; // prints: false
+print "b" > "a"; // prints: true

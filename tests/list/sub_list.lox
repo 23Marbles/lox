@@ -2,4 +2,4 @@ var a = [1, 2, 3];
 var b = [a, 50];
 var c = [b, a];
 
-print c; // expect: [[[1, 2, 3], 50], [1, 2, 3]]
+print c; // prints: [[[1, 2, 3], 50], [1, 2, 3]]

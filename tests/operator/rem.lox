@@ -1,1 +1,1 @@
-print 10 % 3; // expect: 1
+print 10 % 3; // prints: 1

@@ -18,12 +18,12 @@ use crate::{
     tree_walk::{
         ast::{
             Literal,
-            expr::{AccessType, Expr},
+            expr::{Expr, FieldAccess},
             stmt::{ControlFlow, Stmt},
         },
         interpreter::env::{Env, EnvironmentImpl as _},
         lox_var::{
-            LoxVar, PropertyAccess as _,
+            BinErrReason, LoxVar, LoxVarKind, PropertyAccess as _,
             class::LoxClass,
             functions::{LoxCallable, LoxFunc},
             list::{ListAccessKind, LoxList},
@@ -375,10 +375,14 @@ impl Interpreter {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord == Ordering::Greater))
                         } else {
-                            Err(
-                                EvaluateError::bin_eval_error(span, Greater, &left_var, &right_var)
-                                    .into(),
+                            Err(EvaluateError::bin_eval_error(
+                                span,
+                                Greater,
+                                &left_var,
+                                &right_var,
+                                BinErrReason::Incompatible,
                             )
+                            .into())
                         }
                     }
                     GreaterEqual => {
@@ -390,6 +394,7 @@ impl Interpreter {
                                 GreaterEqual,
                                 &left_var,
                                 &right_var,
+                                BinErrReason::Incompatible,
                             )
                             .into())
                         }
@@ -398,10 +403,14 @@ impl Interpreter {
                         if let Some(ord) = left_var.partial_cmp(&right_var) {
                             Ok(LoxVar::Bool(ord == Ordering::Less))
                         } else {
-                            Err(
-                                EvaluateError::bin_eval_error(span, Less, &left_var, &right_var)
-                                    .into(),
+                            Err(EvaluateError::bin_eval_error(
+                                span,
+                                Less,
+                                &left_var,
+                                &right_var,
+                                BinErrReason::Incompatible,
                             )
+                            .into())
                         }
                     }
                     LessEqual => {
@@ -409,16 +418,20 @@ impl Interpreter {
                             Ok(LoxVar::Bool(ord != Ordering::Greater))
                         } else {
                             Err(EvaluateError::bin_eval_error(
-                                span, LessEqual, &left_var, &right_var,
+                                span,
+                                LessEqual,
+                                &left_var,
+                                &right_var,
+                                BinErrReason::Incompatible,
                             )
                             .into())
                         }
                     }
                     EqualEqual => Ok(LoxVar::Bool(left_var.eq(&right_var))),
                     BangEqual => Ok(LoxVar::Bool(left_var.ne(&right_var))),
-                    Minus => left_var
-                        .sub(&right_var)
-                        .map_err(|(l, r)| EvaluateError::bin_eval_error(span, Minus, l, r).into()),
+                    Minus => left_var.sub(&right_var).map_err(|(l, r, reason)| {
+                        EvaluateError::bin_eval_error(span, Minus, l, r, reason).into()
+                    }),
                     Slash => {
                         #[cfg(feature = "div_zero_error")]
                         if right_var == LoxVar::Number(0.) {
@@ -428,19 +441,19 @@ impl Interpreter {
                             )
                             .into());
                         }
-                        left_var.div(&right_var).map_err(|(l, r)| {
-                            EvaluateError::bin_eval_error(span, Slash, l, r).into()
+                        left_var.div(&right_var).map_err(|(l, r, reason)| {
+                            EvaluateError::bin_eval_error(span, Slash, l, r, reason).into()
                         })
                     }
-                    Star => left_var
-                        .mul(&right_var)
-                        .map_err(|(l, r)| EvaluateError::bin_eval_error(span, Star, l, r).into()),
-                    Percent => left_var.rem(&right_var).map_err(|(l, r)| {
-                        EvaluateError::bin_eval_error(span, Percent, l, r).into()
+                    Star => left_var.mul(&right_var).map_err(|(l, r, reason)| {
+                        EvaluateError::bin_eval_error(span, Star, l, r, reason).into()
                     }),
-                    Plus => left_var
-                        .add(&right_var)
-                        .map_err(|(l, r)| EvaluateError::bin_eval_error(span, Plus, l, r).into()),
+                    Percent => left_var.rem(&right_var).map_err(|(l, r, reason)| {
+                        EvaluateError::bin_eval_error(span, Percent, l, r, reason).into()
+                    }),
+                    Plus => left_var.add(&right_var).map_err(|(l, r, reason)| {
+                        EvaluateError::bin_eval_error(span, Plus, l, r, reason).into()
+                    }),
                     _ => unreachable!(
                         "only tokens with kind gt, ge, lt, le, ne, eq, minus, plus, slash and star can be binary operators"
                     ),
@@ -572,34 +585,50 @@ impl Interpreter {
             }
             Expr::Get {
                 object,
-                name,
                 span,
                 get_type,
             } => {
                 let obj = self.evaluate_expr(*object)?;
 
                 match obj {
-                    LoxVar::Instance(inst) => inst
-                        .get(&name)
-                        .or_else(|_| {
-                            Ok(LoxVar::Callable(inst.borrow().class().find_method(&name)?))
-                        })
-                        .map_err(|e| RuntimeError::AccessError(e, span)),
+                    LoxVar::Instance(inst) => {
+                        let name = match get_type {
+                            FieldAccess::Property(name) => name,
+                            FieldAccess::Index(_) => {
+                                return Err(RuntimeError::EvaluateError(EvaluateError::new(
+                                    EvaluateErrorKind::CannotIndexInto(LoxVarKind::Instance),
+                                    span,
+                                )));
+                            }
+                        };
+                        inst.get(&name)
+                            .or_else(|_| {
+                                Ok(LoxVar::Callable(inst.borrow().class().find_method(&name)?))
+                            })
+                            .map_err(|e| RuntimeError::AccessError(e, span))
+                    }
                     LoxVar::List(list) => list
                         .get(&match get_type {
-                            AccessType::Index => ListAccessKind::Index(name),
-                            AccessType::Property => ListAccessKind::Property(name),
+                            FieldAccess::Index(expr) => {
+                                ListAccessKind::Index(self.evaluate_expr(*expr)?)
+                            }
+                            FieldAccess::Property(name) => ListAccessKind::Property(name),
                         })
                         .map_err(|e| RuntimeError::AccessError(e, span)),
-                    _ => Err(
-                        EvaluateError::new(EvaluateErrorKind::NonContainer(obj.into()), span)
-                            .into(),
-                    ),
+                    v => Err(EvaluateError::new(
+                        match get_type {
+                            FieldAccess::Property(_) => {
+                                EvaluateErrorKind::CannotGetProperties(v.kind())
+                            }
+                            FieldAccess::Index(_) => EvaluateErrorKind::CannotIndexInto(v.kind()),
+                        },
+                        span,
+                    )
+                    .into()),
                 }
             }
             Expr::Set {
                 object,
-                name,
                 value,
                 span,
                 set_type,
@@ -610,8 +639,18 @@ impl Interpreter {
                     LoxVar::Instance(mut inst) => {
                         let val = self.evaluate_expr(*value)?;
 
-                        inst.set(name, val.clone())
-                            .map_err(|e| RuntimeError::AccessError(e, span))?;
+                        inst.set(
+                            if let FieldAccess::Property(name) = set_type {
+                                name
+                            } else {
+                                return Err(RuntimeError::EvaluateError(EvaluateError::new(
+                                    EvaluateErrorKind::CannotIndexInto(LoxVarKind::Instance),
+                                    span,
+                                )));
+                            },
+                            val.clone(),
+                        )
+                        .map_err(|e| RuntimeError::AccessError(e, span))?;
 
                         Ok(val)
                     }
@@ -620,8 +659,10 @@ impl Interpreter {
 
                         list.set(
                             match set_type {
-                                AccessType::Index => ListAccessKind::Index(name),
-                                AccessType::Property => ListAccessKind::Property(name),
+                                FieldAccess::Index(expr) => {
+                                    ListAccessKind::Index(self.evaluate_expr(*expr)?)
+                                }
+                                FieldAccess::Property(name) => ListAccessKind::Property(name),
                             },
                             val.clone(),
                         )
@@ -629,10 +670,16 @@ impl Interpreter {
 
                         Ok(val)
                     }
-                    _ => Err(
-                        EvaluateError::new(EvaluateErrorKind::NonContainer(obj.into()), span)
-                            .into(),
-                    ),
+                    v => Err(EvaluateError::new(
+                        match set_type {
+                            FieldAccess::Property(_) => {
+                                EvaluateErrorKind::CannotGetProperties(v.kind())
+                            }
+                            FieldAccess::Index(_) => EvaluateErrorKind::CannotIndexInto(v.kind()),
+                        },
+                        span,
+                    )
+                    .into()),
                 }
             }
             Expr::This { distance, .. } => Ok(self
@@ -673,7 +720,7 @@ impl Interpreter {
 
                 Ok(LoxVar::Callable(method.bind(instance)))
             }
-            Expr::List { parts, .. } => Ok(LoxVar::List(Rc::new(RefCell::new(LoxList::from(
+            Expr::List { parts, .. } => Ok(LoxVar::List(Rc::new(RefCell::new(LoxList::new(
                 parts
                     .into_iter()
                     .map(|ex| self.evaluate_expr(ex))

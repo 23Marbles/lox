@@ -10,4 +10,4 @@ class Foo {
 }
 
 Foo().method("param");
-f(); // expect: param
+f(); // prints: param

@@ -2,6 +2,6 @@ var a = [1, 2, 3];
 var b = [a, 50];
 var c = [b, a];
 
-print a.length; // expect: 3
-print b.length; // expect: 2
-print c.length; // expect: 2
+print a.length; // prints: 3
+print b.length; // prints: 2
+print c.length; // prints: 2

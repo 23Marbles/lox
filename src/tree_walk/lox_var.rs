@@ -2,6 +2,7 @@
 //! Also contains the implementation of Lox functions and classes.
 
 use std::{
+    cell::RefCell,
     fmt::{Debug, Display},
     ops::*,
     rc::Rc,
@@ -14,7 +15,7 @@ use crate::{
         lox_var::{
             class::{InstanceRef, LoxClass},
             functions::LoxCallable,
-            list::LoxListRef,
+            list::{LoxList, LoxListRef},
         },
     },
 };
@@ -335,11 +336,20 @@ pub mod class {
 
 /// Represents a Lox list.
 pub mod list {
-    use std::{cell::RefCell, fmt::Display, num::IntErrorKind, ops::Deref, rc::Rc};
+    use std::{cell::RefCell, fmt::Display, ops::Deref, rc::Rc};
+
+    use codespan_reporting::diagnostic::Severity;
 
     use crate::{
-        error::access_error::{self, AccessError},
-        tree_walk::lox_var::{LoxVar, LoxVarKind, PropertyAccess},
+        error::{
+            access_error::{self, AccessError},
+            runtime_err::RuntimeError,
+        },
+        error_codes::ErrorCode,
+        tree_walk::{
+            interpreter::Interpreter,
+            lox_var::{LoxVar, LoxVarKind, PropertyAccess, functions::LoxCallable},
+        },
     };
 
     #[derive(Clone, Debug, PartialEq)]
@@ -356,18 +366,50 @@ pub mod list {
         }
     }
 
-    impl From<Vec<LoxVar>> for LoxList {
-        fn from(values: Vec<LoxVar>) -> Self {
-            Self { values }
+    impl LoxList {
+        pub fn new(list: Vec<impl Into<LoxVar>>) -> Self {
+            Self {
+                values: list.into_iter().map(|v| v.into()).collect::<Vec<_>>(),
+            }
+        }
+
+        pub fn values(&self) -> &Vec<LoxVar> {
+            &self.values
         }
     }
 
     /// Represents the kind of list access, either by index or property.
     pub enum ListAccessKind {
         /// Represents an index-based access.
-        Index(String),
+        Index(LoxVar),
         /// Represents a property-based access.
         Property(String),
+    }
+
+    #[derive(Debug)]
+    struct ListCall {
+        list: LoxListRef,
+        signature: &'static str,
+        arity: u8,
+        func: fn(&mut Interpreter, LoxListRef, &[LoxVar]) -> Result<LoxVar, RuntimeError>,
+    }
+
+    impl LoxCallable for ListCall {
+        fn call(
+            &self,
+            interpreter: &mut Interpreter,
+            arguments: &[LoxVar],
+        ) -> Result<LoxVar, RuntimeError> {
+            (self.func)(interpreter, self.list.clone(), arguments)
+        }
+
+        fn signature(&self) -> String {
+            self.signature.to_owned()
+        }
+
+        fn arity(&self) -> u8 {
+            self.arity
+        }
     }
 
     pub(crate) type LoxListRef = Rc<RefCell<LoxList>>;
@@ -377,35 +419,96 @@ pub mod list {
 
         fn get(&self, key: &Self::Key) -> Result<LoxVar, access_error::AccessError> {
             match key {
-                ListAccessKind::Index(index) => {
-                    let idx = index.parse::<usize>().map_err(|e| match e.kind() {
-                        IntErrorKind::Empty | IntErrorKind::InvalidDigit => {
-                            access_error::AccessError::NonIntegerIndex {
-                                tried: index.clone(),
+                ListAccessKind::Index(index_var) => {
+                    if let LoxVar::Number(idx) = *index_var {
+                        let index = if idx.is_finite() && idx.fract() == 0.0 {
+                            if idx >= 0.0 && idx <= usize::MAX as f64 {
+                                idx as usize
+                            } else {
+                                return Err(AccessError::OutOfBounds {
+                                    tried: idx,
+                                    len: self.borrow().values.len(),
+                                });
                             }
-                        }
-                        IntErrorKind::NegOverflow | IntErrorKind::PosOverflow => {
-                            access_error::AccessError::OutOfBounds {
-                                tried: index.clone(),
-                                max: self.borrow().values.len(),
-                            }
-                        }
-                        IntErrorKind::Zero => {
-                            unreachable!("Usize can hold any non-negative integer, so zero is never out of bounds")
-                        }
-                        _ => unreachable!("Required catch all integer parsing errors"),
-                    })?;
-                    self.borrow()
-                        .values
-                        .get(idx)
-                        .ok_or(access_error::AccessError::OutOfBounds {
-                            tried: index.clone(),
-                            max: self.borrow().values.len(),
+                        } else {
+                            return Err(AccessError::NonIntegerIndex { tried: idx });
+                        };
+                        self.borrow()
+                            .values
+                            .get(index)
+                            .ok_or(access_error::AccessError::OutOfBounds {
+                                tried: index as f64,
+                                len: self.borrow().values.len(),
+                            })
+                            .cloned()
+                    } else {
+                        Err(AccessError::InccorrectIndexKind {
+                            tried_kind: index_var.kind(),
                         })
-                        .cloned()
+                    }
                 }
                 ListAccessKind::Property(name) => match name.as_str() {
                     "length" => Ok(LoxVar::Number(self.borrow().values.len() as f64)),
+                    "push" => Ok(LoxVar::Callable(Rc::new(ListCall {
+                        list: self.clone(),
+                        signature: "push(Any) -> nil",
+                        arity: 1,
+                        func: |_, list, args| {
+                            let val = args.get(0).ok_or(RuntimeError::InternalFunctionError {
+                                msg: "Expected an argument".to_string(),
+                                code: ErrorCode::IncorrectArity,
+                                sev: Severity::Error,
+                            })?;
+                            list.borrow_mut().values.push(val.clone());
+                            Ok(LoxVar::Nil)
+                        },
+                    }))),
+                    "pop" => Ok(LoxVar::Callable(Rc::new(ListCall {
+                        list: self.clone(),
+                        signature: "pop() -> Any",
+                        arity: 0,
+                        func: |_, list, _| {
+                            let val = list.borrow_mut().values.pop();
+                            if let Some(v) = val {
+                                Ok(v)
+                            } else {
+                                Err(RuntimeError::InternalFunctionError {
+                                    msg: "Cannot pop from empty list".to_string(),
+                                    code: ErrorCode::PopEmptyList,
+                                    sev: Severity::Warning,
+                                })
+                            }
+                        },
+                    }))),
+                    "join" => Ok(LoxVar::Callable(Rc::new(ListCall {
+                        list: self.clone(),
+                        signature: "join(String) -> String",
+                        arity: 1,
+                        func: |_, list, args| {
+                            let join_val =
+                                args.get(0).ok_or(RuntimeError::InternalFunctionError {
+                                    msg: "Expected an argument".to_string(),
+                                    code: ErrorCode::IncorrectArity,
+                                    sev: Severity::Error,
+                                })?;
+                            if let LoxVar::String(join_string) = join_val {
+                                Ok(LoxVar::String(
+                                    list.borrow()
+                                        .values()
+                                        .iter()
+                                        .map(|v| v.to_string())
+                                        .collect::<Vec<_>>()
+                                        .join(join_string),
+                                ))
+                            } else {
+                                Err(RuntimeError::InternalFunctionError {
+                                    msg: "Expected a String argument".to_string(),
+                                    code: ErrorCode::IncorrectArgType,
+                                    sev: Severity::Error,
+                                })
+                            }
+                        },
+                    }))),
                     _ => Err(AccessError::NonExistentField { name: name.clone() }),
                 },
             }
@@ -413,48 +516,38 @@ pub mod list {
 
         fn set(&mut self, key: Self::Key, value: LoxVar) -> Result<(), access_error::AccessError> {
             match key {
-                ListAccessKind::Index(index) => {
-                    let max_idx = self.borrow().values.len() - 1;
-                    let idx = index.parse::<usize>().map_err(|e| match e.kind() {
-                        IntErrorKind::Empty | IntErrorKind::InvalidDigit => {
-                            access_error::AccessError::NonIntegerIndex {
-                                tried: index.clone(),
+                ListAccessKind::Index(index_var) => {
+                    if let LoxVar::Number(idx) = index_var {
+                        let index = if idx.is_finite() && idx.fract() == 0.0 {
+                            if idx >= 0.0 && idx <= usize::MAX as f64 {
+                                idx as usize
+                            } else {
+                                return Err(AccessError::OutOfBounds {
+                                    tried: idx,
+                                    len: self.borrow().values.len(),
+                                });
                             }
-                        }
-                        IntErrorKind::NegOverflow | IntErrorKind::PosOverflow => {
+                        } else {
+                            return Err(AccessError::NonIntegerIndex { tried: idx });
+                        };
+                        let len = self.borrow().values.len();
+                        *self.borrow_mut().values.get_mut(index).ok_or(
                             access_error::AccessError::OutOfBounds {
-                                tried: index.clone(),
-                                max: max_idx,
-                            }
-                        }
-                        IntErrorKind::Zero => {
-                            unreachable!("Usize can hold any non-negative integer, so zero is never out of bounds")
-                        }
-                        _ => unreachable!("Required catch all integer parsing errors"),
-                    })?;
-                    *self
-                        .borrow_mut()
-                        .values
-                        .get_mut(idx)
-                        .ok_or(AccessError::OutOfBounds {
-                            tried: index,
-                            max: max_idx,
-                        })? = value;
-                    Ok(())
+                                tried: index as f64,
+                                len,
+                            },
+                        )? = value;
+                        Ok(())
+                    } else {
+                        Err(AccessError::InccorrectIndexKind {
+                            tried_kind: index_var.kind(),
+                        })
+                    }
                 }
                 ListAccessKind::Property(name) => match name.as_str() {
-                    "length" => match value {
-                        LoxVar::Number(n) => {
-                            let len = n as usize;
-                            self.borrow_mut().values.resize(len, LoxVar::Uninitialized);
-                            Ok(())
-                        }
-                        _ => Err(AccessError::IncorrectType {
-                            expected: LoxVarKind::Number,
-                            got: value.kind(),
-                        }),
-                    },
-                    _ => Err(AccessError::NonExistentField { name: name.clone() }),
+                    _ => Err(AccessError::CannotSetProperties {
+                        kind: LoxVarKind::List,
+                    }),
                 },
             }
         }
@@ -639,7 +732,7 @@ impl Display for LoxVar {
             LoxVar::Callable(c) => write!(f, "<fn {}>", c.signature()),
             LoxVar::Class(c) => write!(f, "{}", c.name),
             LoxVar::Instance(i) => {
-                write!(f, "{} instance", i.borrow().class().name)
+                write!(f, "<{} instance>", i.borrow().class().name)
             }
             LoxVar::Uninitialized => write!(f, "<uninitialized>"),
             LoxVar::List(lox_list) => write!(f, "{}", lox_list.borrow()),
@@ -662,20 +755,30 @@ impl PartialEq for LoxVar {
             // nil == nil
             (Self::Nil, Self::Nil) => true,
 
+            (Self::List(l), Self::List(r)) => l.borrow().values() == r.borrow().values(),
+
             _ => false,
         }
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BinErrReason {
+    Incompatible,
+    NotPositiveInteger,
+}
+
+type BinOut<'err> = Result<LoxVar, (&'err LoxVar, &'err LoxVar, BinErrReason)>;
+
 macro_rules! bin_num_op_impl {
     ($trait:ident, $fn:ident) => {
-        impl $trait for &LoxVar {
-            type Output = Result<LoxVar, (Self, Self)>;
+        impl<'input> $trait for &'input LoxVar {
+            type Output = BinOut<'input>;
 
             fn $fn(self, rhs: Self) -> Self::Output {
                 match (self, rhs) {
                     (LoxVar::Number(ln), LoxVar::Number(rn)) => Ok(LoxVar::Number(ln.$fn(rn))),
-                    (l, r) => Err((l, r)),
+                    (l, r) => Err((l, r, BinErrReason::Incompatible)),
                 }
             }
         }
@@ -686,33 +789,68 @@ bin_num_op_impl!(Rem, rem);
 bin_num_op_impl!(Sub, sub);
 bin_num_op_impl!(Div, div);
 
-impl Add for &LoxVar {
-    type Output = Result<LoxVar, (Self, Self)>;
+impl<'input> Add for &'input LoxVar {
+    type Output = BinOut<'input>;
 
     fn add(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
             (LoxVar::Number(ln), LoxVar::Number(rn)) => Ok(LoxVar::Number(ln + rn)),
             (LoxVar::String(ls), LoxVar::String(rs)) => Ok(LoxVar::String(ls.to_owned() + rs)),
+            (LoxVar::List(ll), LoxVar::List(rl)) => {
+                Ok(LoxVar::List(Rc::new(RefCell::new(LoxList::new(
+                    ll.borrow()
+                        .values()
+                        .iter()
+                        .chain(rl.borrow().values())
+                        .cloned()
+                        .collect::<Vec<_>>(),
+                )))))
+            }
             #[cfg(feature = "implicit_converions")]
             (LoxVar::String(s), other) => Ok(LoxVar::String(s.to_owned() + &other.to_string())),
-            (l, r) => Err((l, r)),
+            (l, r) => Err((l, r, BinErrReason::Incompatible)),
         }
     }
 }
-impl Mul for &LoxVar {
-    type Output = Result<LoxVar, (Self, Self)>;
-    /// This has precision loss when working with multiplying a string by a number.
-    /// This is because the number is truncated to an integer before the string is repeated.
+impl<'input> Mul for &'input LoxVar {
+    type Output = BinOut<'input>;
+
     fn mul(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
             (LoxVar::Number(ln), LoxVar::Number(rn)) => Ok(LoxVar::Number(ln * rn)),
-            (LoxVar::String(s), LoxVar::Number(n)) => {
-                Ok(LoxVar::String(s.to_owned().repeat(*n as usize)))
+            (LoxVar::String(s), LoxVar::Number(n)) => Ok(LoxVar::String(s.to_owned().repeat(
+                if n.is_sign_positive() && n.is_finite() && n.fract() == 0.0 {
+                    *n as usize
+                } else {
+                    return Err((self, rhs, BinErrReason::NotPositiveInteger));
+                },
+            ))),
+            (LoxVar::List(l), LoxVar::Number(n)) => {
+                Ok(LoxVar::List(Rc::new(RefCell::new(LoxList::new(
+                    match if n.is_sign_positive() && n.is_finite() && n.fract() == 0.0 {
+                        *n as usize
+                    } else {
+                        return Err((self, rhs, BinErrReason::NotPositiveInteger));
+                    } {
+                        0 => Vec::<LoxVar>::new(),
+                        r => {
+                            let list = l.borrow().values().clone();
+
+                            let mut resultant_list = Vec::new();
+
+                            for _ in 0..r {
+                                resultant_list.push(list.clone());
+                            }
+
+                            resultant_list
+                                .into_iter()
+                                .flatten()
+                                .collect::<Vec<LoxVar>>()
+                        }
+                    },
+                )))))
             }
-            (LoxVar::Number(n), LoxVar::String(s)) => {
-                Ok(LoxVar::String(s.to_owned().repeat(*n as usize)))
-            }
-            (l, r) => Err((l, r)),
+            (l, r) => Err((l, r, BinErrReason::Incompatible)),
         }
     }
 }

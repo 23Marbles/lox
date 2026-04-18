@@ -1,0 +1,2 @@
+var list = [];
+list[2.5]; // error: 35

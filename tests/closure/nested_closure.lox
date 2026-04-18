@@ -20,6 +20,6 @@ fun f1() {
 f1();
 
 f();
-// expect: a
-// expect: b
-// expect: c
+// prints: a
+// prints: b
+// prints: c

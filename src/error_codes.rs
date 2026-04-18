@@ -36,15 +36,19 @@ pub enum ErrorCode {
     #[cfg(feature = "div_zero_error")]
     DivisionByZero = 27,
     NonExistentField = 28,
-    NotContainer = 29,
+    CannotGetProperties = 29,
     UninitializedVariable = 30,
     IncorrectArgType = 31,
     CouldNotConvert = 32,
     UserForcedError = 33,
     OutOfBounds = 34,
     NonIntegerIndex = 35,
-    TriedToSetAnImmutable = 36,
+    NonPositiveIntegerOperand = 36,
     IncorrectType = 37,
+    CannotIndexInto = 38,
+    IncorrectIndexKind = 39,
+    CannotSetProperties = 40,
+    PopEmptyList = 41,
 }
 
 impl Display for ErrorCode {
@@ -116,13 +120,19 @@ impl TryFrom<u8> for ErrorCode {
             #[cfg(feature = "div_zero_error")]
             27 => Ok(Self::DivisionByZero),
             28 => Ok(Self::NonExistentField),
-            29 => Ok(Self::NotContainer),
+            29 => Ok(Self::CannotGetProperties),
             30 => Ok(Self::UninitializedVariable),
             31 => Ok(Self::IncorrectArgType),
             32 => Ok(Self::CouldNotConvert),
             33 => Ok(Self::UserForcedError),
             34 => Ok(Self::OutOfBounds),
             35 => Ok(Self::NonIntegerIndex),
+            36 => Ok(Self::NonPositiveIntegerOperand),
+            37 => Ok(Self::IncorrectType),
+            38 => Ok(Self::CannotIndexInto),
+            39 => Ok(Self::IncorrectIndexKind),
+            40 => Ok(Self::CannotSetProperties),
+            41 => Ok(Self::PopEmptyList),
             _ => Err(ErrorCodeFromStrErr::InvalidDiscriminant),
         }
     }

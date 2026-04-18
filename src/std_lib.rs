@@ -47,7 +47,7 @@ pub fn default_lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
                         Ok(LoxVar::Nil)
                     }
                     _ => Err(RuntimeError::InternalFunctionError {
-                        msg: "sleep() expects a Number argument".to_string(),
+                        msg: "Expected a Number argument".to_string(),
                         code: ErrorCode::IncorrectArgType,
                         sev: Severity::Error,
                     }),
@@ -62,7 +62,7 @@ pub fn default_lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
                 func: |_, args| {
                     let ty = match args.get(0).ok_or(RuntimeError::InternalFunctionError {
                         msg: "Expected an argument".to_string(),
-                        code: ErrorCode::IncorrectArgType,
+                        code: ErrorCode::IncorrectArity,
                         sev: Severity::Error,
                     })? {
                         LoxVar::Number(_) => "Number",
@@ -160,7 +160,7 @@ pub fn default_lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
                 func: |interp, args| match args.get(0).ok_or(
                     RuntimeError::InternalFunctionError {
                         msg: "Expected an argument".to_string(),
-                        code: ErrorCode::IncorrectArgType,
+                        code: ErrorCode::IncorrectArity,
                         sev: Severity::Error,
                     },
                 )? {
@@ -215,7 +215,6 @@ pub struct NativeFunc {
 
 impl NativeFunc {
     /// Creates a new native function that can then be passed as a global
-    /// The function must handle *ALL* errors including arity checks
     pub fn new(
         function: fn(&mut Interpreter, &[LoxVar]) -> Result<LoxVar, RuntimeError>,
         signature: &'static str,

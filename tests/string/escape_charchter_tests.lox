@@ -1,20 +1,20 @@
-// expect: carriage\rreturn
+// prints: carriage\rreturn
 print "carriage\rreturn";
-// expect: return
-// expect: newline
+// prints: return
+// prints: newline
 print "return\r\nnewline";
-// expect: new
-// expect: line
+// prints: new
+// prints: line
 print "new\nline";
-// expect: tab\ttab
+// prints: tab\ttab
 print "tab\ttab";
-// expect: "string"
+// prints: "string"
 print "\"string\"";
-// expect: \\
+// prints: \\
 print "\\";
-// expect: \\\\
+// prints: \\\\
 print "\\\\";
-// expect: \\n
+// prints: \\n
 print "\\n";
-// expect: \\z
+// prints: \\z
 print "\z";

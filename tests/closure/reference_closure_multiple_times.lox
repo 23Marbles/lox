@@ -10,5 +10,5 @@ var f;
 }
 
 f();
-// expect: a
-// expect: a
+// prints: a
+// prints: a

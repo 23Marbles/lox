@@ -6,7 +6,7 @@ class Base {
 
 class Derived < Base {
   foo() {
-    //print "Derived.foo()"; // expect: Derived.foo()
+    //print "Derived.foo()"; // prints: Derived.foo()
     super.foo("a", "b", "c", "d"); // error: 25
   }
 }

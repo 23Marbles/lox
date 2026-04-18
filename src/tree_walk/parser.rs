@@ -10,7 +10,11 @@ use crate::{
     },
     lox_files::FileIdent,
     tree_walk::{
-        ast::{Literal, expr::Expr, stmt::Stmt},
+        ast::{
+            Literal,
+            expr::{Expr, FieldAccess},
+            stmt::Stmt,
+        },
         token::{Token, TokenKind},
     },
 };
@@ -436,14 +440,12 @@ impl<'source> Parser<'source> {
                 })
             } else if let Expr::Get {
                 object,
-                name,
                 span,
                 get_type,
             } = expr
             {
                 Ok(Expr::Set {
                     object,
-                    name,
                     value: Box::new(value),
                     span,
                     set_type: get_type,
@@ -575,9 +577,17 @@ impl<'source> Parser<'source> {
                 )?;
                 expr = Expr::Get {
                     object: Box::new(expr),
-                    name: token.lexeme.to_owned(),
                     span: token.span,
-                    get_type: super::ast::expr::AccessType::Property,
+                    get_type: FieldAccess::Property(token.lexeme.to_owned()),
+                };
+            } else if self.match_any([TokenKind::LeftBracket]) {
+                let start_pos = self.previous().span.range.start;
+                let index = self.expression()?;
+                let end_pos = self.expect(TokenKind::RightBracket)?.span.range.end;
+                expr = Expr::Get {
+                    object: Box::new(expr),
+                    span: Span::new(start_pos..end_pos, self.file_id),
+                    get_type: FieldAccess::Index(Box::new(index)),
                 };
             } else {
                 break Ok(expr);
@@ -718,7 +728,16 @@ impl<'source> Parser<'source> {
             k => Err(self.error(ParseError::UnexpectedTokenKind {
                 got: k,
                 expected: [
-                    True, False, Nil, Number, String, LeftParen, Super, This, Identifier,
+                    True,
+                    False,
+                    Nil,
+                    Number,
+                    String,
+                    LeftParen,
+                    Super,
+                    This,
+                    Identifier,
+                    LeftBracket,
                 ]
                 .to_vec(),
                 span: self.peek().span.clone(),

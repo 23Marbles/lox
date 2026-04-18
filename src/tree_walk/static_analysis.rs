@@ -8,7 +8,10 @@ use crate::{
     Span,
     error::{ToCodespan as _, anaylysis_err::ResolverErr},
     lox_files::FileIdent,
-    tree_walk::ast::{expr::Expr, stmt::Stmt},
+    tree_walk::ast::{
+        expr::{Expr, FieldAccess},
+        stmt::Stmt,
+    },
 };
 
 /// A resolver that performs static analysis on a stream of statements.
@@ -332,13 +335,28 @@ impl Resolver {
                 self.resolve_expr(right);
                 return;
             }
-            Expr::Get { object, .. } => {
+            Expr::Get {
+                object, get_type, ..
+            } => {
                 self.resolve_expr(object);
+                match get_type {
+                    FieldAccess::Property(_) => (),
+                    FieldAccess::Index(expr) => self.resolve_expr(expr),
+                }
                 return;
             }
-            Expr::Set { object, value, .. } => {
+            Expr::Set {
+                object,
+                value,
+                set_type,
+                ..
+            } => {
                 self.resolve_expr(object);
                 self.resolve_expr(value);
+                match set_type {
+                    FieldAccess::Property(_) => (),
+                    FieldAccess::Index(expr) => self.resolve_expr(expr),
+                }
                 return;
             }
             Expr::This { span, .. } => {

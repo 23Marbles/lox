@@ -1,23 +1,23 @@
-print true == true;    // expect: true
-print true == false;   // expect: false
-print false == true;   // expect: false
-print false == false;  // expect: true
+print true == true;    // prints: true
+print true == false;   // prints: false
+print false == true;   // prints: false
+print false == false;  // prints: true
 
 // Not equal to other types.
-print true == 1;        // expect: false
-print false == 0;       // expect: false
-print true == "true";   // expect: false
-print false == "false"; // expect: false
-print false == "";      // expect: false
+print true == 1;        // prints: false
+print false == 0;       // prints: false
+print true == "true";   // prints: false
+print false == "false"; // prints: false
+print false == "";      // prints: false
 
-print true != true;    // expect: false
-print true != false;   // expect: true
-print false != true;   // expect: true
-print false != false;  // expect: false
+print true != true;    // prints: false
+print true != false;   // prints: true
+print false != true;   // prints: true
+print false != false;  // prints: false
 
 // Not equal to other types.
-print true != 1;        // expect: true
-print false != 0;       // expect: true
-print true != "true";   // expect: true
-print false != "false"; // expect: true
-print false != "";      // expect: true
+print true != 1;        // prints: true
+print false != 0;       // prints: true
+print true != "true";   // prints: true
+print false != "false"; // prints: true
+print false != "";      // prints: true

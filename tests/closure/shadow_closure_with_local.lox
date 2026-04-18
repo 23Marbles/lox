@@ -2,11 +2,11 @@
   var foo = "closure";
   fun f() {
     {
-      print foo; // expect: closure
+      print foo; // prints: closure
       var foo = "shadow";
-      print foo; // expect: shadow
+      print foo; // prints: shadow
     }
-    print foo; // expect: closure
+    print foo; // prints: closure
   }
   f();
 }

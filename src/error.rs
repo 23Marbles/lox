@@ -292,7 +292,7 @@ pub mod anaylysis_err {
         ReadInOwnInitializer(Span),
         DefinedMultipleTimes(String, Vec<Span>),
         ReturnFromTop(Span),
-        /// [Return pos, Init pos]
+        /// [Return span, Init span]
         ReturnValueFromInit([Span; 2]),
         ThisOutsideClass(Span),
         SelfReferentialInheritance(Span),
@@ -580,6 +580,7 @@ pub mod eval_err {
 
     use crate::Span;
     use crate::lox_files::FileIdent;
+    use crate::tree_walk::lox_var::BinErrReason;
     use crate::{
         error::{ErrorLevel, ToCodespan, ToErrorCode},
         error_codes::ErrorCode,
@@ -596,23 +597,33 @@ pub mod eval_err {
     }
 
     impl EvaluateError {
-        pub fn new(kind: EvaluateErrorKind, pos: Span) -> Self {
-            Self { kind, span: pos }
+        pub fn new(kind: EvaluateErrorKind, span: Span) -> Self {
+            Self { kind, span }
         }
 
         pub fn bin_eval_error(
-            pos: Span,
+            span: Span,
             kind: TokenKind,
             left_var: &LoxVar,
             right_var: &LoxVar,
+            reason: BinErrReason,
         ) -> Self {
             Self {
-                kind: EvaluateErrorKind::IncompatableBinaryOperator {
-                    operator: kind,
-                    left_ty: left_var.into(),
-                    right_ty: right_var.into(),
+                kind: match reason {
+                    BinErrReason::Incompatible => EvaluateErrorKind::IncompatableBinaryOperator {
+                        operator: kind,
+                        left_ty: left_var.into(),
+                        right_ty: right_var.into(),
+                    },
+                    BinErrReason::NotPositiveInteger => {
+                        EvaluateErrorKind::NotPositiveIntegerOperand {
+                            operator: kind,
+                            left_ty: left_var.into(),
+                            right_ty: right_var.into(),
+                        }
+                    }
                 },
-                span: pos,
+                span,
             }
         }
     }
@@ -636,6 +647,11 @@ pub mod eval_err {
             left_ty: LoxVarKind,
             right_ty: LoxVarKind,
         },
+        NotPositiveIntegerOperand {
+            operator: TokenKind,
+            left_ty: LoxVarKind,
+            right_ty: LoxVarKind,
+        },
         UndeclaredVariable {
             name: String,
         },
@@ -652,7 +668,8 @@ pub mod eval_err {
         },
         #[cfg(feature = "div_zero_error")]
         DivisionByZero,
-        NonContainer(LoxVarKind),
+        CannotGetProperties(LoxVarKind),
+        CannotIndexInto(LoxVarKind),
         UninitializedVariable {
             name: String,
         },
@@ -675,8 +692,12 @@ pub mod eval_err {
                 }
                 #[cfg(feature = "div_zero_error")]
                 EvaluateErrorKind::DivisionByZero => ErrorCode::DivisionByZero,
-                EvaluateErrorKind::NonContainer(_) => ErrorCode::NotContainer,
+                EvaluateErrorKind::CannotGetProperties(_) => ErrorCode::CannotGetProperties,
                 EvaluateErrorKind::UninitializedVariable { .. } => ErrorCode::UninitializedVariable,
+                EvaluateErrorKind::CannotIndexInto(_) => ErrorCode::CannotIndexInto,
+                EvaluateErrorKind::NotPositiveIntegerOperand { .. } => {
+                    ErrorCode::NonPositiveIntegerOperand
+                }
             }
         }
     }
@@ -692,8 +713,10 @@ pub mod eval_err {
                 EvaluateErrorKind::IncompatableConversion { .. } => Severity::Error,
                 #[cfg(feature = "div_zero_error")]
                 EvaluateErrorKind::DivisionByZero => Severity::Warning,
-                EvaluateErrorKind::NonContainer(_) => Severity::Error,
+                EvaluateErrorKind::CannotGetProperties(_) => Severity::Error,
                 EvaluateErrorKind::UninitializedVariable { .. } => Severity::Warning,
+                EvaluateErrorKind::CannotIndexInto(_) => Severity::Error,
+                EvaluateErrorKind::NotPositiveIntegerOperand { .. } => Severity::Error,
             }
         }
     }
@@ -743,19 +766,26 @@ pub mod eval_err {
                 }
                 #[cfg(feature = "div_zero_error")]
                 EvaluateErrorKind::DivisionByZero => write!(f, "Tried to divide by zero"),
-                EvaluateErrorKind::NonContainer(kind) => {
-                    write!(
-                        f,
-                        "Tried to access a property of a non-container, is of type `{kind:?}` instead"
-                    )
+                EvaluateErrorKind::CannotGetProperties(kind) => {
+                    write!(f, "Cannot get properties on variable of kind {kind:?}")
                 }
                 EvaluateErrorKind::UninitializedVariable { name } => {
                     write!(
                         f,
-                        "Tried to access an uninitialized variable with name {}",
-                        name
+                        "Tried to access an uninitialized variable with name {name}",
                     )
                 }
+                EvaluateErrorKind::CannotIndexInto(kind) => {
+                    write!(f, "Cannot index into variable of kind {kind:?}")
+                }
+                EvaluateErrorKind::NotPositiveIntegerOperand {
+                    operator,
+                    left_ty,
+                    right_ty,
+                } => write!(
+                    f,
+                    "Binary operation of type `{operator:?}` on types `{left_ty:?}`, `{right_ty:?}` requires a positive, non negative integer"
+                ),
             }
         }
     }
@@ -859,11 +889,14 @@ pub mod access_error {
     #[derive(Debug, Clone)]
     pub enum AccessError {
         OutOfBounds {
-            tried: String,
-            max: usize,
+            tried: f64,
+            len: usize,
         },
         NonIntegerIndex {
-            tried: String,
+            tried: f64,
+        },
+        InccorrectIndexKind {
+            tried_kind: LoxVarKind,
         },
         NonExistentField {
             name: String,
@@ -871,6 +904,9 @@ pub mod access_error {
         IncorrectType {
             expected: LoxVarKind,
             got: LoxVarKind,
+        },
+        CannotSetProperties {
+            kind: LoxVarKind,
         },
     }
 
@@ -881,6 +917,8 @@ pub mod access_error {
                 AccessError::NonIntegerIndex { .. } => Severity::Error,
                 AccessError::NonExistentField { .. } => Severity::Error,
                 AccessError::IncorrectType { .. } => Severity::Error,
+                AccessError::InccorrectIndexKind { .. } => Severity::Error,
+                AccessError::CannotSetProperties { .. } => Severity::Error,
             }
         }
     }
@@ -892,6 +930,8 @@ pub mod access_error {
                 AccessError::NonIntegerIndex { .. } => ErrorCode::NonIntegerIndex,
                 AccessError::NonExistentField { .. } => ErrorCode::NonExistentField,
                 AccessError::IncorrectType { .. } => ErrorCode::IncorrectType,
+                AccessError::InccorrectIndexKind { .. } => ErrorCode::IncorrectIndexKind,
+                AccessError::CannotSetProperties { .. } => ErrorCode::CannotSetProperties,
             }
         }
     }
@@ -899,21 +939,37 @@ pub mod access_error {
     impl Display for AccessError {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             match self {
-                AccessError::OutOfBounds { tried, max } => {
-                    write!(f, "Index {} out of bounds. Max index: {}", tried, max)
+                AccessError::OutOfBounds { tried, len } => {
+                    write!(
+                        f,
+                        "{}",
+                        match (tried.is_sign_positive(), len) {
+                            (false, _) => format!("Index `{}` must not be negative", tried),
+                            (true, 0) => format!("Cannot index into an empty list"),
+                            (true, l) =>
+                                format!("Index `{}` out of bounds. Max index: `{}`", tried, l - 1),
+                        }
+                    )
                 }
                 AccessError::NonIntegerIndex { tried } => {
-                    write!(f, "Index {} is not an integer", tried)
+                    write!(f, "Index `{}` must be a non-negative integer", tried)
                 }
                 AccessError::NonExistentField { name } => {
-                    write!(f, "Field {} does not exist", name)
+                    write!(f, "Field `{}` does not exist", name)
                 }
                 AccessError::IncorrectType { expected, got } => {
                     write!(
                         f,
-                        "Incorrect type for property: expected {:?}, got {:?}",
+                        "Incorrect type for property: expected `{:?}`, got `{:?}`",
                         expected, got
                     )
+                }
+                AccessError::InccorrectIndexKind { tried_kind } => write!(
+                    f,
+                    "Cannot index into this object with a value of kind `{tried_kind:?}`"
+                ),
+                AccessError::CannotSetProperties { kind } => {
+                    write!(f, "Cannot set properties on a vale of kind `{kind:?}`")
                 }
             }
         }
