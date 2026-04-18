@@ -825,6 +825,13 @@ impl<'input> Mul for &'input LoxVar {
                     return Err((self, rhs, BinErrReason::NotPositiveInteger));
                 },
             ))),
+            (LoxVar::Number(n), LoxVar::String(s)) => Ok(LoxVar::String(s.to_owned().repeat(
+                if n.is_sign_positive() && n.is_finite() && n.fract() == 0.0 {
+                    *n as usize
+                } else {
+                    return Err((self, rhs, BinErrReason::NotPositiveInteger));
+                },
+            ))),
             (LoxVar::List(l), LoxVar::Number(n)) => {
                 Ok(LoxVar::List(Rc::new(RefCell::new(LoxList::new(
                     match if n.is_sign_positive() && n.is_finite() && n.fract() == 0.0 {
