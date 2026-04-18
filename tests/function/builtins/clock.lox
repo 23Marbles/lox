@@ -1,0 +1,11 @@
+var t1 = clock();
+var t2 = clock();
+
+assertEq(type(t1), "Number");
+assertEq(type(t2), "Number");
+
+// should be monotonic-ish
+assert(t2 >= t1);
+
+// should be positive (after 1970)
+assert(t1 > 0);

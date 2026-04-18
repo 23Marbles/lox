@@ -1,0 +1,6 @@
+var t1 = clock();
+sleep(0.05);
+var t2 = clock();
+
+assert(t2 >= t1);
+assert((t2 - t1) >= 0); // loose check (timing is unreliable)

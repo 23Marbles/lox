@@ -1,0 +1,8 @@
+assertEq(string(123), "123");
+assertEq(string(3.5), "3.5");
+assertEq(string(true), "true");
+assertEq(string(false), "false");
+assertEq(string(nil), "nil");
+
+var l = [1, 2];
+assertEq(type(string(l)), "String");

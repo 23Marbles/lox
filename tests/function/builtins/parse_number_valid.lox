@@ -1,0 +1,5 @@
+assertEq(parseNumber("0"), 0);
+assertEq(parseNumber("42"), 42);
+assertEq(parseNumber("3.14"), 3.14);
+assertEq(parseNumber("-5"), -5);
+assertEq(parseNumber("1e2"), 100);

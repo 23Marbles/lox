@@ -1,0 +1,2 @@
+printErr("hello"); // prints: hello
+assert(true); // if we reached here, it worked

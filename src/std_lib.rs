@@ -202,6 +202,81 @@ pub fn default_lib() -> Vec<(&'static str, Rc<dyn LoxCallable>)> {
                 arity: 1,
             }),
         ),
+        (
+            "assert",
+            Rc::new(NativeFunc {
+                func: |_, args| match args.get(0).ok_or(RuntimeError::InternalFunctionError {
+                    msg: "Expected an argument".to_string(),
+                    code: ErrorCode::IncorrectArgType,
+                    sev: Severity::Error,
+                })? {
+                    LoxVar::Uninitialized => Err(RuntimeError::InternalFunctionError {
+                        msg: "Cannot read from uninitialized variable".to_string(),
+                        code: ErrorCode::IncorrectArgType,
+                        sev: Severity::Error,
+                    }),
+                    LoxVar::Bool(b) => {
+                        if *b {
+                            Ok(LoxVar::Nil)
+                        } else {
+                            Err(RuntimeError::InternalFunctionError {
+                                msg: "Assertion failed".to_string(),
+                                code: ErrorCode::AssertionFailed,
+                                sev: Severity::Error,
+                            })
+                        }
+                    }
+                    _ => Err(RuntimeError::InternalFunctionError {
+                        msg: "Expected a bool".to_string(),
+                        code: ErrorCode::IncorrectArgType,
+                        sev: Severity::Error,
+                    }),
+                },
+                signature: "assert(bool) -> nil",
+                arity: 1,
+            }),
+        ),
+        (
+            "assertEq",
+            Rc::new(NativeFunc {
+                func: |_, args| match (
+                    args.get(0).ok_or(RuntimeError::InternalFunctionError {
+                        msg: "Expected an argument".to_string(),
+                        code: ErrorCode::IncorrectArgType,
+                        sev: Severity::Error,
+                    })?,
+                    args.get(1).ok_or(RuntimeError::InternalFunctionError {
+                        msg: "Expected an argument".to_string(),
+                        code: ErrorCode::IncorrectArgType,
+                        sev: Severity::Error,
+                    })?,
+                ) {
+                    (LoxVar::Uninitialized, _) => Err(RuntimeError::InternalFunctionError {
+                        msg: "Cannot read from uninitialized variable".to_string(),
+                        code: ErrorCode::IncorrectArgType,
+                        sev: Severity::Error,
+                    }),
+                    (_, LoxVar::Uninitialized) => Err(RuntimeError::InternalFunctionError {
+                        msg: "Cannot read from uninitialized variable".to_string(),
+                        code: ErrorCode::IncorrectArgType,
+                        sev: Severity::Error,
+                    }),
+                    (l, r) => {
+                        if l == r {
+                            Ok(LoxVar::Nil)
+                        } else {
+                            Err(RuntimeError::InternalFunctionError {
+                                msg: format!("Assert Eq failed. left: `{l}` right: `{r}`"),
+                                code: ErrorCode::AssertionFailed,
+                                sev: Severity::Error,
+                            })
+                        }
+                    }
+                },
+                signature: "assertEq(any, any) -> nil",
+                arity: 2,
+            }),
+        ),
     ]
 }
 

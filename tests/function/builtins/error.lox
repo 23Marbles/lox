@@ -1,0 +1,7 @@
+fun test_error() {
+    error("boom");
+    return 123; // unreachable
+}
+
+// expect this to fail
+test_error(); // error: 255

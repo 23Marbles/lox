@@ -1,0 +1,17 @@
+assertEq(type(123), "Number");
+assertEq(type(1.5), "Number");
+assertEq(type(true), "Bool");
+assertEq(type(false), "Bool");
+assertEq(type("abc"), "String");
+assertEq(type(nil), "Nil");
+
+var l = [];
+assertEq(type(l), "List");
+
+fun f() {}
+assertEq(type(f), "Callable");
+
+class A {}
+var a = A();
+assertEq(type(A), "Class");
+assertEq(type(a), "Instance");

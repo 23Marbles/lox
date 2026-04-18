@@ -40,7 +40,6 @@ pub enum ErrorCode {
     UninitializedVariable = 30,
     IncorrectArgType = 31,
     CouldNotConvert = 32,
-    UserForcedError = 33,
     OutOfBounds = 34,
     NonIntegerIndex = 35,
     NonPositiveIntegerOperand = 36,
@@ -49,6 +48,8 @@ pub enum ErrorCode {
     IncorrectIndexKind = 39,
     CannotSetProperties = 40,
     PopEmptyList = 41,
+    AssertionFailed = 254,
+    UserForcedError = 255,
 }
 
 impl Display for ErrorCode {
@@ -124,7 +125,6 @@ impl TryFrom<u8> for ErrorCode {
             30 => Ok(Self::UninitializedVariable),
             31 => Ok(Self::IncorrectArgType),
             32 => Ok(Self::CouldNotConvert),
-            33 => Ok(Self::UserForcedError),
             34 => Ok(Self::OutOfBounds),
             35 => Ok(Self::NonIntegerIndex),
             36 => Ok(Self::NonPositiveIntegerOperand),
@@ -133,6 +133,8 @@ impl TryFrom<u8> for ErrorCode {
             39 => Ok(Self::IncorrectIndexKind),
             40 => Ok(Self::CannotSetProperties),
             41 => Ok(Self::PopEmptyList),
+            254 => Ok(Self::AssertionFailed),
+            255 => Ok(Self::UserForcedError),
             _ => Err(ErrorCodeFromStrErr::InvalidDiscriminant),
         }
     }

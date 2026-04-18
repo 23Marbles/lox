@@ -1,0 +1,1 @@
+parseNumber("  10"); // error: 32
