@@ -6,7 +6,7 @@ Implemented is a superset of the language described in the book where the extra 
 from the challenges in the book. The extra features are as follows:
 
 - [x] [UTF-8 string support](#types)
-- [ ] [List type](#list)
+- [x] [List type](#list)
 - [x] [`string` escape sequences](#string-escape-sequences)
 - [ ] [Comma expression](#binary-expression) - [Parsing Expressions](https://craftinginterpreters.com/parsing-expressions.html#challenges)
 - [x] [`%` operator](#binary-expression)
@@ -24,15 +24,15 @@ from the challenges in the book. The extra features are as follows:
 - [ ] [Blank identifier](#blank-identifier)
 - [x] [Error messages point to location of error in source code](#errors)
 - [x] [Runtime error message includes stack trace](#errors)
-- [ ] [`sleep` built-in function](#built-in-functions)
-- [ ] [`type` built-in function](#built-in-functions)
-- [ ] [`parseNumber` built-in function](#built-in-functions)
-- [ ] [`string` built-in function](#built-in-functions)
-- [ ] [`error` built-in function](#built-in-functions)
-- [ ] [`printerr` built-in function](#built-in-functions)
-- [ ] [`exit` built-in function](#built-in-functions)
+- [x] [`sleep` built-in function](#built-in-functions)
+- [x] [`type` built-in function](#built-in-functions)
+- [x] [`parseNumber` built-in function](#built-in-functions)
+- [x] [`string` built-in function](#built-in-functions)
+- [x] [`error` built-in function](#built-in-functions)
+- [x] [`printerr` built-in function](#built-in-functions)
+- [x] [`exit` built-in function](#built-in-functions)
 - [ ] [Command Line Arguments](#command-line-arguments)
-- [ ] Error productions for [binary expressions](#grammar) - [Parsing Expressions](https://craftinginterpreters.com/parsing-expressions.html#challenges)
+- [x] Error productions for [binary expressions](#grammar) - [Parsing Expressions](https://craftinginterpreters.com/parsing-expressions.html#challenges)
 - [ ] Displaying of evaluated expressions in REPL - [Statements and State](https://craftinginterpreters.com/statements-and-state.html#challenges)
 
 ## Types
