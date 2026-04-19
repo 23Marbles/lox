@@ -13,7 +13,7 @@ use std::{
 
 use libtest_with::{Failed, Measurement};
 use lox_runtime::{
-    Runner, SharedWriter,
+    Runner, RunnerOutput, SharedWriter,
     error_codes::{self, ErrorCode},
 };
 use regex::Regex;
@@ -241,16 +241,19 @@ fn read_file_expectation(path: &Path) -> Result<Expectation, Box<dyn Error>> {
 fn check_file(path: &Path, expectation: Expectation) -> Result<(), Failed> {
     let writer = SharedWriter::default();
 
-    let out = Runner::new_with_writers(Box::new(writer.clone()), Box::new(writer.clone()))
-        .with_globals(lox_runtime::std_lib::default_lib())
-        .run_file(path)
-        .map(|_| writer.read())
-        .map_err(|errs| {
-            errs.iter()
-                .map(|e| e.code.as_ref().expect("Should have a code assigned"))
-                .cloned()
-                .collect::<Vec<_>>()
-        });
+    let out = Runner::new_with_writers(
+        RunnerOutput::plain(Box::new(writer.clone())),
+        RunnerOutput::plain(Box::new(writer.clone())),
+    )
+    .with_globals(lox_runtime::std_lib::default_lib())
+    .run_file(path)
+    .map(|_| writer.read())
+    .map_err(|errs| {
+        errs.iter()
+            .map(|e| e.code.as_ref().expect("Should have a code assigned"))
+            .cloned()
+            .collect::<Vec<_>>()
+    });
 
     match out {
         Ok(out) => match expectation {
