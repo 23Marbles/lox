@@ -425,7 +425,7 @@ impl<'source> Parser<'source> {
     }
 
     fn assignment(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
-        let expr = self.logic_or()?;
+        let expr = self.ternary()?;
 
         if self.match_any([TokenKind::Equal]) {
             let equals = self.previous().clone();
@@ -462,6 +462,25 @@ impl<'source> Parser<'source> {
 
                 Err(err)
             }
+        } else {
+            Ok(expr)
+        }
+    }
+
+    fn ternary(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
+        let expr = self.logic_or()?;
+
+        if self.match_any([TokenKind::Question]) {
+            let left = self.expression()?;
+            self.expect(TokenKind::Colon)?;
+            // Following the spec
+            let right = self.ternary()?;
+
+            Ok(Expr::Ternary {
+                condition: Box::new(expr),
+                left: Box::new(left),
+                right: Box::new(right),
+            })
         } else {
             Ok(expr)
         }

@@ -280,6 +280,12 @@ pub mod expr {
             right: Box<Expr>,
         },
 
+        Ternary {
+            condition: Box<Expr>,
+            left: Box<Expr>,
+            right: Box<Expr>,
+        },
+
         /// Represents a function call expression in the AST. Contains a [`callee`][`Expr`] expression and a list of [`args`][`Expr`] expressions.
         Call {
             /// The expression being called.
@@ -421,6 +427,11 @@ pub mod expr {
                         .collect::<Vec<_>>()
                         .join(", ")
                 ),
+                Expr::Ternary {
+                    condition,
+                    left,
+                    right,
+                } => condition.string() + " ? " + &left.string() + " : " + &right.string(),
             }
         }
     }
@@ -479,6 +490,11 @@ pub mod expr {
                         .collect::<Vec<_>>()
                         .join(", ")
                 ),
+                Expr::Ternary {
+                    condition,
+                    left,
+                    right,
+                } => write!(f, "(ternary ({condition} {left} {right}))"),
             }
         }
     }

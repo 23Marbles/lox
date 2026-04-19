@@ -31,7 +31,7 @@ from the challenges in the book. The extra features are as follows:
 - [x] [`error` built-in function](#built-in-functions)
 - [x] [`printerr` built-in function](#built-in-functions)
 - [x] [`exit` built-in function](#built-in-functions)
-- [ ] [Command Line Arguments](#command-line-arguments)
+- [x] [Command Line Arguments](#command-line-arguments)
 - [x] Error productions for [binary expressions](#grammar) - [Parsing Expressions](https://craftinginterpreters.com/parsing-expressions.html#challenges)
 - [ ] Displaying of evaluated expressions in REPL - [Statements and State](https://craftinginterpreters.com/statements-and-state.html#challenges)
 

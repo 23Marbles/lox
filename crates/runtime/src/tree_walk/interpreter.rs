@@ -143,9 +143,7 @@ impl Interpreter {
 
     /// Returns a new interpreter with the given globals.
     pub fn with_globals(mut self, globals: Vec<(&'static str, LoxVar)>) -> Self {
-        self.env = Env::new_with_globals(
-            globals.to_vec(),
-        );
+        self.env = Env::new_with_globals(globals.to_vec());
         self
     }
 
@@ -724,6 +722,17 @@ impl Interpreter {
                     .into_iter()
                     .collect::<Result<Vec<_>, _>>()?,
             ))))),
+            Expr::Ternary {
+                condition,
+                left,
+                right,
+            } => {
+                if self.evaluate_expr(*condition)?.is_truthy() {
+                    self.evaluate_expr(*left)
+                } else {
+                    self.evaluate_expr(*right)
+                }
+            }
         }
     }
 }

@@ -176,6 +176,8 @@ impl<'source> Iterator for Scanner<'source> {
                 ';' => break 'scan self.make_token(TokenKind::Semicolon),
                 '*' => break 'scan self.make_token(TokenKind::Star),
                 '%' => break 'scan self.make_token(TokenKind::Percent),
+                '?' => break 'scan self.make_token(TokenKind::Question),
+                ':' => break 'scan self.make_token(TokenKind::Colon),
                 '!' => TokenKind::Bang,
                 '>' => TokenKind::Greater,
                 '<' => TokenKind::Less,
@@ -338,6 +340,8 @@ pub enum TokenKind {
     RightBrace,
     LeftBracket,
     RightBracket,
+    Question,
+    Colon,
     Comma,
     Dot,
     Minus,
@@ -441,6 +445,8 @@ impl Display for TokenKind {
             Percent => write!(f, "%"),
             LeftBracket => write!(f, "["),
             RightBracket => write!(f, "]"),
+            Question => write!(f, "?"),
+            Colon => write!(f, ":"),
         }
     }
 }

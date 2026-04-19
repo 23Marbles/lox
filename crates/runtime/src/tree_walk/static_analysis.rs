@@ -395,6 +395,16 @@ impl Resolver {
                 }
                 return;
             }
+            Expr::Ternary {
+                condition,
+                left,
+                right,
+            } => {
+                self.resolve_expr(condition);
+                self.resolve_expr(left);
+                self.resolve_expr(right);
+                return;
+            }
         };
 
         self.resolve_local(expr, name);
