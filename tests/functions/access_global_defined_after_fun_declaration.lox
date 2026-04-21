@@ -1,0 +1,15 @@
+var a;
+fun f() {
+  print a;
+}
+a = "global";
+f(); // prints: global
+
+var b;
+{
+  fun f() {
+    print b;
+  }
+  b = "local";
+  f(); // prints: local
+}

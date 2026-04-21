@@ -1,0 +1,9 @@
+// error: 45
+// error: 45
+fun f(x, y, z, x, y) {
+  _ = x;
+  _ = y;
+  _ = z;
+}
+
+_ = f;

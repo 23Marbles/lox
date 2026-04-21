@@ -1,0 +1,20 @@
+{
+  fun isEven(n) {
+    if (n == 0) {
+      return true;
+    }
+    // lint warning: 'isOdd' has not been declared
+    // error: 'isOdd' has not been declared
+    return isOdd(n - 1);
+  }
+
+  fun isOdd(n) {
+    if (n == 0) {
+      return false;
+    }
+    return isEven(n - 1);
+  }
+  _ = isOdd;
+
+  print isEven(3);
+}

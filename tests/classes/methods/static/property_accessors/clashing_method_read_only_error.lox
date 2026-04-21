@@ -1,0 +1,9 @@
+class Foo {
+  static get bar() {}
+  bar() {}
+
+  // error: 45
+  static bar() {}
+}
+
+_ = Foo;

@@ -1,0 +1,6 @@
+class Foo {
+  // error: 48
+  static init() {}
+}
+
+_ = Foo;

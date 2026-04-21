@@ -1,0 +1,10 @@
+class Foo {
+  // error: 43
+  set bar(_) {}
+  static bar() {}
+
+  // error: 45
+  bar() {}
+}
+
+_ = Foo;

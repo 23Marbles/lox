@@ -1,0 +1,11 @@
+class Foo {
+  get bar() {}
+
+  // error: 47
+  set bar(x, y) {
+    _ = x;
+    _ = y;
+  }
+}
+
+_ = Foo;

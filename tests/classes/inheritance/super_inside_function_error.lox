@@ -1,0 +1,6 @@
+fun printThis() {
+  // error: 17
+  print super.method;
+}
+
+_ = printThis;

@@ -1,0 +1,7 @@
+class Math {
+  static get PI() {
+    return 3;
+  }
+}
+
+Math.PI = 2; // error: 44

@@ -1,0 +1,1 @@
+1(); // error: 'number' value is not callable

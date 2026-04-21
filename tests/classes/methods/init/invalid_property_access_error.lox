@@ -1,0 +1,5 @@
+class Foo {
+  init() {}
+}
+// error: 29
+Foo().init.x;

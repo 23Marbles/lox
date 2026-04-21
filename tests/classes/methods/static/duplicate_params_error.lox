@@ -1,0 +1,11 @@
+// error: 45
+// error: 45
+class Foo {
+  static bar(x, y, z, x, y) {
+    _ = x;
+    _ = y;
+    _ = z;
+  }
+}
+
+_ = Foo;

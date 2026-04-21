@@ -1,0 +1,7 @@
+// error: 45
+// error: 45
+fun(x, y, z, x, y) {
+  _ = x;
+  _ = y;
+  _ = z;
+};

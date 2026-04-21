@@ -1,0 +1,5 @@
+var Superclass = "not a class";
+
+// error: 19
+class Subclass < Superclass {}
+_ = Subclass;

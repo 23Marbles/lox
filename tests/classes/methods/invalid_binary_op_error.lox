@@ -1,0 +1,4 @@
+class Foo {
+  bar() {}
+}
+Foo().bar - 1; // error: 22

@@ -1,0 +1,11 @@
+class Superclass {}
+
+class Subclass < Superclass {
+  method() {
+    // error: 28
+    super.method();
+  }
+}
+
+var subclass = Subclass();
+subclass.method();

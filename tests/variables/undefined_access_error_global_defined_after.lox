@@ -1,0 +1,4 @@
+var a;
+// lint hint: 'a' has not been defined
+print a; // error: 30
+a = 1;

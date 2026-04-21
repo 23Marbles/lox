@@ -8,7 +8,7 @@ from the challenges in the book. The extra features are as follows:
 - [x] [UTF-8 string support](#types)
 - [x] [List type](#list)
 - [x] [`string` escape sequences](#string-escape-sequences)
-- [ ] [Comma expression](#binary-expression) - [Parsing Expressions](https://craftinginterpreters.com/parsing-expressions.html#challenges)
+- [x] [Comma expression](#binary-expression) - [Parsing Expressions](https://craftinginterpreters.com/parsing-expressions.html#challenges)
 - [x] [`%` operator](#binary-expression)
 - [x] [`<`, `<=`, `>`, `>=` operators for strings](#binary-expression) - [Evaluating Expressions](https://craftinginterpreters.com/evaluating-expressions.html#challenges)
 - [x] [Division by zero handling](#binary-expression) - [Evaluating Expressions](https://craftinginterpreters.com/evaluating-expressions.html#challenges)

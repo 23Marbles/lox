@@ -1,0 +1,24 @@
+class Superclass {
+  static _() {
+    this.field = nil; // Silences "'...' class has no property 'field'" lint warning
+  }
+
+  static printFieldSuperclass() {
+    print this.field;
+  }
+}
+
+class Subclass < Superclass {
+  static setFieldSubclass() {
+    this.field = "field value set by Subclass method";
+  }
+
+  static printFieldSubclass() {
+    print this.field;
+  }
+}
+
+Subclass.setFieldSubclass();
+Subclass.printFieldSubclass(); // prints: field value set by Subclass method
+Subclass.printFieldSuperclass(); // prints: field value set by Subclass method
+print Subclass.field; // prints: field value set by Subclass method

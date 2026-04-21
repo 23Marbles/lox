@@ -1,0 +1,10 @@
+class Foo {
+  static get bar() {}
+
+  // error: 43
+  set bar(value) {
+    this._bar = value;
+  }
+}
+
+_ = Foo;

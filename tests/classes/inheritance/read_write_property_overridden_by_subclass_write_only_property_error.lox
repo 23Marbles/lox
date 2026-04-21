@@ -1,0 +1,12 @@
+class Superclass {
+  set property(_) {}
+
+  get property() {}
+}
+
+class Subclass < Superclass {
+  // error: 43
+  set property(_) {}
+}
+
+_ = Subclass;

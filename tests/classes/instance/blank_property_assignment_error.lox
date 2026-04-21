@@ -1,0 +1,7 @@
+class Foo {
+  init() {
+    // error: 42
+    this._ = 2;
+  }
+}
+Foo();

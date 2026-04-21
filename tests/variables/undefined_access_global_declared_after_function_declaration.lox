@@ -1,0 +1,6 @@
+fun f() {
+  print a; // error: 30
+}
+
+var a;
+f();

@@ -246,6 +246,11 @@ pub mod expr {
         /// Represents a grouping expression in the AST. Contains an [`Expr`] expression.
         Grouping(Box<Expr>),
 
+        Comma {
+            redundant: Vec<Expr>,
+            result: Box<Expr>,
+        },
+
         /// Represents a variable expression in the AST. Contains a `name` and an optional `distance` for lookup.
         /// This is set in the resolver and used during evaluation.
         Variable {
@@ -432,6 +437,15 @@ pub mod expr {
                     left,
                     right,
                 } => condition.string() + " ? " + &left.string() + " : " + &right.string(),
+                Expr::Comma { redundant, result } => {
+                    redundant
+                        .iter()
+                        .map(|ex| ex.string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                        + ", "
+                        + &result.string()
+                }
             }
         }
     }
@@ -483,18 +497,38 @@ pub mod expr {
                 Expr::Super { .. } => write!(f, "super"),
                 Expr::List { parts, .. } => write!(
                     f,
-                    "([{}])",
-                    parts
-                        .iter()
-                        .map(|ex| ex.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
+                    "(list{})",
+                    if !parts.is_empty() {
+                        " ".to_string()
+                            + &parts
+                                .iter()
+                                .map(|ex| ex.to_string())
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                    } else {
+                        "".to_string()
+                    }
                 ),
                 Expr::Ternary {
                     condition,
                     left,
                     right,
                 } => write!(f, "(ternary ({condition} {left} {right}))"),
+                Expr::Comma { redundant, result } => write!(
+                    f,
+                    "(comma {}{})",
+                    if !redundant.is_empty() {
+                        redundant
+                            .iter()
+                            .map(|ex| ex.to_string())
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                            + ", "
+                    } else {
+                        "".to_string()
+                    },
+                    result
+                ),
             }
         }
     }

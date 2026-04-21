@@ -1,0 +1,8 @@
+class Class {
+  method() {
+    // error: 17
+    super.method();
+  }
+}
+
+_ = Class;

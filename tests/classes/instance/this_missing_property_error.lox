@@ -1,0 +1,9 @@
+class Foo {
+  bar() {
+    // error: 28
+    this.baz();
+  }
+}
+
+var foo = Foo();
+foo.bar();

@@ -663,22 +663,6 @@ impl LoxVar {
     pub fn is_uninitialized(&self) -> bool {
         matches!(self, LoxVar::Uninitialized)
     }
-
-    #[cfg(feature = "implicit_converions")]
-    /// Tries to convert this variable to the specified kind, returning `Some` if successful, `None` otherwise.
-    pub fn try_convert(&self, to: LoxVarKind) -> Option<LoxVar> {
-        match to {
-            LoxVarKind::Nil => Some(LoxVar::Nil),
-            LoxVarKind::Bool => Some(LoxVar::Bool(self.is_truthy())),
-            LoxVarKind::Number => match self {
-                LoxVar::Nil => None,
-                LoxVar::Bool(b) => Some(LoxVar::Number(*b as u8 as f64)),
-                LoxVar::Number(n) => Some(LoxVar::Number(*n)),
-                LoxVar::String(s) => Some(LoxVar::Number(s.parse().ok()?)),
-            },
-            LoxVarKind::String => Some(LoxVar::String(self.to_owned())),
-        }
-    }
 }
 
 fn unescape(input: &str) -> String {
@@ -807,8 +791,6 @@ impl<'input> Add for &'input LoxVar {
                         .collect::<Vec<_>>(),
                 )))))
             }
-            #[cfg(feature = "implicit_converions")]
-            (LoxVar::String(s), other) => Ok(LoxVar::String(s.to_owned() + &other.to_string())),
             (l, r) => Err((l, r, BinErrReason::Incompatible)),
         }
     }

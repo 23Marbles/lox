@@ -1,0 +1,8 @@
+class Foo {
+  get bar() {}
+
+  // error: 47
+  set bar() {}
+}
+
+_ = Foo;

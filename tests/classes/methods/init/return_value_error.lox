@@ -1,0 +1,11 @@
+class Foo {
+  init() {
+    fun() {
+      return 1;
+    }();
+    // error: 14
+    return 2;
+  }
+}
+
+_ = Foo;

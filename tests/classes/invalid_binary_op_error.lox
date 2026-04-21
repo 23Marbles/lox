@@ -1,0 +1,2 @@
+class Foo {}
+Foo - 1; // error: 22

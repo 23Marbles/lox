@@ -50,7 +50,6 @@ pub mod scan_err {
     pub enum ScanErrorKind {
         UnexpectedCharacter(char),
         UnterminatedString,
-        #[cfg(feature = "inline_comments")]
         UnterminatedComment,
     }
 
@@ -61,7 +60,6 @@ pub mod scan_err {
             match self {
                 ScanErrorKind::UnexpectedCharacter(_) => Severity::Error,
                 ScanErrorKind::UnterminatedString => Severity::Error,
-                #[cfg(feature = "inline_comments")]
                 ScanErrorKind::UnterminatedComment => Severity::Error,
             }
         }
@@ -72,7 +70,6 @@ pub mod scan_err {
             match self {
                 ScanErrorKind::UnexpectedCharacter(_) => ErrorCode::UnexpectedCharacter,
                 ScanErrorKind::UnterminatedString => ErrorCode::UnterminatedString,
-                #[cfg(feature = "inline_comments")]
                 ScanErrorKind::UnterminatedComment => ErrorCode::UnterminatedComment,
             }
         }
@@ -83,7 +80,6 @@ pub mod scan_err {
             match self {
                 ScanErrorKind::UnexpectedCharacter(c) => write!(f, "Unexpected character '{c}'"),
                 ScanErrorKind::UnterminatedString => write!(f, "Unterminated string"),
-                #[cfg(feature = "inline_comments")]
                 ScanErrorKind::UnterminatedComment => write!(f, "Unterminated comment"),
             }
         }
@@ -668,7 +664,6 @@ pub mod eval_err {
             from: LoxVarKind,
             to: LoxVarKind,
         },
-        #[cfg(feature = "div_zero_error")]
         DivisionByZero,
         CannotGetProperties(LoxVarKind),
         CannotIndexInto(LoxVarKind),
@@ -692,7 +687,6 @@ pub mod eval_err {
                 EvaluateErrorKind::IncompatableConversion { .. } => {
                     ErrorCode::IncompatibleConversion
                 }
-                #[cfg(feature = "div_zero_error")]
                 EvaluateErrorKind::DivisionByZero => ErrorCode::DivisionByZero,
                 EvaluateErrorKind::CannotGetProperties(_) => ErrorCode::CannotGetProperties,
                 EvaluateErrorKind::UninitializedVariable { .. } => ErrorCode::UninitializedVariable,
@@ -713,7 +707,6 @@ pub mod eval_err {
                 EvaluateErrorKind::NonCallable { .. } => Severity::Error,
                 EvaluateErrorKind::IncorrectArity { .. } => Severity::Error,
                 EvaluateErrorKind::IncompatableConversion { .. } => Severity::Error,
-                #[cfg(feature = "div_zero_error")]
                 EvaluateErrorKind::DivisionByZero => Severity::Warning,
                 EvaluateErrorKind::CannotGetProperties(_) => Severity::Error,
                 EvaluateErrorKind::UninitializedVariable { .. } => Severity::Warning,
@@ -766,7 +759,6 @@ pub mod eval_err {
                 EvaluateErrorKind::IncompatableConversion { from, to } => {
                     write!(f, "Cannot coerce `{from:?}` to `{to:?}`")
                 }
-                #[cfg(feature = "div_zero_error")]
                 EvaluateErrorKind::DivisionByZero => write!(f, "Tried to divide by zero"),
                 EvaluateErrorKind::CannotGetProperties(kind) => {
                     write!(f, "Cannot get properties on variable of kind {kind:?}")

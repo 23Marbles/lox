@@ -77,20 +77,6 @@ pub fn run_prompt(globals: Vec<(&'static str, LoxVar)>) {
             _ => {}
         }
 
-        #[cfg(feature = "implicit_semicolons")]
-        {
-            todo!("feature = "implicit_semicolons": needs more work");
-            if line_buf.len() > 2
-                && line_buf
-                    .char_indices()
-                    .nth_back(2)
-                    .expect("Already checked len is long enough")
-                    .1
-                    != ';'
-            {
-                line_buf.insert(line_buf.len() - 2, ';');
-            }
-        }
         #[cfg(debug_assertions)]
         if line_buf.trim() == "vars" {
             use crate::tree_walk::interpreter::env::EnvironmentImpl as _;

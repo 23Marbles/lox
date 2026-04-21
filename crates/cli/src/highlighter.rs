@@ -62,7 +62,7 @@ fn depth(source: &str) -> Result<usize, ()> {
 }
 
 impl Highlighter for SyntaxHelper {
-    fn highlight<'l>(&self, line: &'l str, _pos: usize) -> Cow<'l, str> {
+    /*fn highlight<'l>(&self, line: &'l str, _pos: usize) -> Cow<'l, str> {
         static mut I: usize = 0;
         unsafe { I += 1 }
         eprintln!("Refreshing {}", unsafe { I });
@@ -98,7 +98,7 @@ impl Highlighter for SyntaxHelper {
         out.push_str(&line[last_end..]);
 
         Cow::Owned(out)
-    }
+    }*/
 }
 
 fn push_coloured(out: &mut String, text: &str, color: u8) {

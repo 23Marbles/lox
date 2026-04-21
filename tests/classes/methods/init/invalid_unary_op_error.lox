@@ -1,0 +1,4 @@
+class Foo {
+  init() {}
+}
+-Foo().init; // error: 21

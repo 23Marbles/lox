@@ -427,7 +427,6 @@ impl Interpreter {
                         EvaluateError::bin_eval_error(span, Minus, l, r, reason).into()
                     }),
                     Slash => {
-                        #[cfg(feature = "div_zero_error")]
                         if right_var == LoxVar::Number(0.) {
                             return Err(EvaluateError::new(
                                 EvaluateErrorKind::DivisionByZero,
@@ -732,6 +731,12 @@ impl Interpreter {
                 } else {
                     self.evaluate_expr(*right)
                 }
+            }
+            Expr::Comma { redundant, result } => {
+                for expr in redundant {
+                    self.evaluate_expr(expr)?;
+                }
+                self.evaluate_expr(*result)
             }
         }
     }

@@ -1,0 +1,10 @@
+class Superclass {}
+
+class Subclass < Superclass {
+  static method() {
+    // error: 28
+    super.method();
+  }
+}
+
+Subclass.method();

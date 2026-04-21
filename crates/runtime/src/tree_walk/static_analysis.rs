@@ -405,6 +405,13 @@ impl Resolver {
                 self.resolve_expr(right);
                 return;
             }
+            Expr::Comma { redundant, result } => {
+                for expr in redundant {
+                    self.resolve_expr(expr);
+                }
+                self.resolve_expr(result.as_mut());
+                return;
+            }
         };
 
         self.resolve_local(expr, name);

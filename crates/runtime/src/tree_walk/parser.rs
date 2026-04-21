@@ -171,7 +171,14 @@ impl<'source> Parser<'source> {
             None
         };
 
-        self.expect(TokenKind::LeftBrace)?;
+        self.consume(
+            TokenKind::LeftBrace,
+            ParseError::UnexpectedTokenKind {
+                got: self.peek().kind,
+                expected: [TokenKind::LeftBrace, TokenKind::Less].to_vec(),
+                span: self.peek().span.clone(),
+            },
+        )?;
 
         let mut methods: Vec<Stmt> = Vec::new();
 
@@ -421,7 +428,25 @@ impl<'source> Parser<'source> {
     }
 
     fn expression(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
-        self.assignment()
+        self.comma()
+    }
+
+    fn comma(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
+        let mut exprs = vec![self.assignment()?];
+
+        while self.match_any([TokenKind::Comma]) {
+            exprs.push(self.assignment()?);
+        }
+
+        if exprs.len() == 1 {
+            Ok(exprs.pop().unwrap())
+        } else {
+            let last = exprs.pop().unwrap();
+            Ok(Expr::Comma {
+                redundant: exprs,
+                result: Box::new(last),
+            })
+        }
     }
 
     fn assignment(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
@@ -625,7 +650,7 @@ impl<'source> Parser<'source> {
 
         if !self.check(TokenKind::RightParen) {
             loop {
-                args.push(self.expression()?);
+                args.push(self.assignment()?);
 
                 if args.len() > u8::MAX as usize {
                     offending_spans.push(self.previous().span.clone());
@@ -670,12 +695,10 @@ impl<'source> Parser<'source> {
                 self.advance();
                 Ok(Expr::Literal(Literal::Nil))
             }
-            #[cfg(feature = "nan_inf_consts")]
             NaN => {
                 self.advance();
                 Ok(Expr::Literal(Literal::Number(f64::NAN)))
             }
-            #[cfg(feature = "nan_inf_consts")]
             INF => {
                 self.advance();
                 Ok(Expr::Literal(Literal::Number(f64::INFINITY)))
@@ -771,7 +794,7 @@ impl<'source> Parser<'source> {
 
         if !self.check(TokenKind::RightBracket) {
             'collect_arguments: loop {
-                parts.push(self.expression()?);
+                parts.push(self.assignment()?);
 
                 if !self.match_any([TokenKind::Comma]) {
                     break 'collect_arguments;

@@ -195,8 +195,10 @@ impl<'source> Iterator for Scanner<'source> {
                                 .ok()?,
                         );
                     }
-                    if let Some(key) = TokenKind::search_keyword_str(&string) {
-                        break 'scan self.make_token(key);
+                    if let Some(keyword) = TokenKind::search_keyword_str(&string) {
+                        break 'scan self.make_token(keyword);
+                    } else if &string == "_" {
+                        break 'scan self.make_token(TokenKind::UnderScore);
                     } else {
                         break 'scan self.make_token(TokenKind::Identifier);
                     }
@@ -256,33 +258,26 @@ impl<'source> Iterator for Scanner<'source> {
                         return self.next();
                     } else {
                         {
-                            #[cfg(feature = "inline_comments")]
                             {
                                 if self.advance_if_next('*') {
                                     loop {
                                         if !self.is_at_end() {
                                             let c = self.advance();
-                                            if c == '*' {
+                                            if c == Some('*') {
                                                 if self.advance_if_next('/') {
                                                     return self.next();
                                                 }
                                             }
                                         } else {
-                                            return Some(Err(self.error(
-                                                ScanErrorKind::UnterminatedComment,
-                                                Some(
-                                                    self.pos(self.start)
-                                                        .span_to(self.pos(self.current)),
-                                                ),
-                                            )));
+                                            return Some(Err(
+                                                self.error(ScanErrorKind::UnterminatedComment)
+                                            ));
                                         }
                                     }
                                 } else {
                                     break 'scan self.make_token(current_token_type);
                                 }
                             }
-                            #[cfg(not(feature = "inline_comments"))]
-                            break 'scan self.make_token(current_token_type);
                         }
                     }
                 }
@@ -350,6 +345,7 @@ pub enum TokenKind {
     Slash,
     Star,
     Percent,
+    UnderScore,
 
     // One or two character tokens.
     Bang,
@@ -383,11 +379,8 @@ pub enum TokenKind {
     True,
     Var,
     While,
-    #[cfg(feature = "nan_inf_consts")]
     NaN,
-    #[cfg(feature = "nan_inf_consts")]
     INF,
-    #[cfg(feature = "break")]
     Break,
 
     Eof,
@@ -436,17 +429,15 @@ impl Display for TokenKind {
             String => write!(f, "\""),
             Number => write!(f, "num"),
             Eof => write!(f, "\0"),
-            #[cfg(feature = "break")]
             Break => write!(f, "break"),
-            #[cfg(feature = "nan_inf_consts")]
             NaN => write!(f, "NaN"),
-            #[cfg(feature = "nan_inf_consts")]
             INF => write!(f, "INF"),
             Percent => write!(f, "%"),
             LeftBracket => write!(f, "["),
             RightBracket => write!(f, "]"),
             Question => write!(f, "?"),
             Colon => write!(f, ":"),
+            UnderScore => write!(f, "_"),
         }
     }
 }
@@ -471,16 +462,14 @@ impl TokenKind {
             "true" => Some(True),
             "var" => Some(Var),
             "while" => Some(While),
-            #[cfg(feature = "break")]
             "break" => Some(Break),
-            #[cfg(feature = "nan_inf_consts")]
             "NaN" => Some(NaN),
-            #[cfg(feature = "nan_inf_consts")]
             "INF" => Some(INF),
             _ => None,
         }
     }
 
+    /// Checks if the tokenkind is a keyword
     pub fn is_keyword(&self) -> bool {
         match self {
             TokenKind::And
@@ -500,6 +489,7 @@ impl TokenKind {
         }
     }
 
+    /// Checks if the tokenkind is a literal
     pub fn is_literal(&self) -> bool {
         match self {
             TokenKind::String
@@ -516,59 +506,113 @@ impl TokenKind {
 mod tests {
     use super::*;
 
+    const TEST_FILE_ID: FileIdent = FileIdent::new(0);
+
+    macro_rules! test_scanner {
+        ($source:literal) => {
+            Scanner {
+                file_id: TEST_FILE_ID,
+                source: $source,
+                start: 0,
+                current: 0,
+                eof: false,
+            }
+        };
+    }
+
+    macro_rules! test_token {
+        ($kind:expr, $lexme:literal, $start:literal..$end:literal) => {
+            Token {
+                kind: $kind,
+                lexeme: $lexme,
+                span: Span::new($start..$end, TEST_FILE_ID),
+            }
+        };
+    }
+
+    macro_rules! scan_test {
+        ($source:literal, [$($expected:expr),* $(,)?]) => {{
+            let mut scanner = test_scanner!($source);
+            let tokens = scanner.scan_tokens().unwrap();
+            let expected = vec![$($expected),*];
+
+            assert_eq!(
+                tokens.len(),
+                expected.len(),
+                "token count mismatch\nactual: {:#?}\nexpected: {:#?}",
+                tokens,
+                expected
+            );
+
+            for (i, (actual, expected)) in tokens.iter().zip(expected.iter()).enumerate() {
+                assert_eq!(
+                    actual,
+                    expected,
+                    "mismatch at token index {}\nactual: {:#?}\nexpected: {:#?}",
+                    i,
+                    actual,
+                    expected
+                );
+            }
+        }};
+    }
+
+    #[test]
+    fn test_identifiers() {
+        scan_test!(
+            "_ __ __ident ident_ ident_ident _6 _7ident _ident6 7ident__ ident_6 ident_7_ident 6 7_ 6__7",
+            [
+                test_token!(TokenKind::UnderScore, "_", 0..1),
+                test_token!(TokenKind::Identifier, "__", 2..4),
+                test_token!(TokenKind::Identifier, "__ident", 5..12),
+                test_token!(TokenKind::Identifier, "ident_", 13..19),
+                test_token!(TokenKind::Identifier, "ident_ident", 20..31),
+                test_token!(TokenKind::Identifier, "_6", 32..34),
+                test_token!(TokenKind::Identifier, "_7ident", 35..42),
+                test_token!(TokenKind::Identifier, "_ident6", 43..50),
+                test_token!(TokenKind::Number, "7", 51..52),
+                test_token!(TokenKind::Identifier, "ident__", 52..59),
+                test_token!(TokenKind::Identifier, "ident_6", 60..67),
+                test_token!(TokenKind::Identifier, "ident_7_ident", 68..81),
+                test_token!(TokenKind::Number, "6", 82..83),
+                test_token!(TokenKind::Number, "7", 84..85),
+                test_token!(TokenKind::UnderScore, "_", 85..86),
+                test_token!(TokenKind::Number, "6", 87..88),
+                test_token!(TokenKind::Identifier, "__7", 88..91),
+                test_token!(TokenKind::Eof, "\0", 91..91),
+            ]
+        );
+    }
+
     #[test]
     fn test_eof_span() {
-        const FILE_ID: FileIdent = FileIdent::new(0);
-        let source = "hello";
-        let mut scanner = Scanner {
-            file_id: FILE_ID,
-            source,
-            start: 0,
-            current: 0,
-            eof: false,
-        };
+        let mut scanner = test_scanner!("hello");
         assert_eq!(
             scanner.scan_tokens().unwrap().last().unwrap(),
             &Token {
                 kind: TokenKind::Eof,
                 lexeme: "\0",
-                span: Span::new(5..5, FILE_ID)
+                span: Span::new(5..5, TEST_FILE_ID)
             }
         );
     }
 
     #[test]
     fn test_eof_span_newline() {
-        const FILE_ID: FileIdent = FileIdent::new(0);
-        let source = "hello\n";
-        let mut scanner = Scanner {
-            file_id: FILE_ID,
-            source,
-            start: 0,
-            current: 0,
-            eof: false,
-        };
+        let mut scanner = test_scanner!("hello\n");
         assert_eq!(
             scanner.scan_tokens().unwrap().last().unwrap(),
             &Token {
                 kind: TokenKind::Eof,
                 lexeme: "\0",
-                span: Span::new(6..6, FILE_ID)
+                span: Span::new(6..6, TEST_FILE_ID)
             }
         );
     }
 
     #[test]
     fn test_mandarin_identifier() {
-        const FILE_ID: FileIdent = FileIdent::new(0);
-        let source = "你好啊";
-        let mut scanner = Scanner {
-            file_id: FILE_ID,
-            source,
-            start: 0,
-            current: 0,
-            eof: false,
-        };
+        let mut scanner = test_scanner!("你好啊");
         assert_eq!(
             scanner.scan_tokens(),
             Ok(vec![
@@ -576,12 +620,12 @@ mod tests {
                     kind: TokenKind::Identifier,
                     lexeme: "你好啊",
                     // mandarin characters span multiple bytes
-                    span: Span::new(0..9, FILE_ID)
+                    span: Span::new(0..9, TEST_FILE_ID)
                 },
                 Token {
                     kind: TokenKind::Eof,
                     lexeme: "\0",
-                    span: Span::new(9..9, FILE_ID)
+                    span: Span::new(9..9, TEST_FILE_ID)
                 }
             ]),
             "The identifier token should have a span that includes the entire lexeme plus the quotes for strings"
@@ -590,15 +634,7 @@ mod tests {
 
     #[test]
     fn test_mandarin_string() {
-        const FILE_ID: FileIdent = FileIdent::new(0);
-        let source = "\"你好啊\"";
-        let mut scanner = Scanner {
-            file_id: FILE_ID,
-            source,
-            start: 0,
-            current: 0,
-            eof: false,
-        };
+        let mut scanner = test_scanner!("\"你好啊\"");
         assert_eq!(
             scanner.scan_tokens(),
             Ok(vec![
@@ -607,12 +643,12 @@ mod tests {
                     // Strings dont include the quotes in the lexeme
                     lexeme: "你好啊",
                     // mandarin characters span multiple bytes, include the quotes in the span
-                    span: Span::new(0..11, FILE_ID)
+                    span: Span::new(0..11, TEST_FILE_ID)
                 },
                 Token {
                     kind: TokenKind::Eof,
                     lexeme: "\0",
-                    span: Span::new(11..11, FILE_ID)
+                    span: Span::new(11..11, TEST_FILE_ID)
                 }
             ])
         );

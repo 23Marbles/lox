@@ -1,0 +1,4 @@
+// syntaxerror
+// error: unterminated string literal
+print "aaaa;
+print 1; // this shouldn't be printed

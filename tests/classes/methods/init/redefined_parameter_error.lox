@@ -1,0 +1,9 @@
+class Foo {
+  init(x) {
+    // error: 45
+    var x = 1;
+    _ = x;
+  }
+}
+
+_ = Foo;

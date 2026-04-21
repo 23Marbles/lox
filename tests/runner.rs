@@ -43,29 +43,35 @@ fn main() {
         })
     })
     .into_iter()
-    .map(|(path, ignored)| {
+    .map(|(path, ignored_msg)| {
         let test_name = path
             .strip_prefix(BASE)
             .unwrap()
             .as_os_str()
             .to_string_lossy()
             .to_string();
-        Trial::test(test_name, move || {
-            match std::panic::catch_unwind(|| {
-                check_file(
-                    &path,
-                    read_file_expectation(&path)
-                        .map_err(|err| Failed::from(format!("Could not read expactions: {err}")))?,
-                )
-            }) {
-                Ok(result) => result,
-                Err(panic) => Err(Failed::from(format!(
-                    "Test panicked: {}",
-                    format_panic(panic)
-                ))),
+
+        let expectation_res = read_file_expectation(&path).map_err(|e| e.to_string());
+
+        let (expectation, ignored_msg) = match expectation_res {
+            Ok(exp) => (exp, ignored_msg),
+            Err(msg) => (Expectation::None, Some(msg)),
+        };
+
+        let trial_runner = {
+            let path = path.clone();
+            move || -> Result<(), Failed> {
+                match std::panic::catch_unwind(|| check_file(&path, expectation)) {
+                    Ok(result) => result,
+                    Err(panic) => Err(Failed::from(format!(
+                        "Test panicked: {}",
+                        format_panic(panic)
+                    ))),
+                }
             }
-        })
-        .with_ignored_flag(ignored, Some("Default ignore (.ignore suffix)".to_string()))
+        };
+
+        Trial::test(test_name, trial_runner).with_ignored_flag(ignored_msg.is_some(), ignored_msg)
     })
     .collect();
 
@@ -83,8 +89,8 @@ fn format_panic(panic: Box<dyn std::any::Any + Send>) -> String {
     }
 }
 
-/// Recursively collects all .lox files in the given directory and its subdirectories. Return (_, true) if the file is ignored.
-fn recurse_build_check(dir: PathBuf) -> Vec<(PathBuf, bool)> {
+/// Recursively collects all .lox files in the given directory and its subdirectories. Return (_, Some(msg)) if the file is ignored.
+fn recurse_build_check(dir: PathBuf) -> Vec<(PathBuf, Option<String>)> {
     let mut paths = Vec::new();
 
     if let Ok(entries) = fs::read_dir(&dir) {
@@ -97,8 +103,10 @@ fn recurse_build_check(dir: PathBuf) -> Vec<(PathBuf, bool)> {
                 && let Some(ext) = path.extension()
             {
                 match ext.to_str() {
-                    Some("lox") => paths.push((path, false)),
-                    Some("ignore") => paths.push((path, true)),
+                    Some("lox") => paths.push((path, None)),
+                    Some("ignore") => {
+                        paths.push((path, Some("Default ignore (.ignore suffix)".to_string())))
+                    }
                     _ => {}
                 }
             }

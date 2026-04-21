@@ -1,0 +1,10 @@
+class Superclass {}
+
+class Subclass < Superclass {
+  method() {
+    // error: 7
+    super.x = 1; //
+  }
+}
+
+_ = Subclass;

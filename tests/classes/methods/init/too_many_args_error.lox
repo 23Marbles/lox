@@ -1,0 +1,7 @@
+class Foo {
+  init(x, y) {
+    print x + y;
+  }
+}
+
+Foo(1, 2, 3); // error: 25

@@ -1,0 +1,5 @@
+class Foo {
+  bar() {}
+}
+// error: 29
+Foo().bar.x;

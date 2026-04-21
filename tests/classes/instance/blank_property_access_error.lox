@@ -1,0 +1,8 @@
+class Foo {
+  bar() {
+    // error: 42
+    print this._;
+  }
+}
+var foo = Foo();
+foo.bar();

@@ -1,0 +1,1 @@
+print [].push; // prints: [built-in method list.push]
