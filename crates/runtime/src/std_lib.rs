@@ -42,7 +42,16 @@ pub fn default_lib() -> Vec<(&'static str, LoxVar)> {
             LoxVar::Callable(Rc::new(NativeFunc {
                 func: |_, args| match args[0] {
                     LoxVar::Number(secs) => {
-                        std::thread::sleep(core::time::Duration::from_secs_f64(secs));
+                        std::thread::sleep(match core::time::Duration::try_from_secs_f64(secs) {
+                            Ok(d) => d,
+                            Err(e) => {
+                                return Err(RuntimeError::InternalFunctionError {
+                                    msg: e.to_string(),
+                                    code: ErrorCode::InternalRustError,
+                                    sev: Severity::Error,
+                                });
+                            }
+                        });
                         Ok(LoxVar::Nil)
                     }
                     _ => Err(RuntimeError::InternalFunctionError {

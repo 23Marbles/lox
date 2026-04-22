@@ -123,7 +123,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
     }
 }
 
-fn highlight(input: &str) -> Vec<Line> {
+fn highlight(input: &str) -> Vec<Line<'_>> {
     input
         .split_whitespace()
         .map(|word| {

@@ -129,6 +129,8 @@ impl<'source> Parser<'source> {
     fn declaration(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
         if self.match_any([TokenKind::Var]) {
             self.var_declaration()
+        } else if self.match_any([TokenKind::UnderScore]) {
+            self.throwaway_declaration()
         } else if self.match_any([TokenKind::Fun]) {
             self.fun_declaration(Named::Function)
         } else if self.match_any([TokenKind::Class]) {
@@ -290,6 +292,17 @@ impl<'source> Parser<'source> {
         })
     }
 
+    fn throwaway_declaration(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
+        let start = self.previous().span.range.start;
+        self.expect(TokenKind::Equal)?;
+        let expr = self.expression()?;
+        let end = self.expect(TokenKind::Semicolon)?.span.range.end;
+        Ok(Stmt::Throwaway {
+            span: Span::new(start..end, self.file_id),
+            initializer: expr,
+        })
+    }
+
     fn statement(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
         use TokenKind::*;
 
@@ -305,6 +318,10 @@ impl<'source> Parser<'source> {
             self.for_statement()
         } else if self.match_any([Return]) {
             self.return_statement()
+        } else if self.match_any([Break]) {
+            self.break_statement()
+        } else if self.match_any([Continue]) {
+            self.continue_statement()
         } else {
             self.expression_statement()
         }
@@ -325,6 +342,20 @@ impl<'source> Parser<'source> {
             value,
             span: Span::new(start_pos..end_pos, self.file_id),
         })
+    }
+
+    fn break_statement(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
+        let span = self.previous().span.clone();
+        self.expect(TokenKind::Semicolon)?;
+
+        Ok(Stmt::Break { span })
+    }
+
+    fn continue_statement(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
+        let span = self.previous().span.clone();
+        self.expect(TokenKind::Semicolon)?;
+
+        Ok(Stmt::Continue { span })
     }
 
     fn for_statement(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
@@ -695,7 +726,7 @@ impl<'source> Parser<'source> {
                 self.advance();
                 Ok(Expr::Literal(Literal::Nil))
             }
-            NaN => {
+            NAN => {
                 self.advance();
                 Ok(Expr::Literal(Literal::Number(f64::NAN)))
             }

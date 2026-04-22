@@ -30,6 +30,10 @@ pub mod stmt {
             /// The initializer expression for the variable, if any.
             initializer: Option<Expr>,
         },
+        Throwaway {
+            span: Span,
+            initializer: Expr,
+        },
         /// Represents a block of statements.
         Block(Vec<Stmt>),
         /// Represents an if statement.
@@ -67,6 +71,12 @@ pub mod stmt {
             /// The span of the return statement in the source code.
             span: Span,
         },
+        Continue {
+            span: Span,
+        },
+        Break {
+            span: Span,
+        },
         /// Represents a class declaration.
         Class {
             /// The name of the class being declared.
@@ -85,6 +95,8 @@ pub mod stmt {
     pub enum ControlFlow {
         /// No control flow, the function continues normally.
         None,
+        Continue,
+        Break,
         /// A return statement has been encountered, with the given value.
         Return(LoxVar),
     }
@@ -172,6 +184,9 @@ pub mod stmt {
                     }
                     write!(f, "))")
                 }
+                Stmt::Throwaway { initializer, .. } => write!(f, "(throwaway {initializer})"),
+                Stmt::Continue { .. } => write!(f, "(continue)"),
+                Stmt::Break { .. } => write!(f, "(break)"),
             }
         }
     }

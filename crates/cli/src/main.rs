@@ -1,6 +1,6 @@
 use std::env;
 
-use lox_runtime::{Runner, tree_walk::token::Token};
+use lox_runtime::Runner;
 use rustyline::{Editor, config::Configurer, history::DefaultHistory};
 
 use crate::highlighter::SyntaxHelper;
@@ -25,7 +25,7 @@ fn main() {
 
     let mode = env::args()
         .nth(1)
-        .map(|name| match name.as_str() {
+        .and_then(|name| match name.as_str() {
             "token" => Some(CliMode::Token),
             "ast" => Some(CliMode::Ast),
             "runner" => Some(CliMode::Runner),
@@ -34,7 +34,6 @@ fn main() {
                 None
             }
         })
-        .flatten()
         .unwrap_or_default();
 
     println!("The mode is {mode:?}");

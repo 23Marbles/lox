@@ -20,6 +20,7 @@ pub struct Resolver {
     errors: Vec<Diagnostic<FileIdent>>,
     func_path: Vec<FunctionKind>,
     class_path: Vec<ClassKind>,
+    while_depth: usize,
     /// Each vec *MUST* have at least two elements
     def_mul_times: Vec<HashMap<String, Vec<Span>>>,
 }
@@ -62,6 +63,7 @@ impl Resolver {
                 vec
             },
             def_mul_times: Vec::new(),
+            while_depth: 0,
         }
     }
 
@@ -174,6 +176,9 @@ impl Resolver {
                 }
                 self.define(name);
             }
+            Stmt::Throwaway { initializer, .. } => {
+                self.resolve_expr(initializer);
+            }
             Stmt::Expression(expr) => self.resolve_expr(expr),
             Stmt::If {
                 condition,
@@ -209,8 +214,10 @@ impl Resolver {
                 }
             }
             Stmt::While { condition, body } => {
+                self.while_depth += 1;
                 self.resolve_expr(condition);
                 self.resolve_stmt(body);
+                self.while_depth -= 1;
             }
             Stmt::Class {
                 name,
@@ -292,6 +299,16 @@ impl Resolver {
                 }
 
                 self.class_path.pop();
+            }
+            Stmt::Continue { span } => {
+                if !(self.while_depth > 0) {
+                    self.error(ResolverErr::ContinueFromOutsideLoop(span.clone()));
+                }
+            }
+            Stmt::Break { span } => {
+                if !(self.while_depth > 0) {
+                    self.error(ResolverErr::ContinueFromOutsideLoop(span.clone()));
+                }
             }
         }
     }

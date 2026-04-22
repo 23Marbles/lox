@@ -165,6 +165,11 @@ pub mod functions {
                         result = Some(val);
                         break;
                     }
+                    Ok(ControlFlow::Break | ControlFlow::Continue) => {
+                        unreachable!(
+                            "Static analysis should ensure that all break and continue control flows are wrapped in personal handlers"
+                        )
+                    }
                     Err(e) => {
                         interpreter.env = previous;
                         return Err(e);
@@ -589,7 +594,7 @@ pub enum LoxVar {
     Uninitialized,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 /// Represents the kind of a Lox variable, which can be a number, boolean, string, callable, class, instance, or nil.
 pub enum LoxVarKind {
     /// Represents a Lox number.
@@ -610,6 +615,26 @@ pub enum LoxVarKind {
     Uninitialized,
     /// Represents a Lox list.
     List,
+}
+
+impl Display for LoxVarKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                LoxVarKind::Number => "number",
+                LoxVarKind::Bool => "bool",
+                LoxVarKind::String => "string",
+                LoxVarKind::Callable => "callable",
+                LoxVarKind::Class => "class",
+                LoxVarKind::Instance => "instance",
+                LoxVarKind::Nil => "nil",
+                LoxVarKind::Uninitialized => "<uninit>",
+                LoxVarKind::List => "list",
+            }
+        )
+    }
 }
 
 impl From<LoxVar> for LoxVarKind {
@@ -712,7 +737,7 @@ impl Display for LoxVar {
             LoxVar::Number(n) => write!(f, "{n}"),
             LoxVar::String(s) => write!(f, "{s}"),
             LoxVar::Callable(c) => write!(f, "<fn {}>", c.signature()),
-            LoxVar::Class(c) => write!(f, "{}", c.name),
+            LoxVar::Class(c) => write!(f, "<{} class>", c.name),
             LoxVar::Instance(i) => {
                 write!(f, "<{} instance>", i.borrow().class().name)
             }

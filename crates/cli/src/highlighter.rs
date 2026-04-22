@@ -1,9 +1,3 @@
-use std::borrow::Cow;
-
-use lox_runtime::{
-    lox_files::FileIdent,
-    tree_walk::token::{Scanner, TokenKind},
-};
 use rustyline::{
     Helper,
     completion::Completer,

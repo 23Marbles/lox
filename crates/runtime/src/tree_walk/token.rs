@@ -263,10 +263,8 @@ impl<'source> Iterator for Scanner<'source> {
                                     loop {
                                         if !self.is_at_end() {
                                             let c = self.advance();
-                                            if c == Some('*') {
-                                                if self.advance_if_next('/') {
-                                                    return self.next();
-                                                }
+                                            if c == Some('*') && self.advance_if_next('/') {
+                                                return self.next();
                                             }
                                         } else {
                                             return Some(Err(
@@ -379,9 +377,12 @@ pub enum TokenKind {
     True,
     Var,
     While,
-    NaN,
+    NAN,
     INF,
     Break,
+    Continue,
+    Static,
+    Try,
 
     Eof,
 }
@@ -430,7 +431,7 @@ impl Display for TokenKind {
             Number => write!(f, "num"),
             Eof => write!(f, "\0"),
             Break => write!(f, "break"),
-            NaN => write!(f, "NaN"),
+            NAN => write!(f, "NAN"),
             INF => write!(f, "INF"),
             Percent => write!(f, "%"),
             LeftBracket => write!(f, "["),
@@ -438,33 +439,38 @@ impl Display for TokenKind {
             Question => write!(f, "?"),
             Colon => write!(f, ":"),
             UnderScore => write!(f, "_"),
+            Continue => write!(f, "continue"),
+            Static => write!(f, "static"),
+            Try => write!(f, "try"),
         }
     }
 }
 
 impl TokenKind {
     fn search_keyword_str(string: &str) -> Option<Self> {
-        use TokenKind::*;
         match string {
-            "and" => Some(And),
-            "class" => Some(Class),
-            "else" => Some(Else),
-            "false" => Some(False),
-            "fun" => Some(Fun),
-            "for" => Some(For),
-            "if" => Some(If),
-            "nil" => Some(Nil),
-            "or" => Some(Or),
-            "print" => Some(Print),
-            "return" => Some(Return),
-            "super" => Some(Super),
-            "this" => Some(This),
-            "true" => Some(True),
-            "var" => Some(Var),
-            "while" => Some(While),
-            "break" => Some(Break),
-            "NaN" => Some(NaN),
-            "INF" => Some(INF),
+            "and" => Some(Self::And),
+            "class" => Some(Self::Class),
+            "else" => Some(Self::Else),
+            "false" => Some(Self::False),
+            "fun" => Some(Self::Fun),
+            "for" => Some(Self::For),
+            "if" => Some(Self::If),
+            "nil" => Some(Self::Nil),
+            "or" => Some(Self::Or),
+            "print" => Some(Self::Print),
+            "return" => Some(Self::Return),
+            "super" => Some(Self::Super),
+            "this" => Some(Self::This),
+            "true" => Some(Self::True),
+            "var" => Some(Self::Var),
+            "while" => Some(Self::While),
+            "break" => Some(Self::Break),
+            "NAN" => Some(Self::NAN),
+            "INF" => Some(Self::INF),
+            "continue" => Some(Self::Continue),
+            "static" => Some(Self::Static),
+            "try" => Some(Self::Try),
             _ => None,
         }
     }

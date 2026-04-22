@@ -89,7 +89,7 @@ pub mod scan_err {
 pub mod parse_err {
     use core::fmt::Display;
 
-    use codespan_reporting::diagnostic::{Label, LabelStyle, Severity};
+    use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle, Severity};
 
     use crate::{
         Span,
@@ -157,12 +157,12 @@ pub mod parse_err {
     }
 
     impl ToCodespan for ParseError {
-        fn to_codespan(&self) -> codespan_reporting::diagnostic::Diagnostic<FileIdent> {
+        fn to_codespan(&self) -> Diagnostic<FileIdent> {
             match self {
                 ParseError::UnexpectedTokenKind { span, expected, .. } => {
                     let file_id = span.file_id;
                     let range = span.range.clone();
-                    codespan_reporting::diagnostic::Diagnostic::new(self.severity())
+                    Diagnostic::new(self.severity())
                         .with_message(self.to_string())
                         .with_code(self.error_code())
                         .with_label(Label::new(LabelStyle::Primary, file_id, range))
@@ -175,22 +175,20 @@ pub mod parse_err {
                                 .join(", ")
                         ))
                 }
-                ParseError::TooManyArguments { spans, .. } => {
-                    codespan_reporting::diagnostic::Diagnostic::new(self.severity())
-                        .with_message(self.to_string())
-                        .with_code(self.error_code())
-                        .with_labels_iter(spans.iter().map(|span| {
-                            let file_id = span.file_id;
-                            let range = span.range.clone();
-                            Label::new(LabelStyle::Secondary, file_id, range)
-                        }))
-                }
+                ParseError::TooManyArguments { spans, .. } => Diagnostic::new(self.severity())
+                    .with_message(self.to_string())
+                    .with_code(self.error_code())
+                    .with_labels_iter(spans.iter().map(|span| {
+                        let file_id = span.file_id;
+                        let range = span.range.clone();
+                        Label::new(LabelStyle::Secondary, file_id, range)
+                    })),
                 ParseError::ExpectedName {
                     span,
                     prev_span,
                     after,
                     ..
-                } => codespan_reporting::diagnostic::Diagnostic::new(self.severity())
+                } => Diagnostic::new(self.severity())
                     .with_message(self.to_string())
                     .with_code(self.error_code())
                     .with_label(Label::new(
@@ -208,16 +206,14 @@ pub mod parse_err {
                     ),
                 ParseError::ExpectedTokenKind { span, .. }
                 | ParseError::InvalidAssignTarget { span, .. }
-                | ParseError::ExpectedNumber { span, .. } => {
-                    codespan_reporting::diagnostic::Diagnostic::new(self.severity())
-                        .with_message(self.to_string())
-                        .with_code(self.error_code())
-                        .with_label(Label::new(
-                            LabelStyle::Primary,
-                            span.file_id,
-                            span.range.clone(),
-                        ))
-                }
+                | ParseError::ExpectedNumber { span, .. } => Diagnostic::new(self.severity())
+                    .with_message(self.to_string())
+                    .with_code(self.error_code())
+                    .with_label(Label::new(
+                        LabelStyle::Primary,
+                        span.file_id,
+                        span.range.clone(),
+                    )),
             }
         }
     }
@@ -293,6 +289,8 @@ pub mod anaylysis_err {
         ThisOutsideClass(Span),
         SelfReferentialInheritance(Span),
         SuperOutsideSubclass(Span),
+        BreakFromOutsideLoop(Span),
+        ContinueFromOutsideLoop(Span),
     }
 
     impl ToErrorCode for ResolverErr {
@@ -305,6 +303,8 @@ pub mod anaylysis_err {
                 ResolverErr::ThisOutsideClass(_) => ErrorCode::ThisOutsideClass,
                 ResolverErr::SelfReferentialInheritance(_) => ErrorCode::SelfReferentialInheritance,
                 ResolverErr::SuperOutsideSubclass(_) => ErrorCode::SuperOutsideSubclass,
+                ResolverErr::BreakFromOutsideLoop(_) => ErrorCode::BreakFromOutsideLoop,
+                ResolverErr::ContinueFromOutsideLoop(_) => ErrorCode::ContinueFromOutsideLoop,
             }
         }
     }
@@ -319,6 +319,8 @@ pub mod anaylysis_err {
                 ResolverErr::ThisOutsideClass(_) => Severity::Error,
                 ResolverErr::SelfReferentialInheritance(_) => Severity::Error,
                 ResolverErr::SuperOutsideSubclass(_) => Severity::Error,
+                ResolverErr::BreakFromOutsideLoop(_) => Severity::Error,
+                ResolverErr::ContinueFromOutsideLoop(_) => Severity::Error,
             }
         }
     }
@@ -372,6 +374,8 @@ pub mod anaylysis_err {
                 ),
                 ResolverErr::ReadInOwnInitializer(span)
                 | ResolverErr::ReturnFromTop(span)
+                | ResolverErr::BreakFromOutsideLoop(span)
+                | ResolverErr::ContinueFromOutsideLoop(span)
                 | ResolverErr::ThisOutsideClass(span)
                 | ResolverErr::SelfReferentialInheritance(span)
                 | ResolverErr::SuperOutsideSubclass(span) => to_codespan(
@@ -409,6 +413,12 @@ pub mod anaylysis_err {
                 }
                 ResolverErr::SuperOutsideSubclass(_) => {
                     write!(f, "Can't use super outside a subclass")
+                }
+                ResolverErr::BreakFromOutsideLoop(_) => {
+                    write!(f, "Cannot use `break` outside of a loop")
+                }
+                ResolverErr::ContinueFromOutsideLoop(_) => {
+                    write!(f, "Cannot use `continue` outside of a loop")
                 }
             }
         }
@@ -734,7 +744,7 @@ pub mod eval_err {
             match &self {
                 EvaluateErrorKind::IncompatableUnaryOperator { operator, var_ty } => write!(
                     f,
-                    "Cannot use unary operator `{operator:?}` on type `{var_ty:?}`",
+                    "Cannot use unary operator `{operator:?}` on type `{var_ty}`",
                 ),
                 EvaluateErrorKind::IncompatableBinaryOperator {
                     operator,
@@ -742,7 +752,7 @@ pub mod eval_err {
                     right_ty,
                 } => write!(
                     f,
-                    "Cannot use binary operator `{operator:?}` on types `{left_ty:?}`, `{right_ty:?}`",
+                    "Cannot use binary operator `{operator:?}` on types `{left_ty}`, `{right_ty}`",
                 ),
                 EvaluateErrorKind::UndeclaredVariable { name } => {
                     write!(f, "Tried to access undeclared variable with name {name}")
@@ -757,11 +767,11 @@ pub mod eval_err {
                     )
                 }
                 EvaluateErrorKind::IncompatableConversion { from, to } => {
-                    write!(f, "Cannot coerce `{from:?}` to `{to:?}`")
+                    write!(f, "Cannot coerce `{from}` to `{to}`")
                 }
                 EvaluateErrorKind::DivisionByZero => write!(f, "Tried to divide by zero"),
                 EvaluateErrorKind::CannotGetProperties(kind) => {
-                    write!(f, "Cannot get properties on variable of kind {kind:?}")
+                    write!(f, "Cannot get properties on variable of kind {kind}")
                 }
                 EvaluateErrorKind::UninitializedVariable { name } => {
                     write!(
@@ -770,7 +780,7 @@ pub mod eval_err {
                     )
                 }
                 EvaluateErrorKind::CannotIndexInto(kind) => {
-                    write!(f, "Cannot index into variable of kind {kind:?}")
+                    write!(f, "Cannot index into variable of kind {kind}")
                 }
                 EvaluateErrorKind::NotPositiveIntegerOperand {
                     operator,
@@ -778,7 +788,7 @@ pub mod eval_err {
                     right_ty,
                 } => write!(
                     f,
-                    "Binary operation of type `{operator:?}` on types `{left_ty:?}`, `{right_ty:?}` requires a positive, non negative integer"
+                    "Binary operation of type `{operator}` on types `{left_ty}`, `{right_ty}` requires a positive, non negative integer"
                 ),
             }
         }
@@ -954,16 +964,15 @@ pub mod access_error {
                 AccessError::IncorrectType { expected, got } => {
                     write!(
                         f,
-                        "Incorrect type for property: expected `{:?}`, got `{:?}`",
-                        expected, got
+                        "Incorrect type for property: expected `{expected}`, got `{got}`",
                     )
                 }
                 AccessError::InccorrectIndexKind { tried_kind } => write!(
                     f,
-                    "Cannot index into this object with a value of kind `{tried_kind:?}`"
+                    "Cannot index into this object with a value of kind `{tried_kind}`"
                 ),
                 AccessError::CannotSetProperties { kind } => {
-                    write!(f, "Cannot set properties on a vale of kind `{kind:?}`")
+                    write!(f, "Cannot set properties on a vale of kind `{kind}`")
                 }
             }
         }

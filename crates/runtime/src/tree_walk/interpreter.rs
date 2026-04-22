@@ -186,6 +186,10 @@ impl Interpreter {
                 self.env.borrow_mut().define(name, value);
                 Ok(ControlFlow::None)
             }
+            Stmt::Throwaway { initializer, .. } => {
+                self.evaluate_expr(initializer)?;
+                Ok(ControlFlow::None)
+            }
             Stmt::Block(stmts) => {
                 let previous = self.env.clone();
                 self.env = Env::new_env(Some(previous.clone()));
@@ -201,9 +205,9 @@ impl Interpreter {
                         }
                     } {
                         ControlFlow::None => {}
-                        ControlFlow::Return(v) => {
+                        cf => {
                             self.env = previous;
-                            return Ok(ControlFlow::Return(v));
+                            return Ok(cf);
                         }
                     }
                 }
@@ -229,8 +233,11 @@ impl Interpreter {
                     match self.run_stmt(*body.clone())? {
                         ControlFlow::None => (),
                         ControlFlow::Return(lox_var) => {
+                            // Is passed up
                             return Ok(ControlFlow::Return(lox_var));
                         }
+                        ControlFlow::Continue => continue,
+                        ControlFlow::Break => break,
                     };
                 }
                 Ok(ControlFlow::None)
@@ -320,6 +327,8 @@ impl Interpreter {
 
                 Ok(ControlFlow::None)
             }
+            Stmt::Continue { .. } => Ok(ControlFlow::Continue),
+            Stmt::Break { .. } => Ok(ControlFlow::Break),
         }
     }
 

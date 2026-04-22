@@ -58,9 +58,7 @@ pub fn run_file_with_writer<W: Write + Send + 'static>(
 pub fn run_prompt(globals: Vec<(&'static str, LoxVar)>) {
     let mut line_buf = String::new();
 
-    let mut runner = Runner::new()
-        .with_globals(globals)
-        .with_print_exprs(cfg!(feature = "repl_expr_print"));
+    let mut runner = Runner::new().with_globals(globals).with_print_exprs(true);
 
     loop {
         print!("> ");

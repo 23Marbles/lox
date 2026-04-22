@@ -3,7 +3,7 @@ class Foo {
   static get bar() {}
   static set bar(_) {}
 
-  // error: 45
+  // error: 12
   get bar() {}
 
   // error: 45
