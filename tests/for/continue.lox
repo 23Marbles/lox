@@ -1,3 +1,5 @@
+// regression: this test is hanging
+// for loop iteration clause is failing
 for (var i = 0; i < 5; i = i + 1) {
   if (i % 2 == 1) {
     continue;

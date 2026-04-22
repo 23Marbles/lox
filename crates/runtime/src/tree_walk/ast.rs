@@ -53,6 +53,13 @@ pub mod stmt {
             /// The body of the while statement.
             body: Box<Stmt>,
         },
+        For {
+            /// The condition expression for the for statement.
+            condition: Option<Expr>,
+            increment: Option<Expr>,
+            /// The body of the for statement.
+            body: Box<Stmt>,
+        },
         /// Represents a function declaration.
         Function {
             /// The span of the function declaration in the source code.
@@ -187,6 +194,20 @@ pub mod stmt {
                 Stmt::Throwaway { initializer, .. } => write!(f, "(throwaway {initializer})"),
                 Stmt::Continue { .. } => write!(f, "(continue)"),
                 Stmt::Break { .. } => write!(f, "(break)"),
+                Stmt::For {
+                    condition,
+                    increment,
+                    body,
+                } => write!(
+                    f,
+                    "(for{}{body})",
+                    match (condition, increment) {
+                        (None, None) => "".to_string(),
+                        (None, Some(expr)) => format!(" ({expr}) "),
+                        (Some(expr), None) => format!(" ({expr}) "),
+                        (Some(cond), Some(inc)) => format!(" ({cond} {inc}) "),
+                    }
+                ),
             }
         }
     }

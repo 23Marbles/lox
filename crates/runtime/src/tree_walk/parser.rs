@@ -387,12 +387,9 @@ impl<'source> Parser<'source> {
 
         let mut body = self.statement()?;
 
-        if let Some(inc) = increment {
-            body = Stmt::Block(vec![body, Stmt::Expression(inc)])
-        }
-
-        body = Stmt::While {
-            condition: condition.unwrap_or(Expr::Literal(Literal::True)),
+        body = Stmt::For {
+            condition,
+            increment,
             body: Box::new(body),
         };
 

@@ -20,7 +20,7 @@ pub struct Resolver {
     errors: Vec<Diagnostic<FileIdent>>,
     func_path: Vec<FunctionKind>,
     class_path: Vec<ClassKind>,
-    while_depth: usize,
+    loop_depth: usize,
     /// Each vec *MUST* have at least two elements
     def_mul_times: Vec<HashMap<String, Vec<Span>>>,
 }
@@ -63,7 +63,7 @@ impl Resolver {
                 vec
             },
             def_mul_times: Vec::new(),
-            while_depth: 0,
+            loop_depth: 0,
         }
     }
 
@@ -214,10 +214,25 @@ impl Resolver {
                 }
             }
             Stmt::While { condition, body } => {
-                self.while_depth += 1;
+                self.loop_depth += 1;
                 self.resolve_expr(condition);
                 self.resolve_stmt(body);
-                self.while_depth -= 1;
+                self.loop_depth -= 1;
+            }
+            Stmt::For {
+                condition,
+                increment,
+                body,
+            } => {
+                self.loop_depth += 1;
+                if let Some(condition) = condition {
+                    self.resolve_expr(condition);
+                }
+                if let Some(increment) = increment {
+                    self.resolve_expr(increment);
+                }
+                self.resolve_stmt(body);
+                self.loop_depth -= 1;
             }
             Stmt::Class {
                 name,
@@ -301,12 +316,12 @@ impl Resolver {
                 self.class_path.pop();
             }
             Stmt::Continue { span } => {
-                if !(self.while_depth > 0) {
+                if !(self.loop_depth > 0) {
                     self.error(ResolverErr::ContinueFromOutsideLoop(span.clone()));
                 }
             }
             Stmt::Break { span } => {
-                if !(self.while_depth > 0) {
+                if !(self.loop_depth > 0) {
                     self.error(ResolverErr::ContinueFromOutsideLoop(span.clone()));
                 }
             }

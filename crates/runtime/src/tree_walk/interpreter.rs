@@ -242,6 +242,32 @@ impl Interpreter {
                 }
                 Ok(ControlFlow::None)
             }
+            Stmt::For {
+                condition,
+                increment,
+                body,
+            } => {
+                while if let Some(expr) = condition.clone() {
+                    self.evaluate_expr(expr)?.is_truthy()
+                } else {
+                    true
+                } {
+                    match self.run_stmt(*body.clone())? {
+                        ControlFlow::None => (),
+                        ControlFlow::Return(lox_var) => {
+                            // Is passed up
+                            return Ok(ControlFlow::Return(lox_var));
+                        }
+                        // Fall to the increment
+                        ControlFlow::Continue => {}
+                        ControlFlow::Break => break,
+                    };
+                    if let Some(inc) = increment.clone() {
+                        self.evaluate_expr(inc)?;
+                    };
+                }
+                Ok(ControlFlow::None)
+            }
             Stmt::Function {
                 name,
                 parameters,
