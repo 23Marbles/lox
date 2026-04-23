@@ -1,20 +1,20 @@
-// prints: carriage\rreturn
+// prints: "carriage\rreturn"
 print "carriage\rreturn";
-// prints: return
-// prints: newline
+// prints: "return"
+// prints: "newline"
 print "return\r\nnewline";
-// prints: new
-// prints: line
+// prints: "new"
+// prints: "line"
 print "new\nline";
-// prints: tab\ttab
+// prints: "tab\ttab"
 print "tab\ttab";
-// prints: "string"
+// prints: ""string""
 print "\"string\"";
-// prints: \\
+// prints: "\\"
 print "\\";
-// prints: \\\\
+// prints: "\\\\"
 print "\\\\";
-// prints: \\n
+// prints: "\\n"
 print "\\n";
-// prints: \\z
+// prints: "\\z"
 print "\z";

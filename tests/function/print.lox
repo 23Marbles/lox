@@ -1,4 +1,4 @@
 fun foo() {}
-print foo; // prints: <fn foo()>
+print foo; // prints: "<fn foo()>"
 
-print clock; // prints: <fn clock() -> Number>
+print clock; // prints: "<fn clock() -> Number>"

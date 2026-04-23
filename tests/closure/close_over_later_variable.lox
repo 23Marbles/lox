@@ -7,8 +7,8 @@ fun f() {
   var a = "a";
   var b = "b";
   fun g() {
-    print b; // prints: b
-    print a; // prints: a
+    print b; // prints: "b"
+    print a; // prints: "a"
   }
   g();
 }

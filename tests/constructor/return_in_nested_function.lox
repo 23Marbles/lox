@@ -3,8 +3,8 @@ class Foo {
     fun init() {
       return "bar";
     }
-    print init(); // prints: bar
+    print init(); // prints: "bar"
   }
 }
 
-print Foo(); // prints: <Foo instance>
+print Foo(); // prints: "<Foo instance>"

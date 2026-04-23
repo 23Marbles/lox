@@ -1,1 +1,1 @@
-print type([].push); // prints: function
+print type([].push); // prints: "callable"

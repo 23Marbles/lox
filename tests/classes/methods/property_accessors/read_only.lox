@@ -11,4 +11,4 @@ class Circle {
 }
 
 var c = Circle(2);
-print c.area; // prints: 12
+print c.area; // prints: "12"

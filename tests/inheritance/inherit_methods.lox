@@ -9,6 +9,6 @@ class Bar < Foo {
 }
 
 var bar = Bar();
-bar.methodOnFoo(); // prints: foo
-bar.methodOnBar(); // prints: bar
-bar.override(); // prints: bar
+bar.methodOnFoo(); // prints: "foo"
+bar.methodOnBar(); // prints: "bar"
+bar.override(); // prints: "bar"

@@ -1,4 +1,4 @@
-#![warn(missing_docs)]
+//#![warn(missing_docs)]
 #![deny(clippy::redundant_feature_names)]
 #![warn(clippy::panic_in_result_fn)]
 #![warn(clippy::unnecessary_to_owned)]

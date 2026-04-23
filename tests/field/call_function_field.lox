@@ -10,6 +10,6 @@ var foo = Foo();
 foo.bar = bar;
 
 foo.bar(1, 2);
-// prints: bar
-// prints: 1
-// prints: 2
+// prints: "bar"
+// prints: "1"
+// prints: "2"

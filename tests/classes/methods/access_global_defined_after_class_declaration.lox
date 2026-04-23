@@ -5,7 +5,7 @@ class Foo {
   }
 }
 a = "global";
-Foo().bar(); // prints: global
+Foo().bar(); // prints: "global"
 
 var b;
 {
@@ -15,5 +15,5 @@ var b;
     }
   }
   b = "local";
-  Foo().bar(); // prints: local
+  Foo().bar(); // prints: "local"
 }

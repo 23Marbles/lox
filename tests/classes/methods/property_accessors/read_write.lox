@@ -16,8 +16,8 @@ class Circle {
 }
 
 var c = Circle(2);
-print c.radius; // prints: 2
+print c.radius; // prints: "2"
 c.radius = 3;
-print c.radius; // prints: 3
+print c.radius; // prints: "3"
 c.radius = -1;
 print c.radius; // error: 255

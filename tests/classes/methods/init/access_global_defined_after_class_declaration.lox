@@ -5,4 +5,4 @@ class Foo {
 }
 
 var a = "global";
-Foo(); // prints: global
+Foo(); // prints: "global"

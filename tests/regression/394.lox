@@ -1,5 +1,5 @@
 {
   class A {}
   class B < A {}
-  print B; // prints: B
+  print B; // prints: "<B class>"
 }

@@ -7,7 +7,7 @@ var a = "global";
 
   var a = "inner";
   assign();
-  print a; // prints: inner
+  print a; // prints: "inner"
 }
 
-print a; // prints: assigned
+print a; // prints: "assigned"

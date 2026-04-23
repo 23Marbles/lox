@@ -10,6 +10,6 @@ fun newCounter() {
 }
 
 var counter = newCounter();
-counter(); // prints: 1
-counter(); // prints: 2
-counter(); // prints: 3
+counter(); // prints: "1"
+counter(); // prints: "2"
+counter(); // prints: "3"

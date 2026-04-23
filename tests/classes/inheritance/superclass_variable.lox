@@ -9,4 +9,4 @@ var superclass = Superclass;
 class Subclass < superclass {}
 
 var subclass = Subclass();
-subclass.method(); // prints: Superclass method called
+subclass.method(); // prints: "Superclass method called"

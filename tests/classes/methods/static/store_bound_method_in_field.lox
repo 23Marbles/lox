@@ -14,5 +14,5 @@ var foo = Foo("instance x");
 foo.setX = Bar.setX;
 foo.setX("class x");
 
-print foo.x; // prints: instance x
-print Bar.x; // prints: class x
+print foo.x; // prints: "instance x"
+print Bar.x; // prints: "class x"

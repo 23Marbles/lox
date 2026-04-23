@@ -7,4 +7,4 @@ class Foo {
 var setBar = Foo.setBar;
 setBar("class bar");
 
-print Foo.bar; // prints: class bar
+print Foo.bar; // prints: "class bar"

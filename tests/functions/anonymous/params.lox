@@ -10,6 +10,6 @@ var add = fun(x, y) {
   print x + y;
 };
 
-greet(); // prints: Hello, World!
-add2(1); // prints: 3
-add(2, 3); // prints: 5
+greet(); // prints: "Hello, World!"
+add2(1); // prints: "3"
+add(2, 3); // prints: "5"

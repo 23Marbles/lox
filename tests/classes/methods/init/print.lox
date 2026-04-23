@@ -2,4 +2,4 @@ class Foo {
   init() {}
 }
 
-print Foo().init; // prints: [bound method Foo.init]
+print Foo().init; // prints: "[bound method Foo.init]"

@@ -5,5 +5,5 @@ class Foo {
 }
 
 var bar = Foo().bar;
-print "got method"; // prints: got method
-bar("arg");          // prints: arg
+print "got method"; // prints: "got method"
+bar("arg");          // prints: "arg"

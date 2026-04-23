@@ -7,4 +7,4 @@ class Superclass {
 class Subclass < Superclass {}
 
 var subclass = Subclass();
-print subclass.property; // prints: Superclass property value
+print subclass.property; // prints: "Superclass property value"

@@ -7,4 +7,4 @@ fun f() {
 }
 
 var h = f();
-h(); // prints: i
+h(); // prints: "i"

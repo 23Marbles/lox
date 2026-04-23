@@ -10,5 +10,5 @@ class Foo {
 
 var foo = Foo("instance bar");
 Foo.setBar("class bar");
-print Foo.bar; // prints: class bar
-print foo.bar; // prints: instance bar
+print Foo.bar; // prints: "class bar"
+print foo.bar; // prints: "instance bar"

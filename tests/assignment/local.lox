@@ -1,10 +1,10 @@
 {
   var a = "before";
-  print a; // prints: before
+  print a; // prints: "before"
 
   a = "after";
-  print a; // prints: after
+  print a; // prints: "after"
 
-  print a = "arg"; // prints: arg
-  print a; // prints: arg
+  print a = "arg"; // prints: "arg"
+  print a; // prints: "arg"
 }

@@ -1,13 +1,13 @@
-print !true;     // prints: false
-print !false;    // prints: true
-print !!true;    // prints: true
+print !true;     // prints: "false"
+print !false;    // prints: "true"
+print !!true;    // prints: "true"
 
-print !123;      // prints: false
-print !0;        // prints: false
+print !123;      // prints: "false"
+print !0;        // prints: "false"
 
-print !nil;     // prints: true
+print !nil;     // prints: "true"
 
-print !"";       // prints: false
+print !"";       // prints: "false"
 
 fun foo() {}
-print !foo;      // prints: false
+print !foo;      // prints: "false"

@@ -4,4 +4,4 @@ class Foo {
   }
 }
 
-Foo(1, 2, 3, 4); // prints: 4
+Foo(1, 2, 3, 4); // prints: "4"

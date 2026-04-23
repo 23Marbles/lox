@@ -10,7 +10,7 @@ var p2 = Point(3, 4);
 p2.p1Init = p1.init;
 p2.p1Init(5, 6);
 
-print p1.x; // prints: 5
-print p1.y; // prints: 6
-print p2.x; // prints: 3
-print p2.y; // prints: 4
+print p1.x; // prints: "5"
+print p1.y; // prints: "6"
+print p2.x; // prints: "3"
+print p2.y; // prints: "4"

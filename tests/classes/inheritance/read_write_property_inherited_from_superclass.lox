@@ -12,4 +12,4 @@ class Subclass < Superclass {}
 
 var subclass = Subclass();
 subclass.property = "property value";
-print subclass.property; // prints: property value set by Superclass got by Superclass
+print subclass.property; // prints: "property value set by Superclass got by Superclass"

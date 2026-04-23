@@ -2,4 +2,4 @@ if (false) {
   print a; // lint warning: 'a' has not been declared
 }
 
-print "got here"; // prints: got here
+print "got here"; // prints: "got here"

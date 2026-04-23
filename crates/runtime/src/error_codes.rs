@@ -12,7 +12,6 @@ pub enum ErrorCode {
     UnterminatedString = 3,
     UnterminatedComment = 4,
     UnexpectedTokenKind = 5,
-    ExpectedTokenKind = 6,
     InvalidAssignTarget = 7,
     Over255Arguments = 8,
     ExpectedName = 9,
@@ -54,6 +53,7 @@ pub enum ErrorCode {
     StaticInit = 48,
     BreakFromOutsideLoop = 49,
     ContinueFromOutsideLoop = 50,
+    InvalidEscape = 51,
     InternalRustError = 253,
     AssertionFailed = 254,
     UserForcedError = 255,
@@ -104,7 +104,6 @@ impl TryFrom<u8> for ErrorCode {
             3 => Ok(Self::UnterminatedString),
             4 => Ok(Self::UnterminatedComment),
             5 => Ok(Self::UnexpectedTokenKind),
-            6 => Ok(Self::ExpectedTokenKind),
             7 => Ok(Self::InvalidAssignTarget),
             8 => Ok(Self::Over255Arguments),
             9 => Ok(Self::ExpectedName),
@@ -182,7 +181,6 @@ mod tests {
         assert_eq!(format!("{}", ErrorCode::CoreErrorFromString), "E00001");
         assert_eq!(format!("{}", ErrorCode::UnexpectedCharacter), "E00002");
         assert_eq!(format!("{}", ErrorCode::UnexpectedTokenKind), "E00005");
-        assert_eq!(format!("{}", ErrorCode::ExpectedTokenKind), "E00006");
         assert_eq!(format!("{}", ErrorCode::InvalidAssignTarget), "E00007");
         assert_eq!(format!("{}", ErrorCode::Over255Arguments), "E00008");
         assert_eq!(format!("{}", ErrorCode::ExpectedName), "E00009");

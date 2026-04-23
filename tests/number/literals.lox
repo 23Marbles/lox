@@ -1,7 +1,7 @@
-print 123;     // prints: 123
-print 987654;  // prints: 987654
-print 0;       // prints: 0
-print -0;      // prints: -0
+print 123;     // prints: "123"
+print 987654;  // prints: "987654"
+print 0;       // prints: "0"
+print -0;      // prints: "-0"
 
-print 123.456; // prints: 123.456
-print -0.001;  // prints: -0.001
+print 123.456; // prints: "123.456"
+print -0.001;  // prints: "-0.001"

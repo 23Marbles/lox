@@ -1,5 +1,7 @@
 //! Parser for Lox source code.
 
+use std::char;
+
 use codespan_reporting::diagnostic::Diagnostic;
 
 use crate::{
@@ -11,7 +13,6 @@ use crate::{
     lox_files::FileIdent,
     tree_walk::{
         ast::{
-            Literal,
             expr::{Expr, FieldAccess},
             stmt::Stmt,
         },
@@ -129,8 +130,6 @@ impl<'source> Parser<'source> {
     fn declaration(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
         if self.match_any([TokenKind::Var]) {
             self.var_declaration()
-        } else if self.match_any([TokenKind::UnderScore]) {
-            self.throwaway_declaration()
         } else if self.match_any([TokenKind::Fun]) {
             self.fun_declaration(Named::Function)
         } else if self.match_any([TokenKind::Class]) {
@@ -141,18 +140,24 @@ impl<'source> Parser<'source> {
     }
 
     fn class_declaration(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
-        let name_token = self.consume(
-            TokenKind::Identifier,
-            ParseError::ExpectedName {
-                name: Named::Class,
-                after: self.previous().kind,
-                span: match self.peek_ahead() {
-                    Some(token) => token.span.clone(),
-                    None => self.peek().span.clone(), // Fallback to current token span
-                },
-                prev_span: self.previous().span.clone(),
-            },
-        )?;
+        let (name, name_span) = match self.peek().kind {
+            TokenKind::Identifier => {
+                let token = self.advance();
+                (Some(token.lexeme.to_owned()), token.span.clone())
+            }
+            TokenKind::UnderScore => {
+                let span = self.advance().span.clone();
+                (None, span)
+            }
+            _ => {
+                return Err(self.error(ParseError::ExpectedName {
+                    name: Named::Class,
+                    after: self.previous().kind,
+                    span: self.peek().span.clone(),
+                    prev_span: self.previous().span.clone(),
+                }));
+            }
+        };
 
         let super_class = if self.match_any([TokenKind::Less]) {
             let s_name_token = self.consume(
@@ -175,10 +180,18 @@ impl<'source> Parser<'source> {
 
         self.consume(
             TokenKind::LeftBrace,
-            ParseError::UnexpectedTokenKind {
-                got: self.peek().kind,
-                expected: [TokenKind::LeftBrace, TokenKind::Less].to_vec(),
-                span: self.peek().span.clone(),
+            if super_class.is_some() {
+                ParseError::ExpectedTokenKind {
+                    got: self.peek().kind,
+                    expected: TokenKind::LeftBrace,
+                    span: self.peek().span.clone(),
+                }
+            } else {
+                ParseError::UnexpectedTokenKind {
+                    got: self.peek().kind,
+                    expected: [TokenKind::LeftBrace, TokenKind::Less].to_vec(),
+                    span: self.peek().span.clone(),
+                }
             },
         )?;
 
@@ -191,29 +204,32 @@ impl<'source> Parser<'source> {
         self.expect(TokenKind::RightBrace)?;
 
         Ok(Stmt::Class {
-            name: name_token.lexeme.to_owned(),
+            name: name,
             methods,
             super_class,
-            span: name_token.span,
+            span: name_span,
         })
     }
 
     fn fun_declaration(&mut self, kind: Named) -> Result<Stmt, Diagnostic<FileIdent>> {
-        let name = self
-            .consume(
-                TokenKind::Identifier,
-                ParseError::ExpectedName {
+        let name = match self.peek().kind {
+            TokenKind::Identifier => {
+                let token = self.advance();
+                Some(token.lexeme.to_owned())
+            }
+            TokenKind::UnderScore => {
+                self.advance();
+                None
+            }
+            _ => {
+                return Err(self.error(ParseError::ExpectedName {
                     name: kind,
                     after: self.previous().kind,
+                    span: self.peek().span.clone(),
                     prev_span: self.previous().span.clone(),
-                    span: self
-                        .peek_ahead()
-                        .expect("Function decl at end of token stream")
-                        .span
-                        .clone(),
-                },
-            )?
-            .lexeme;
+                }));
+            }
+        };
 
         let start_pos: usize = self.expect(TokenKind::LeftParen)?.span.range.start;
 
@@ -275,7 +291,23 @@ impl<'source> Parser<'source> {
     }
 
     fn var_declaration(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
-        let token = self.expect(TokenKind::Identifier)?;
+        let (name, span) = match self.peek().kind {
+            TokenKind::Identifier => {
+                let token = self.advance();
+                (Some(token.lexeme.to_owned()), token.span.clone())
+            }
+            TokenKind::UnderScore => {
+                let span = self.advance().span.clone();
+                (None, span)
+            }
+            _ => {
+                return Err(self.error(ParseError::UnexpectedTokenKind {
+                    got: self.peek().kind,
+                    expected: [TokenKind::Identifier, TokenKind::UnderScore].to_vec(),
+                    span: self.peek().span.clone(),
+                }));
+            }
+        };
 
         let initializer = if self.match_any([TokenKind::Equal]) {
             Some(self.expression()?)
@@ -286,20 +318,9 @@ impl<'source> Parser<'source> {
         self.expect(TokenKind::Semicolon)?;
 
         Ok(Stmt::Var {
-            name: token.lexeme.to_owned(),
+            name: name,
             initializer,
-            span: token.span,
-        })
-    }
-
-    fn throwaway_declaration(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
-        let start = self.previous().span.range.start;
-        self.expect(TokenKind::Equal)?;
-        let expr = self.expression()?;
-        let end = self.expect(TokenKind::Semicolon)?.span.range.end;
-        Ok(Stmt::Throwaway {
-            span: Span::new(start..end, self.file_id),
-            initializer: expr,
+            span: span,
         })
     }
 
@@ -743,7 +764,18 @@ impl<'source> Parser<'source> {
                 )))
             }
             String => Ok(Expr::Literal(Literal::String(
-                self.advance().lexeme.to_owned(),
+                unescape(self.advance().lexeme).map_err(|e_seqs| {
+                    for seq in e_seqs {
+                        let _ = self.error(ParseError::InvalidEscape {
+                            seq,
+                            span: self.previous().span.clone(),
+                        });
+                    }
+                    self.errors
+                        .last()
+                        .expect("Already added errors to it")
+                        .clone()
+                })?,
             ))),
             LeftBracket => {
                 self.advance();
@@ -795,6 +827,17 @@ impl<'source> Parser<'source> {
                     span: token.span.clone(),
                 })
             }
+            UnderScore => {
+                let start_pos = self.advance().span.range.start;
+                self.expect(TokenKind::Equal)?;
+                let expr = self.expression()?;
+                let end_pos = self.previous().span.range.end;
+
+                Ok(Expr::Throwaway {
+                    span: Span::new(start_pos..end_pos, self.file_id),
+                    expr: Box::new(expr),
+                })
+            }
             k => Err(self.error(ParseError::UnexpectedTokenKind {
                 got: k,
                 expected: [
@@ -808,6 +851,7 @@ impl<'source> Parser<'source> {
                     This,
                     Identifier,
                     LeftBracket,
+                    UnderScore,
                 ]
                 .to_vec(),
                 span: self.peek().span.clone(),
@@ -882,4 +926,70 @@ impl<'source> Parser<'source> {
             },
         )
     }
+}
+
+fn unescape(input: &str) -> Result<String, Vec<String>> {
+    let mut ok = String::new();
+    let mut err = Vec::new();
+    let mut chars = input.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => ok.push('\n'),
+                Some('t') => ok.push('\t'),
+                Some('r') => ok.push('\r'),
+                Some('\\') => ok.push('\\'),
+                Some('"') => ok.push('"'),
+
+                Some('x') => {
+                    let mut erred = false;
+                    let hex: String = chars.by_ref().take(2).collect();
+                    if hex.len() != 2 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+                        erred = true;
+                    }
+
+                    let value = u8::from_str_radix(&hex, 16);
+
+                    if let Ok(val) = value
+                        && !erred
+                    {
+                        ok.push(val as char);
+                    } else {
+                        err.push(format!("\\x{hex}"));
+                    }
+                }
+
+                Some('u') => {
+                    let mut erred = false;
+                    let hex: String = chars.by_ref().take(4).collect();
+                    if hex.len() != 4 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+                        erred = true;
+                    }
+                    let character = u32::from_str_radix(&hex, 16)
+                        .ok()
+                        .and_then(|val| char::from_u32(val));
+                    if let Some(c) = character
+                        && !erred
+                    {
+                        ok.push(c);
+                    } else {
+                        err.push(format!("\\u{hex}"));
+                    }
+                }
+
+                Some(other) => {
+                    // preserve unknown escapes literally
+                    ok.push('\\');
+                    ok.push(other);
+                }
+
+                None => {}
+            }
+        } else {
+            ok.push(c);
+        }
+    }
+
+    if err.is_empty() { Ok(ok) } else { Err(err) }
 }

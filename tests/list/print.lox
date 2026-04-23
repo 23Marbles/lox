@@ -1,2 +1,2 @@
 class Foo {}
-print [1, Foo(), "3"]; // prints: [1, <Foo instance>, 3]
+print [1, Foo(), "3"]; // prints: "[1, <Foo instance>, 3]"

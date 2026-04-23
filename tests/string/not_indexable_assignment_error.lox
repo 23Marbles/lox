@@ -1,1 +1,1 @@
-"foo"[0] = 0; // error: 'string' value38
+"foo"[0] = 0; // error: 38

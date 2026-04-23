@@ -6,4 +6,4 @@ class Superclass {
 
 class Subclass < Superclass {}
 
-Subclass.method(); // prints: Superclass method called
+Subclass.method(); // prints: "Superclass method called"

@@ -8,4 +8,4 @@ class AdderFactory {
 }
 
 var add3 = AdderFactory.newAdder(3);
-print add3(4); // prints: 7
+print add3(4); // prints: "7"

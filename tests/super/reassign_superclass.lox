@@ -17,6 +17,6 @@ class OtherBase {
 }
 
 var derived = Derived();
-derived.method(); // prints: Base.method()
+derived.method(); // prints: "Base.method()"
 Base = OtherBase;
-derived.method(); // prints: Base.method()
+derived.method(); // prints: "Base.method()"

@@ -6,4 +6,4 @@ class Foo {
   }
 }
 
-Foo().method(); // prints: variable
+Foo().method(); // prints: "variable"

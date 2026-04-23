@@ -16,6 +16,6 @@ class Add {
   }
 }
 
-Greet(); // prints: Hello, World!
-Add2(1); // prints: 3
-Add(2, 3); // prints: 5
+Greet(); // prints: "Hello, World!"
+Add2(1); // prints: "3"
+Add(2, 3); // prints: "5"

@@ -5,4 +5,4 @@ class Foo {
   }
 }
 
-print Foo().method(); // prints: ok
+print Foo().method(); // prints: "ok"

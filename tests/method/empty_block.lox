@@ -2,4 +2,4 @@ class Foo {
   bar() {}
 }
 
-print Foo().bar(); // prints: nil
+print Foo().bar(); // prints: "nil"

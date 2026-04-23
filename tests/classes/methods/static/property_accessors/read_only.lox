@@ -4,4 +4,4 @@ class Math {
   }
 }
 
-print Math.PI; // prints: 3
+print Math.PI; // prints: "3"

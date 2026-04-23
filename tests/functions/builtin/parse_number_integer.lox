@@ -1,1 +1,1 @@
-print parseNumber("1") == 1; // prints: true
+print parseNumber("1") == 1; // prints: "true"

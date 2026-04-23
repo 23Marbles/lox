@@ -4,4 +4,4 @@ if (false) {
   var x = 2;
 }
 
-print "got here"; // prints: got here
+print "got here"; // prints: "got here"

@@ -12,16 +12,16 @@ from the challenges in the book. The extra features are as follows:
 - [x] [`%` operator](#binary-expression)
 - [x] [`<`, `<=`, `>`, `>=` operators for strings](#binary-expression) - [Evaluating Expressions](https://craftinginterpreters.com/evaluating-expressions.html#challenges)
 - [x] [Division by zero handling](#binary-expression) - [Evaluating Expressions](https://craftinginterpreters.com/evaluating-expressions.html#challenges)
-- [ ] [Ternary expression](#ternary-expression) - [Parsing Expressions](https://craftinginterpreters.com/parsing-expressions.html#challenges)
+- [x] [Ternary expression](#ternary-expression) - [Parsing Expressions](https://craftinginterpreters.com/parsing-expressions.html#challenges)
 - [ ] [Function expression](#function-expression) - [Functions](https://craftinginterpreters.com/functions.html#challenges)
 - [ ] [`try` expression](#try-expression)
-- [ ] [`break` statement](#break-statement) - [Control Flow](https://craftinginterpreters.com/control-flow.html#challenges)
-- [ ] [`continue` statement](#continue-statement)
+- [x] [`break` statement](#break-statement) - [Control Flow](https://craftinginterpreters.com/control-flow.html#challenges)
+- [x] [`continue` statement](#continue-statement)
 - [x] [Runtime error](#declarations) for accessing uninitialised variable - [Statements and State](https://craftinginterpreters.com/statements-and-state.html#challenges)
 - [ ] [Static method](#static-method) - [Classes](https://craftinginterpreters.com/classes.html#challenges)
 - [ ] [Property getter method](#property-accessor) - [Classes](https://craftinginterpreters.com/classes.html#challenges)
 - [ ] [Property setter method](#property-accessor)
-- [ ] [Blank identifier](#blank-identifier)
+- [x] [Blank identifier](#blank-identifier)
 - [x] [Error messages point to location of error in source code](#errors)
 - [x] [Runtime error message includes stack trace](#errors)
 - [x] [`sleep` built-in function](#built-in-functions)
@@ -55,12 +55,12 @@ var vals = [1, 2, 3];
 vals[1] = 9;
 vals.push(4);
 vals.push(5);
-print vals.pop(); // prints: 5
+print vals.pop(); // prints: ""5""
 for (var i = 0; i < vals.length; i++) {
-  // prints: 1
-  // prints: 9
-  // prints: 3
-  // prints: 4
+  // prints: "1"
+  // prints: "9"
+  // prints: "3"
+  // prints: "4"
   print vals[i];
 }
 ```
@@ -88,10 +88,10 @@ Expressions are constructs that produce a value.
 A literal expression produces a value directly.
 
 ```lox
-print 123.4; // prints: 123.4
-print "hello"; // prints: hello
-print false; // prints: false
-print nil; // prints: nil
+print 123.4; // prints: "123.4"
+print "hello"; // prints: "hello"
+print false; // prints: "false"
+print nil; // prints: "nil"
 ```
 
 #### String Escape Sequences
@@ -115,8 +115,8 @@ A unary expression is an operator followed by a single operand.
 | -        | `number` | `number` | Negates the operand                   |
 
 ```lox
-print !""; // prints: true
-print -1; // prints: -1
+print !""; // prints: "true"
+print -1; // prints: "-1"
 ```
 
 ### Binary Expression
@@ -143,19 +143,19 @@ A binary expression is an operator surrounded by two operands.
 | ,         | any          | any          | Type of the right operand | Evaluates the left then right operand<br>Returns the second result     |
 
 ```lox
-print 2 * 3.5; // prints: 7
-print 3 * "ab"; // prints: "ababab"
-print 10 / 2; // prints: 5
-print 3.5 % 2; // prints: 1.5
-print 1 + 2; // prints: 3
-print "a" + "b"; // prints: "ab"
-print 3 - 1; // prints: 2
-print 1 < 2; // prints: true
-print "a" > "b"; // prints: false
-print 1 == "1"; // prints: false
-print 1 and "a"; // prints: a
-print 1 or 2; // prints: 1
-print 1, 2; // prints: 2
+print 2 * 3.5; // prints: "7"
+print 3 * "ab"; // prints: ""ababab""
+print 10 / 2; // prints: "5"
+print 3.5 % 2; // prints: "1.5"
+print 1 + 2; // prints: "3"
+print "a" + "b"; // prints: ""ab""
+print 3 - 1; // prints: "2"
+print 1 < 2; // prints: "true"
+print "a" > "b"; // prints: "false"
+print 1 == "1"; // prints: "false"
+print 1 and "a"; // prints: "a"
+print 1 or 2; // prints: "1"
+print 1, 2; // prints: "2"
 ```
 
 ### Ternary Expression
@@ -165,8 +165,8 @@ operand, and if it is truthy, it evaluates and returns the second operand. Other
 and returns the third operand.
 
 ```lox
-print true ? 1 : 2; // prints: 1
-print "" ? 1 : 2;   // prints: 2
+print true ? 1 : 2; // prints: "1"
+print "" ? 1 : 2;   // prints: "2"
 ```
 
 ### Variable Expression
@@ -175,7 +175,7 @@ A variable expression produces the value of a variable.
 
 ```lox
 var a = 1;
-print a; // prints: 1
+print a; // prints: "1"
 ```
 
 ### Assignment Expression
@@ -185,9 +185,9 @@ An assignment expression assigns a value to a variable and produces the value.
 ```lox
 var a;
 a = 1;
-print a; // prints: 1
-print a = 2; // prints: 2
-print a; // prints: 2
+print a; // prints: "1"
+print a = 2; // prints: "2"
+print a; // prints: "2"
 ```
 
 ### Call Expression
@@ -199,7 +199,7 @@ fun add(a, b) {
   return a + b;
 }
 
-print add(1, 2); // prints: 3
+print add(1, 2); // prints: "3"
 ```
 
 ### Index Expression
@@ -208,9 +208,9 @@ An index expression produces the value at an index of a subject.
 
 ```lox
 var list = [1, 2, 3];
-print list[0]; // prints: 1
-print list[1]; // prints: 2
-print list[2]; // prints: 3
+print list[0]; // prints: "1"
+print list[1]; // prints: "2"
+print list[2]; // prints: "3"
 ```
 
 ### Index Set Expression
@@ -222,7 +222,7 @@ var list = [1, 2, 3];
 list[0] = 4;
 list[1] = 5;
 list[2] = 6;
-print list; // prints: [4, 5, 6]
+print list; // prints: "[4, 5, 6]"
 ```
 
 ### Property Expression
@@ -237,7 +237,7 @@ class Foo {
 }
 var foo = Foo(1);
 
-print foo.bar; // prints: 1
+print foo.bar; // prints: "1"
 ```
 
 ### Property Set Expression
@@ -249,9 +249,9 @@ class Foo {}
 var foo = Foo();
 
 foo.bar = 1;
-print foo.bar; // prints: 1
-print foo.bar = 2; // prints: 2
-print foo.bar; // prints: 2
+print foo.bar; // prints: "1"
+print foo.bar = 2; // prints: "2"
+print foo.bar; // prints: "2"
 ```
 
 ### Function Expression
@@ -263,7 +263,7 @@ var add = fun(a, b) {
   return a + b;
 };
 
-print add(1, 2); // prints: 3
+print add(1, 2); // prints: "3"
 ```
 
 ### Try Expression
@@ -275,15 +275,15 @@ expression, otherwise it's the error message.
 
 ```lox
 var successResult = try 1 / 2;
-print successResult.ok == true; // prints: true
-print successResult.value; // prints: 0.5
+print successResult.ok == true; // prints: "true"
+print successResult.value; // prints: "0.5"
 
 var failResult = try 1 / 0;
-print failResult.ok == false; // prints: true
-print failResult.value; // prints: cannot divide by 0
+print failResult.ok == false; // prints: "true"
+print failResult.value; // prints: "cannot divide by 0"
 
-print successResult; // prints: result(ok=true, value=0.5)
-print failureResult; // prints: result(ok=false, value=cannot divide by 0)
+print successResult; // prints: "result(ok=true, value=0.5)"
+print failureResult; // prints: "result(ok=false, value=cannot divide by 0)"
 ```
 
 ### Operator Precedence and Associativity
@@ -325,7 +325,7 @@ An expression statement evaluates an expression and discards the result.
 A print statement evaluates an expression and prints the result to stdout.
 
 ```lox
-print 1 + 2; // prints: 3
+print 1 + 2; // prints: "3"
 ```
 
 ### Block Statement
@@ -338,11 +338,11 @@ var a = "global a";
 var b = "global b";
 {
   var a = "outer a";
-  print a; // prints: outer a
-  print b; // prints: global b
+  print a; // prints: "outer a"
+  print b; // prints: "global b"
 }
-print a; // prints: global a
-print b; // prints: global b
+print a; // prints: "global a"
+print b; // prints: "global b"
 ```
 
 ### If Statement
@@ -352,19 +352,19 @@ optional else statement can be provided to execute a statement if the expression
 
 ```lox
 if (1 < 2) {
-  print "1 is less than 2"; // prints: 1 is less than 2
+  print "1 is less than 2"; // prints: "1 is less than 2"
 }
 
 if (1 > 2) {
   print "1 is greater than 2";
 } else {
-  print "1 is not greater than 2"; // prints: 1 is not greater than 2
+  print "1 is not greater than 2"; // prints: "1 is not greater than 2"
 }
 
 if (1 > 2) {
   print "1 is greater than 2";
 } else if (3 < 4) {
-  print "3 is less than 4"; // prints: 3 is less than 4
+  print "3 is less than 4"; // prints: "3 is less than 4"
 }
 ```
 
@@ -375,9 +375,9 @@ A while statement repeatedly executes a statement while the provided expression 
 ```lox
 var i = 0;
 while (i < 3) {
-  // prints: 0
-  // prints: 1
-  // prints: 2
+  // prints: "0"
+  // prints: "1"
+  // prints: "2"
   print i;
   i = i + 1;
 }
@@ -393,9 +393,9 @@ The following while statement:
 ```lox
 var i = 0;
 while (i < 3) {
-  // prints: 0
-  // prints: 1
-  // prints: 2
+  // prints: "0"
+  // prints: "1"
+  // prints: "2"
   print i;
   i = i + 1;
 }
@@ -405,9 +405,9 @@ is equivalent to the following for statement:
 
 ```lox
 for (var i = 0; i < 3; i = i + 1) {
-  // prints: 0
-  // prints: 1
-  // prints: 2
+  // prints: "0"
+  // prints: "1"
+  // prints: "2"
   print i;
 }
 ```
@@ -425,9 +425,9 @@ The initialisation section can either be a variable declaration or an expression
 ```lox
 var i;
 for (i = 0; i < 3; i = i + 1) {
-  // prints: 0
-  // prints: 1
-  // prints: 2
+  // prints: "0"
+  // prints: "1"
+  // prints: "2"
   print i;
 }
 ```
@@ -441,7 +441,7 @@ for (var i = 0; i < 3; i = i + 1) {
   if (i == 1) {
     break;
   }
-  print i; // prints: 0
+  print i; // prints: "0"
 }
 ```
 
@@ -454,9 +454,9 @@ for (var i = 0; i < 5; i = i + 1) {
   if (i % 2 == 1) {
     continue;
   }
-  // prints: 0
-  // prints: 2
-  // prints: 4
+  // prints: "0"
+  // prints: "2"
+  // prints: "4"
   print i;
 }
 ```
@@ -477,8 +477,8 @@ fun greet() {
   print "This is unreachable";
 }
 
-print add(1, 2); // prints: 3
-greet(); // prints: Hello, World!
+print add(1, 2); // prints: "3"
+greet(); // prints: "Hello, World!"
 ```
 
 ## Declarations
@@ -496,9 +496,9 @@ have a value of `nil`. You can optionally assign (define) a different value to t
 
 ```lox
 var a;
-print a; // prints: nil
+print a; // prints: "nil"
 var b = 1;
-print b; // prints: 1
+print b; // prints: "1"
 ```
 
 ### Function Declaration
@@ -512,7 +512,7 @@ fun add(a, b) {
   return a + b;
 }
 
-print add(1, 2); // prints: 3
+print add(1, 2); // prints: "3"
 ```
 
 ### Class Declaration
@@ -539,10 +539,10 @@ var p1 = Point(1, 2);
 var p2 = Point(3, 4);
 p1.move(5, 6);
 p2.move(7, 8);
-print p1.x; // prints: 6
-print p1.y; // prints: 8
-print p2.x; // prints: 10
-print p2.y; // prints: 12
+print p1.x; // prints: "6"
+print p1.y; // prints: "8"
+print p2.x; // prints: "10"
+print p2.y; // prints: "12"
 ```
 
 #### Inheritance
@@ -566,8 +566,8 @@ class BostonCream < Doughnut {
 }
 
 var bostonCream = BostonCream();
-// prints: Fry until golden brown.
-// prints: Pipe full of custard and coat with chocolate.
+// prints: "Fry until golden brown."
+// prints: "Pipe full of custard and coat with chocolate."
 bostonCream.cook();
 ```
 
@@ -584,7 +584,7 @@ class Math {
   }
 }
 
-print Math.square(2); // prints: 4
+print Math.square(2); // prints: "4"
 ```
 
 #### Property Accessor
@@ -619,8 +619,8 @@ class Circle {
 }
 
 var c = Circle(2);
-print c.radius; // prints: 2
-print c.area; // prints: 12
+print c.radius; // prints: "2"
+print c.area; // prints: "12"
 c.radius = -1;
 print c.radius; // error: radius must be positive
 ```
@@ -745,7 +745,7 @@ The first element will be the name of the script.
 ```lox
 var scriptName = argv[0];
 var name = argv[1];
-print "Hello, " + name + " (from " + scriptName + ")!"; // prints: Hello, Marcus (from greet.lox)!
+print "Hello, " + name + " (from " + scriptName + ")!"; // prints: "Hello, Marcus (from greet.lox)!"
 ```
 
 ## Grammar

@@ -5,5 +5,5 @@ class Foo {
 }
 
 Foo.bar = "bar field";
-print Foo.bar; // prints: bar field
+print Foo.bar; // prints: "bar field"
 Foo.bar(); // error: 24

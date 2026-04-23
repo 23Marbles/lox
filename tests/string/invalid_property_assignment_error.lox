@@ -1,1 +1,1 @@
-"bar".y = 1; // error: property assignment is not valid for 'string' value
+"bar".y = 1; // error: 40

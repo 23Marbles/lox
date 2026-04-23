@@ -1,4 +1,4 @@
 class Foo {}
 
 var foo = Foo();
-print foo; // prints: <Foo instance>
+print foo; // prints: "<Foo instance>"

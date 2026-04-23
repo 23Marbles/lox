@@ -1,2 +1,2 @@
-print "ok"; // prints: ok
+print "ok"; // prints: "ok"
 // comment

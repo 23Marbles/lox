@@ -2,4 +2,4 @@ if (false) {
   print notDefined;
 }
 
-print "ok"; // prints: ok
+print "ok"; // prints: "ok"

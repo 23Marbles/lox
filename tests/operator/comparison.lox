@@ -1,25 +1,25 @@
-print 1 < 2;    // prints: true
-print 2 < 2;    // prints: false
-print 2 < 1;    // prints: false
+print 1 < 2;    // prints: "true"
+print 2 < 2;    // prints: "false"
+print 2 < 1;    // prints: "false"
 
-print 1 <= 2;    // prints: true
-print 2 <= 2;    // prints: true
-print 2 <= 1;    // prints: false
+print 1 <= 2;    // prints: "true"
+print 2 <= 2;    // prints: "true"
+print 2 <= 1;    // prints: "false"
 
-print 1 > 2;    // prints: false
-print 2 > 2;    // prints: false
-print 2 > 1;    // prints: true
+print 1 > 2;    // prints: "false"
+print 2 > 2;    // prints: "false"
+print 2 > 1;    // prints: "true"
 
-print 1 >= 2;    // prints: false
-print 2 >= 2;    // prints: true
-print 2 >= 1;    // prints: true
+print 1 >= 2;    // prints: "false"
+print 2 >= 2;    // prints: "true"
+print 2 >= 1;    // prints: "true"
 
 // Zero and negative zero compare the same.
-print 0 < -0; // prints: false
-print -0 < 0; // prints: false
-print 0 > -0; // prints: false
-print -0 > 0; // prints: false
-print 0 <= -0; // prints: true
-print -0 <= 0; // prints: true
-print 0 >= -0; // prints: true
-print -0 >= 0; // prints: true
+print 0 < -0; // prints: "false"
+print -0 < 0; // prints: "false"
+print 0 > -0; // prints: "false"
+print -0 > 0; // prints: "false"
+print 0 <= -0; // prints: "true"
+print -0 <= 0; // prints: "true"
+print 0 >= -0; // prints: "true"
+print -0 >= 0; // prints: "true"

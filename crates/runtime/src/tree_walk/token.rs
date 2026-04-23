@@ -226,16 +226,44 @@ impl<'source> Iterator for Scanner<'source> {
                     loop {
                         match self.advance() {
                             Some('"') => break,
+
                             Some('\\') => {
-                                if self.advance().is_none() {
-                                    return Some(
-                                        Err(self.error(ScanErrorKind::UnterminatedString)),
-                                    );
+                                match self.advance() {
+                                    Some('x') => {
+                                        // Expect exactly 2 chars
+                                        for _ in 0..2 {
+                                            if self.advance().is_none() {
+                                                return Some(Err(
+                                                    self.error(ScanErrorKind::UnterminatedString)
+                                                ));
+                                            }
+                                        }
+                                    }
+
+                                    Some('u') => {
+                                        // Expect exactly 4 chars
+                                        for _ in 0..4 {
+                                            if self.advance().is_none() {
+                                                return Some(Err(
+                                                    self.error(ScanErrorKind::UnterminatedString)
+                                                ));
+                                            }
+                                        }
+                                    }
+
+                                    Some(_) => {}
+                                    None => {
+                                        return Some(Err(
+                                            self.error(ScanErrorKind::UnterminatedString)
+                                        ));
+                                    }
                                 }
                             }
+
                             None => {
                                 return Some(Err(self.error(ScanErrorKind::UnterminatedString)));
                             }
+
                             _ => {}
                         }
                     }

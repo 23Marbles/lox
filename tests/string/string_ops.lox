@@ -1,5 +1,5 @@
-print "cd" * 3; // prints: cdcdcd
-print 3 * "ab"; // prints: ababab
+print "cd" * 3; // prints: "cdcdcd"
+print 3 * "ab"; // prints: "ababab"
 
-print "a" > "b"; // prints: false
-print "b" > "a"; // prints: true
+print "a" > "b"; // prints: "false"
+print "b" > "a"; // prints: "true"

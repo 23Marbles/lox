@@ -8,10 +8,10 @@
     }
   }
 
-  // prints: 1
-  // prints: 2
-  // prints: 3
-  // prints: 4
-  // prints: 5
+  // prints: "1"
+  // prints: "2"
+  // prints: "3"
+  // prints: "4"
+  // prints: "5"
   Count(1, 5);
 }

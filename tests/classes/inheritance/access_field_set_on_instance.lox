@@ -17,6 +17,6 @@ class Subclass < Superclass {
 var subclass = Subclass();
 
 subclass.field = "field value";
-print subclass.field; // prints: field value
-subclass.printFieldSubclass(); // prints: field value
-subclass.printFieldSuperclass(); // prints: field value
+print subclass.field; // prints: "field value"
+subclass.printFieldSubclass(); // prints: "field value"
+subclass.printFieldSuperclass(); // prints: "field value"

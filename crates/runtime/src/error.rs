@@ -46,7 +46,7 @@ pub mod scan_err {
         error_codes::ErrorCode,
     };
 
-    #[derive(Debug, Clone, Copy)]
+    #[derive(Debug, Clone)]
     pub enum ScanErrorKind {
         UnexpectedCharacter(char),
         UnterminatedString,
@@ -128,17 +128,22 @@ pub mod parse_err {
             input: String,
             span: Span,
         },
+        InvalidEscape {
+            seq: String,
+            span: Span,
+        },
     }
 
     impl ToErrorCode for ParseError {
         fn error_code(&self) -> ErrorCode {
             match self {
                 ParseError::UnexpectedTokenKind { .. } => ErrorCode::UnexpectedTokenKind,
-                ParseError::ExpectedTokenKind { .. } => ErrorCode::ExpectedTokenKind,
+                ParseError::ExpectedTokenKind { .. } => ErrorCode::UnexpectedTokenKind,
                 ParseError::InvalidAssignTarget { .. } => ErrorCode::InvalidAssignTarget,
                 ParseError::TooManyArguments { .. } => ErrorCode::Over255Arguments,
                 ParseError::ExpectedName { .. } => ErrorCode::ExpectedName,
                 ParseError::ExpectedNumber { .. } => ErrorCode::ExpectedNumber,
+                ParseError::InvalidEscape { .. } => ErrorCode::InvalidEscape,
             }
         }
     }
@@ -152,6 +157,7 @@ pub mod parse_err {
                 ParseError::TooManyArguments { .. } => Severity::Warning,
                 ParseError::ExpectedName { .. } => Severity::Error,
                 ParseError::ExpectedNumber { .. } => Severity::Error,
+                ParseError::InvalidEscape { .. } => Severity::Error,
             }
         }
     }
@@ -202,9 +208,10 @@ pub mod parse_err {
                             prev_span.file_id,
                             prev_span.range.clone(),
                         )
-                        .with_message(format!("Expected after `{after:?}`")),
+                        .with_message(format!("Expected after `{after}`")),
                     ),
                 ParseError::ExpectedTokenKind { span, .. }
+                | ParseError::InvalidEscape { span, .. }
                 | ParseError::InvalidAssignTarget { span, .. }
                 | ParseError::ExpectedNumber { span, .. } => Diagnostic::new(self.severity())
                     .with_message(self.to_string())
@@ -222,10 +229,10 @@ pub mod parse_err {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             match self {
                 ParseError::UnexpectedTokenKind { got, .. } => {
-                    write!(f, "Unexpected token kind: `{:?}`", got)
+                    write!(f, "Unexpected token kind: `{got}`")
                 }
                 ParseError::ExpectedTokenKind { got, expected, .. } => {
-                    write!(f, "Expected token kind: `{:?}`, got: `{:?}`", expected, got)
+                    write!(f, "Expected token kind: `{expected}`, got: `{got}`")
                 }
                 ParseError::InvalidAssignTarget { target, .. } => {
                     write!(f, "Cannot assign to `{target}`")
@@ -238,6 +245,9 @@ pub mod parse_err {
                 }
                 ParseError::ExpectedNumber { input, .. } => {
                     write!(f, "Could not parse `{input}` as a number")
+                }
+                ParseError::InvalidEscape { seq, .. } => {
+                    write!(f, "Invalid escape sequence `{seq}`")
                 }
             }
         }
@@ -676,6 +686,7 @@ pub mod eval_err {
         },
         DivisionByZero,
         CannotGetProperties(LoxVarKind),
+        CannotSetProperties(LoxVarKind),
         CannotIndexInto(LoxVarKind),
         UninitializedVariable {
             name: String,
@@ -704,6 +715,7 @@ pub mod eval_err {
                 EvaluateErrorKind::NotPositiveIntegerOperand { .. } => {
                     ErrorCode::NonPositiveIntegerOperand
                 }
+                EvaluateErrorKind::CannotSetProperties(_) => ErrorCode::CannotSetProperties,
             }
         }
     }
@@ -722,6 +734,7 @@ pub mod eval_err {
                 EvaluateErrorKind::UninitializedVariable { .. } => Severity::Warning,
                 EvaluateErrorKind::CannotIndexInto(_) => Severity::Error,
                 EvaluateErrorKind::NotPositiveIntegerOperand { .. } => Severity::Error,
+                EvaluateErrorKind::CannotSetProperties(_) => Severity::Error,
             }
         }
     }
@@ -744,7 +757,7 @@ pub mod eval_err {
             match &self {
                 EvaluateErrorKind::IncompatableUnaryOperator { operator, var_ty } => write!(
                     f,
-                    "Cannot use unary operator `{operator:?}` on type `{var_ty}`",
+                    "Cannot use unary operator `{operator}` on type `{var_ty}`",
                 ),
                 EvaluateErrorKind::IncompatableBinaryOperator {
                     operator,
@@ -752,7 +765,7 @@ pub mod eval_err {
                     right_ty,
                 } => write!(
                     f,
-                    "Cannot use binary operator `{operator:?}` on types `{left_ty}`, `{right_ty}`",
+                    "Cannot use binary operator `{operator}` on types `{left_ty}`, `{right_ty}`",
                 ),
                 EvaluateErrorKind::UndeclaredVariable { name } => {
                     write!(f, "Tried to access undeclared variable with name {name}")
@@ -790,6 +803,9 @@ pub mod eval_err {
                     f,
                     "Binary operation of type `{operator}` on types `{left_ty}`, `{right_ty}` requires a positive, non negative integer"
                 ),
+                EvaluateErrorKind::CannotSetProperties(kind) => {
+                    write!(f, "Cannot set properties on variable of kind {kind}")
+                }
             }
         }
     }

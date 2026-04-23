@@ -14,16 +14,16 @@ var f = "global f";
 
   class G {
     g() {
-      print a; // prints: global a
+      print a; // prints: "global a"
       b = "global b";
-      print b; // prints: global b
+      print b; // prints: "global b"
       var c = "fun c";
-      print c; // prints: fun c
-      print d; // prints: block d
+      print c; // prints: "fun c"
+      print d; // prints: "block d"
       e = "block e";
-      print e; // prints: block e
+      print e; // prints: "block e"
       var f = "fun f";
-      print f; // prints: fun f
+      print f; // prints: "fun f"
     }
   }
 
@@ -31,11 +31,11 @@ var f = "global f";
   _ = a;
   var b = "block b";
   G().g();
-  print b; // prints: block b
-  print e; // prints: block e
+  print b; // prints: "block b"
+  print e; // prints: "block e"
 }
 
-print b; // prints: global b
-print c; // prints: global c
-print e; // prints: global e
-print f; // prints: global f
+print b; // prints: "global b"
+print c; // prints: "global c"
+print e; // prints: "global e"
+print f; // prints: "global f"

@@ -156,8 +156,10 @@ impl Resolver {
                 body,
                 span,
             } => {
-                self.decalare(name.clone(), span.clone());
-                self.define(name);
+                if let Some(name) = name {
+                    self.decalare(name.clone(), span.clone());
+                    self.define(name);
+                }
                 self.resolve_function(parameters, span.clone(), body, FunctionKind::Function);
             }
             Stmt::Block(stmts) => {
@@ -170,14 +172,15 @@ impl Resolver {
                 initializer,
                 span,
             } => {
-                self.decalare(name.clone(), span.clone());
+                if let Some(name) = name {
+                    self.decalare(name.clone(), span.clone());
+                }
                 if let Some(initializer) = initializer {
                     self.resolve_expr(initializer);
                 }
-                self.define(name);
-            }
-            Stmt::Throwaway { initializer, .. } => {
-                self.resolve_expr(initializer);
+                if let Some(name) = name {
+                    self.define(name);
+                }
             }
             Stmt::Expression(expr) => self.resolve_expr(expr),
             Stmt::If {
@@ -240,8 +243,10 @@ impl Resolver {
                 methods,
                 span,
             } => {
-                self.decalare(name.clone(), span.clone());
-                self.define(name);
+                if let Some(name) = name {
+                    self.decalare(name.clone(), span.clone());
+                    self.define(name);
+                }
 
                 if let Some(Expr::Variable {
                     name: s_name,
@@ -249,7 +254,7 @@ impl Resolver {
                     ..
                 }) = super_class.clone()
                 {
-                    if *name == s_name {
+                    if name.as_ref().map_or(false, |n| *n == s_name) {
                         assert_eq!(
                             s_span.file_id, span.file_id,
                             "Superclass must be defined in the same file as the if there is a self-referential inheritance"
@@ -298,7 +303,7 @@ impl Resolver {
                             parameters,
                             span.clone(),
                             body,
-                            if name == "init" {
+                            if name.as_ref().map_or(false, |n| n == "init") {
                                 FunctionKind::Initializer(span.clone())
                             } else {
                                 FunctionKind::Method
@@ -322,7 +327,7 @@ impl Resolver {
             }
             Stmt::Break { span } => {
                 if !(self.loop_depth > 0) {
-                    self.error(ResolverErr::ContinueFromOutsideLoop(span.clone()));
+                    self.error(ResolverErr::BreakFromOutsideLoop(span.clone()));
                 }
             }
         }
@@ -442,6 +447,10 @@ impl Resolver {
                     self.resolve_expr(expr);
                 }
                 self.resolve_expr(result.as_mut());
+                return;
+            }
+            Expr::Throwaway { expr, .. } => {
+                self.resolve_expr(expr);
                 return;
             }
         };

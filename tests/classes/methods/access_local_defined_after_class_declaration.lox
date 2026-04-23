@@ -6,7 +6,7 @@
     }
   }
   a = "outer";
-  Foo().bar(); // prints: outer
+  Foo().bar(); // prints: "outer"
 
   var b;
   {
@@ -16,6 +16,6 @@
       }
     }
     b = "inner";
-    Foo().bar(); // prints: inner
+    Foo().bar(); // prints: "inner"
   }
 }

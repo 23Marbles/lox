@@ -1,14 +1,14 @@
-print nil != nil; // prints: false
+print nil != nil; // prints: "false"
 
-print true != true; // prints: false
-print true != false; // prints: true
+print true != true; // prints: "false"
+print true != false; // prints: "true"
 
-print 1 != 1; // prints: false
-print 1 != 2; // prints: true
+print 1 != 1; // prints: "false"
+print 1 != 2; // prints: "true"
 
-print "str" != "str"; // prints: false
-print "str" != "ing"; // prints: true
+print "str" != "str"; // prints: "false"
+print "str" != "ing"; // prints: "true"
 
-print nil != false; // prints: true
-print false != 0; // prints: true
-print 0 != "0"; // prints: true
+print nil != false; // prints: "true"
+print false != 0; // prints: "true"
+print 0 != "0"; // prints: "true"

@@ -1,1 +1,1 @@
-print type(fun() {}); // prints: function
+print type(fun() {}); // prints: "callable"

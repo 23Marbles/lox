@@ -12,5 +12,5 @@ class Config {
 }
 
 Config.VALUE = 1;
-print Config.VALUE; // prints: 1
+print Config.VALUE; // prints: "1"
 Config.VALUE = -1; // error: 255

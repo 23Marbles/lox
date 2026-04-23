@@ -1,1 +1,1 @@
-print type([]); // prints: List
+print type([]); // prints: "list"

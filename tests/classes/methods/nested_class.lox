@@ -1,13 +1,13 @@
 class Outer {
   method() {
-    print this; // prints: [Outer object]
+    print this; // prints: "[Outer object]"
 
     fun f() {
-      print this; // prints: [Outer object]
+      print this; // prints: "[Outer object]"
 
       class Inner {
         method() {
-          print this; // prints: [Inner object]
+          print this; // prints: "[Inner object]"
         }
       }
 

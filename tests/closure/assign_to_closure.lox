@@ -19,9 +19,9 @@ var g;
 }
 
 f();
-// prints: local
-// prints: after f
+// prints: "local"
+// prints: "after f"
 
 g();
-// prints: after f
-// prints: after g
+// prints: "after f"
+// prints: "after g"

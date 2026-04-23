@@ -17,4 +17,4 @@ class Superclass < SuperSuperclass {
 class Subclass < Superclass {}
 
 var subclass = Subclass();
-subclass.otherMethod(); // prints: SuperSuperclass method called
+subclass.otherMethod(); // prints: "SuperSuperclass method called"

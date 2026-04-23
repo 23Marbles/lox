@@ -1,8 +1,8 @@
 // False and nil are false.
-if (false) print "bad"; else print "false"; // prints: false
-if (nil) print "bad"; else print "nil"; // prints: nil
+if (false) print "bad"; else print "false"; // prints: "false"
+if (nil) print "bad"; else print "nil"; // prints: "nil"
 
 // Everything else is true.
-if (true) print true; // prints: true
-if (0) print 0; // prints: 0
-if ("") print "empty"; // prints: empty
+if (true) print true; // prints: "true"
+if (0) print 0; // prints: "0"
+if ("") print "empty"; // prints: "empty"

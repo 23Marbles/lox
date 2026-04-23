@@ -10,5 +10,5 @@ var f;
 }
 
 f();
-// prints: a
-// prints: a
+// prints: "a"
+// prints: "a"

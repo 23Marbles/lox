@@ -1,6 +1,6 @@
 // Evaluate the 'else' expression if the condition is false.
-if (true) print "good"; else print "bad"; // prints: good
-if (false) print "bad"; else print "good"; // prints: good
+if (true) print "good"; else print "bad"; // prints: "good"
+if (false) print "bad"; else print "good"; // prints: "good"
 
 // Allow block body.
-if (false) nil; else { print "block"; } // prints: block
+if (false) nil; else { print "block"; } // prints: "block"

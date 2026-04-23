@@ -20,4 +20,4 @@ class Subclass < Superclass {
 }
 
 var closure = Subclass.getClosure();
-print closure()()(); // prints: Superclass
+print closure()()(); // prints: "Superclass"

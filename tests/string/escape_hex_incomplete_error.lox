@@ -1,6 +1,2 @@
-// syntaxerror
-// error: unterminated string literal
-// lint error: unterminated string literal
-// error: invalid hex digit in escape sequence
-// lint error: invalid hex digit in escape sequence
+// error: 3
 print "\x6";

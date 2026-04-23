@@ -9,4 +9,4 @@ fun init() {
   print "not initializer";
 }
 
-init(); // prints: not initializer
+init(); // prints: "not initializer"

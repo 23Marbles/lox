@@ -8,4 +8,4 @@ var f;
   f = f_;
 }
 
-f(); // prints: local
+f(); // prints: "local"

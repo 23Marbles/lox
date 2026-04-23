@@ -1,1 +1,1 @@
-print argv; // prints: [no_args.lox]
+print argv; // prints: "[no_args.lox]"

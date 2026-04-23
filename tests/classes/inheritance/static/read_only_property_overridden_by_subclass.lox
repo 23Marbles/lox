@@ -10,4 +10,4 @@ class Subclass < Superclass {
   }
 }
 
-print Subclass.property; // prints: Subclass property value
+print Subclass.property; // prints: "Subclass property value"

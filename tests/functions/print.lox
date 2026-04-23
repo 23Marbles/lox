@@ -1,3 +1,3 @@
 fun f() {}
 
-print f; // prints: [function f]
+print f; // prints: "<fn f()>"

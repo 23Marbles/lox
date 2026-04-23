@@ -20,6 +20,6 @@ fun f1() {
 f1();
 
 f();
-// prints: a
-// prints: b
-// prints: c
+// prints: "a"
+// prints: "b"
+// prints: "c"

@@ -10,6 +10,6 @@ fun newCounter() {
 }
 
 var counter = newCounter();
-print counter.increment(); // prints: 1
-print counter.increment(); // prints: 2
-print counter.increment(); // prints: 3
+print counter.increment(); // prints: "1"
+print counter.increment(); // prints: "2"
+print counter.increment(); // prints: "3"

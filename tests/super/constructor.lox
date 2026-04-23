@@ -12,5 +12,5 @@ class Derived < Base {
 }
 
 Derived();
-// prints: Derived.init()
-// prints: Base.init(a, b)
+// prints: "Derived.init()"
+// prints: "Base.init(a, b)"

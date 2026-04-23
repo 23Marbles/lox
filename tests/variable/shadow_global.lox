@@ -1,6 +1,6 @@
 var a = "global";
 {
   var a = "shadow";
-  print a; // prints: shadow
+  print a; // prints: "shadow"
 }
-print a; // prints: global
+print a; // prints: "global"

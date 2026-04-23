@@ -4,7 +4,7 @@
     print a;
   }
   a = "outer";
-  f(); // prints: outer
+  f(); // prints: "outer"
 
   var b;
   {
@@ -12,6 +12,6 @@
       print b;
     }
     b = "inner";
-    f(); // prints: inner
+    f(); // prints: "inner"
   }
 }

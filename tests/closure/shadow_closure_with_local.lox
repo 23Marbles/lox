@@ -2,11 +2,11 @@
   var foo = "closure";
   fun f() {
     {
-      print foo; // prints: closure
+      print foo; // prints: "closure"
       var foo = "shadow";
-      print foo; // prints: shadow
+      print foo; // prints: "shadow"
     }
-    print foo; // prints: closure
+    print foo; // prints: "closure"
   }
   f();
 }

@@ -16,10 +16,10 @@ var method = foo.method;
 // Setting a property shadows the instance method.
 foo.method = foo.other;
 foo.method(1);
-// prints: other
-// prints: 1
+// prints: "other"
+// prints: "1"
 
 // The old method handle still points to the original method.
 method(2);
-// prints: method
-// prints: 2
+// prints: "method"
+// prints: "2"

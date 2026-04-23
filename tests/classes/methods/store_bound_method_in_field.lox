@@ -15,7 +15,7 @@ var p2 = Point(3, 4);
 p2.moveP1 = p1.move;
 p2.moveP1(5, 6);
 
-print p1.x; // prints: 6
-print p1.y; // prints: 8
-print p2.x; // prints: 3
-print p2.y; // prints: 4
+print p1.x; // prints: "6"
+print p1.y; // prints: "8"
+print p2.x; // prints: "3"
+print p2.y; // prints: "4"

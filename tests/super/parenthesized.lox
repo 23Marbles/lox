@@ -4,7 +4,7 @@ class A {
 
 class B < A {
   method() {
-    // error: 6
+    // error: 5
     (super).method();
   } // error: 5
 }

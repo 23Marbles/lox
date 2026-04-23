@@ -1,8 +1,8 @@
 // False and nil are false.
-print false and "bad"; // prints: false
-print nil and "bad"; // prints: nil
+print false and "bad"; // prints: "false"
+print nil and "bad"; // prints: "nil"
 
 // Everything else is true.
-print true and "ok"; // prints: ok
-print 0 and "ok"; // prints: ok
-print "" and "ok"; // prints: ok
+print true and "ok"; // prints: "ok"
+print 0 and "ok"; // prints: "ok"
+print "" and "ok"; // prints: "ok"

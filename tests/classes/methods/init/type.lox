@@ -1,4 +1,4 @@
 class Foo {
   init() {}
 }
-print type(Foo().init); // prints: function
+print type(Foo().init); // prints: "callable"

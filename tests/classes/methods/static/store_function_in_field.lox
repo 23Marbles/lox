@@ -6,4 +6,4 @@ class Foo {}
 
 Foo.add = add;
 
-print Foo.add(1, 2); // prints: 3
+print Foo.add(1, 2); // prints: "3"

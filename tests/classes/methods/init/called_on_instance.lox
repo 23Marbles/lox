@@ -12,7 +12,7 @@ class NoReturn {
 }
 
 var returnsNoValue = ReturnsNoValue(1);
-print returnsNoValue.init(2).x; // prints: 2
+print returnsNoValue.init(2).x; // prints: "2"
 
 var noReturn = NoReturn(3);
-print noReturn.init(4).x; // prints: 4
+print noReturn.init(4).x; // prints: "4"

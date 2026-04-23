@@ -1,1 +1,1 @@
-print "\x66\x6F\x6f"; // prints: foo
+print "\x66\x6F\x6f"; // prints: "foo"

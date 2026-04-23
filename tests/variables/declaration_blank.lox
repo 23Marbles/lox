@@ -11,4 +11,4 @@ fun updateValue() {
 }
 
 var _ = updateValue();
-print value; // prints: updated
+print value; // prints: "updated"

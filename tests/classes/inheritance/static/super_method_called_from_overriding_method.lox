@@ -11,6 +11,6 @@ class Subclass < Superclass {
   }
 }
 
-// prints: Subclass method called
-// prints: Superclass method called
+// prints: "Subclass method called"
+// prints: "Superclass method called"
 Subclass.method();

@@ -8,4 +8,4 @@ fun foo(param) {
 }
 foo("param");
 
-f(); // prints: param
+f(); // prints: "param"

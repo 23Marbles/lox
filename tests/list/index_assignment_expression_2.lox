@@ -1,7 +1,5 @@
 var list = [1, 2, 3];
 for (var i = 0; i < list.length; i = i + 1) {
-  // prints: 1
-  // prints: 2
-  // prints: 3
-  print list[i];
+  list[i] = 4 + i;
 }
+print list; // prints: "[4, 5, 6]"

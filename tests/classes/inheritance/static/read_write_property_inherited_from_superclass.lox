@@ -11,4 +11,4 @@ class Superclass {
 class Subclass < Superclass {}
 
 Subclass.property = "property value";
-print Subclass.property; // prints: property value set by Superclass got by Superclass
+print Subclass.property; // prints: "property value set by Superclass got by Superclass"

@@ -1,1 +1,1 @@
-print [].push; // prints: [built-in method list.push]
+print [].push; // prints: "<fn push(any) -> nil>"

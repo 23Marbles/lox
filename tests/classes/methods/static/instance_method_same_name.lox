@@ -9,5 +9,5 @@ class Foo {
 }
 
 var foo = Foo();
-foo.bar(); // prints: instance bar called
-Foo.bar(); // prints: static bar called
+foo.bar(); // prints: "instance bar called"
+Foo.bar(); // prints: "static bar called"

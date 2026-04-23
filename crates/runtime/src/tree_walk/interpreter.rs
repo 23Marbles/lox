@@ -73,8 +73,12 @@ impl InterpOut {
 
     /// Pushes a string to the output buffer, marking it as a normal line.
     fn println(&mut self, value: impl ToString) {
-        for s in value.to_string().lines() {
-            self.lines.push((s.to_owned(), LineType::Normal));
+        if value.to_string().is_empty() {
+            self.lines.push(("".to_owned(), LineType::Normal));
+        } else {
+            for s in value.to_string().lines() {
+                self.lines.push((s.to_owned(), LineType::Normal));
+            }
         }
     }
 
@@ -183,11 +187,9 @@ impl Interpreter {
                     Some(value) => self.evaluate_expr(value)?,
                     None => LoxVar::Uninitialized,
                 };
-                self.env.borrow_mut().define(name, value);
-                Ok(ControlFlow::None)
-            }
-            Stmt::Throwaway { initializer, .. } => {
-                self.evaluate_expr(initializer)?;
+                if let Some(name) = name {
+                    self.env.borrow_mut().define(name, value);
+                }
                 Ok(ControlFlow::None)
             }
             Stmt::Block(stmts) => {
@@ -274,20 +276,20 @@ impl Interpreter {
                 body,
                 span,
             } => {
-                self.env.borrow_mut().define(
-                    name.to_owned(),
-                    LoxVar::Callable(Rc::new(LoxFunc::new(
-                        parameters
-                            .len()
-                            .try_into()
-                            .map_err(|_| RuntimeError::Over255Arguments(parameters.len(), span))?,
-                        body,
-                        parameters,
-                        name,
-                        self.env.clone(),
-                        false,
-                    ))),
-                );
+                let callable = LoxVar::Callable(Rc::new(LoxFunc::new(
+                    parameters
+                        .len()
+                        .try_into()
+                        .map_err(|_| RuntimeError::Over255Arguments(parameters.len(), span))?,
+                    body,
+                    parameters,
+                    name.as_ref().map_or("_", |n| n).to_owned(),
+                    self.env.clone(),
+                    false,
+                )));
+                if let Some(name) = name {
+                    self.env.borrow_mut().define(name.to_owned(), callable);
+                }
                 Ok(ControlFlow::None)
             }
             Stmt::Return { value, .. } => Ok(ControlFlow::Return(
@@ -336,20 +338,28 @@ impl Interpreter {
                             parameters.len() as u8,
                             body,
                             parameters,
-                            m_name.clone(),
+                            m_name.as_ref().map_or("_", |n| n).to_owned(),
                             method_env.clone(),
-                            m_name == "init",
+                            m_name.as_ref().map_or(false, |n| n == "init"),
                         );
 
-                        method_map.insert(m_name, Rc::new(func));
+                        if let Some(m_name) = m_name {
+                            method_map.insert(m_name, Rc::new(func));
+                        }
                     }
                 }
 
-                let class = LoxClass::new(name.clone(), method_map, super_class);
+                let class = LoxClass::new(
+                    name.as_ref().map_or("_", |n| n).to_owned(),
+                    method_map,
+                    super_class,
+                );
 
-                self.env
-                    .borrow_mut()
-                    .define(name, LoxVar::Class(Rc::new(class)));
+                if let Some(name) = name {
+                    self.env
+                        .borrow_mut()
+                        .define(name, LoxVar::Class(Rc::new(class)));
+                }
 
                 Ok(ControlFlow::None)
             }
@@ -701,7 +711,7 @@ impl Interpreter {
                     v => Err(EvaluateError::new(
                         match set_type {
                             FieldAccess::Property(_) => {
-                                EvaluateErrorKind::CannotGetProperties(v.kind())
+                                EvaluateErrorKind::CannotSetProperties(v.kind())
                             }
                             FieldAccess::Index(_) => EvaluateErrorKind::CannotIndexInto(v.kind()),
                         },
@@ -773,6 +783,7 @@ impl Interpreter {
                 }
                 self.evaluate_expr(*result)
             }
+            Expr::Throwaway { expr, .. } => self.evaluate_expr(*expr),
         }
     }
 }

@@ -1,4 +1,4 @@
-// prints: a
-// prints: b
-// prints: c
+// prints: "a"
+// prints: "b"
+// prints: "c"
 print "a\nb\nc";

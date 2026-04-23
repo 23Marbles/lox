@@ -1,5 +1,5 @@
-print "(" + "" + ")";   // prints: ()
-print "a string"; // prints: a string
+print "(" + "" + ")";   // prints: "()"
+print "a string"; // prints: "a string"
 
 // Non-ASCII.
-print "A~¶Þॐஃ"; // prints: A~¶Þॐஃ
+print "A~¶Þॐஃ"; // prints: "A~¶Þॐஃ"

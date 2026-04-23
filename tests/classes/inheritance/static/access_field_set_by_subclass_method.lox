@@ -19,6 +19,6 @@ class Subclass < Superclass {
 }
 
 Subclass.setFieldSubclass();
-Subclass.printFieldSubclass(); // prints: field value set by Subclass method
-Subclass.printFieldSuperclass(); // prints: field value set by Subclass method
-print Subclass.field; // prints: field value set by Subclass method
+Subclass.printFieldSubclass(); // prints: "field value set by Subclass method"
+Subclass.printFieldSuperclass(); // prints: "field value set by Subclass method"
+print Subclass.field; // prints: "field value set by Subclass method"

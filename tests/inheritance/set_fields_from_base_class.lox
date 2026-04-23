@@ -25,14 +25,14 @@ class Bar < Foo {
 var bar = Bar();
 bar.foo("foo 1", "foo 2");
 bar.fooPrint();
-// prints: foo 1
-// prints: foo 2
+// prints: "foo 1"
+// prints: "foo 2"
 
 bar.bar("bar 1", "bar 2");
 bar.barPrint();
-// prints: bar 1
-// prints: bar 2
+// prints: "bar 1"
+// prints: "bar 2"
 
 bar.fooPrint();
-// prints: bar 1
-// prints: bar 2
+// prints: "bar 1"
+// prints: "bar 2"

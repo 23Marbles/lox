@@ -1,4 +1,1 @@
-// syntaxerror
-// error: invalid escape sequence
-// lint error: invalid escape sequence
-print "before\yafter";
+print "before\yafter"; // prints: "before\\yafter"

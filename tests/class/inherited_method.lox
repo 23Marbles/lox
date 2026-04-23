@@ -17,6 +17,6 @@ class Baz < Bar {
 }
 
 var baz = Baz();
-baz.inFoo(); // prints: in foo
-baz.inBar(); // prints: in bar
-baz.inBaz(); // prints: in baz
+baz.inFoo(); // prints: "in foo"
+baz.inBar(); // prints: "in bar"
+baz.inBaz(); // prints: "in baz"

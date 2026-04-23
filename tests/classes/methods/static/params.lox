@@ -12,6 +12,6 @@ class Foo {
   }
 }
 
-Foo.greet(); // prints: Hello, World!
-Foo.add2(1); // prints: 3
-Foo.add(2, 3); // prints: 5
+Foo.greet(); // prints: "Hello, World!"
+Foo.add2(1); // prints: "3"
+Foo.add(2, 3); // prints: "5"

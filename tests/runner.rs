@@ -206,7 +206,7 @@ impl FromStr for Expectation {
     type Err = ExpectationFromStrError;
 
     fn from_str(s: &str) -> Result<Self, <Self as FromStr>::Err> {
-        let expect_out = Regex::new(r"// prints: (.+)").unwrap();
+        let expect_out = Regex::new(r#"// prints: "(.*)""#).unwrap();
         let expect_err_gen = Regex::new(r"// error: (.+)").unwrap();
 
         let mut expectations = Expectation::default();

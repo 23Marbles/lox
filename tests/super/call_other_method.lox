@@ -12,5 +12,5 @@ class Derived < Base {
 }
 
 Derived().bar();
-// prints: Derived.bar()
-// prints: Base.foo()
+// prints: "Derived.bar()"
+// prints: "Base.foo()"

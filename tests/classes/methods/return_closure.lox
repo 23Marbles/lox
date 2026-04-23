@@ -13,4 +13,4 @@ class AdderFactory {
 
 var adderFactory = AdderFactory(3);
 var add3 = adderFactory.newAdder();
-print add3(4); // prints: 7
+print add3(4); // prints: "7"

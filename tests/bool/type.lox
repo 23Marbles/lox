@@ -1,1 +1,1 @@
-print type(false); // prints: bool
+print type(false); // prints: "bool"

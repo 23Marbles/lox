@@ -10,4 +10,4 @@ class Subclass < Superclass {
   }
 }
 
-Subclass.otherMethod(); // prints: Superclass method called
+Subclass.otherMethod(); // prints: "Superclass method called"

@@ -16,5 +16,5 @@ class Point {
 var p = Point(1, 2);
 p.setX(3);
 p.setY(4);
-print p.x; // prints: 3
-print p.y; // prints: 4
+print p.x; // prints: "3"
+print p.y; // prints: "4"

@@ -1,11 +1,11 @@
 class Foo {
   init(a, b) {
-    print "init"; // prints: init
+    print "init"; // prints: "init"
     this.a = a;
     this.b = b;
   }
 }
 
 var foo = Foo(1, 2);
-print foo.a; // prints: 1
-print foo.b; // prints: 2
+print foo.a; // prints: "1"
+print foo.b; // prints: "2"

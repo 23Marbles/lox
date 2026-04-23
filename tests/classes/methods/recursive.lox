@@ -7,4 +7,4 @@ class Fib {
   }
 }
 
-print Fib().fib(10); // prints: 55
+print Fib().fib(10); // prints: "55"

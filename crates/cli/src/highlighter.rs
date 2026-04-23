@@ -95,6 +95,7 @@ impl Highlighter for SyntaxHelper {
     }*/
 }
 
+#[allow(dead_code)]
 fn push_coloured(out: &mut String, text: &str, color: u8) {
     use std::fmt::Write;
     let _ = write!(out, "\x1b[{}m{}\x1b[0m", color, text);

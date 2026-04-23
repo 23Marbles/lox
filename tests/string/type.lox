@@ -1,1 +1,1 @@
-print type("foo"); // prints: string
+print type("foo"); // prints: "string"

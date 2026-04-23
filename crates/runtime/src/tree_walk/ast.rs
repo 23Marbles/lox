@@ -26,13 +26,9 @@ pub mod stmt {
             /// The span of the variable declaration in the source code.
             span: Span,
             /// The name of the variable being declared.
-            name: String,
+            name: Option<String>,
             /// The initializer expression for the variable, if any.
             initializer: Option<Expr>,
-        },
-        Throwaway {
-            span: Span,
-            initializer: Expr,
         },
         /// Represents a block of statements.
         Block(Vec<Stmt>),
@@ -65,7 +61,7 @@ pub mod stmt {
             /// The span of the function declaration in the source code.
             span: Span,
             /// The name of the function being declared.
-            name: String,
+            name: Option<String>,
             /// The parameters of the function.
             parameters: Vec<String>,
             /// The body of the function.
@@ -87,7 +83,7 @@ pub mod stmt {
         /// Represents a class declaration.
         Class {
             /// The name of the class being declared.
-            name: String,
+            name: Option<String>,
             /// The superclass of the class, if any.
             super_class: Option<Expr>,
             /// The methods of the class.
@@ -118,7 +114,7 @@ pub mod stmt {
                 } => write!(
                     f,
                     "(var {}{})",
-                    name,
+                    name.as_ref().map_or("_", |s| s.as_str()),
                     initializer
                         .as_ref()
                         .map(|value| " = ".to_owned() + &value.to_string())
@@ -150,7 +146,7 @@ pub mod stmt {
                     body,
                     ..
                 } => {
-                    write!(f, "(fun {name}(")?;
+                    write!(f, "(fun {}(", name.as_ref().map_or("_", |s| s.as_str()))?;
                     if !parameters.is_empty() {
                         write!(f, "{}", parameters[0])?;
 
@@ -179,7 +175,7 @@ pub mod stmt {
                     super_class,
                     ..
                 } => {
-                    write!(f, "(class {name}")?;
+                    write!(f, "(class {}", name.as_ref().map_or("_", |s| s.as_str()))?;
                     if let Some(class) = super_class {
                         write!(f, " < {class}")?;
                     }
@@ -191,7 +187,6 @@ pub mod stmt {
                     }
                     write!(f, "))")
                 }
-                Stmt::Throwaway { initializer, .. } => write!(f, "(throwaway {initializer})"),
                 Stmt::Continue { .. } => write!(f, "(continue)"),
                 Stmt::Break { .. } => write!(f, "(break)"),
                 Stmt::For {
@@ -265,6 +260,11 @@ pub mod expr {
             span: Span,
             /// The right-hand side expression of the unary expression.
             right: Box<Expr>,
+        },
+
+        Throwaway {
+            span: Span,
+            expr: Box<Expr>,
         },
 
         /// Represents a binary expression in the AST. Contains a [`left`][`Expr`] expression, an [`operator`][`TokenKind`], and a [`right`][`Expr`] expression.
@@ -429,8 +429,8 @@ pub mod expr {
                     ..
                 } => left.string() + " " + &operator.to_string() + " " + &right.string(),
                 Expr::Grouping(expr) => "(".to_owned() + &expr.string() + ")",
-                Expr::Variable { name, .. } => name.to_string(),
-                Expr::Assign { name, value, .. } => name.to_string() + " = " + &value.string(),
+                Expr::Variable { name, .. } => name.to_owned(),
+                Expr::Assign { name, value, .. } => name.to_owned() + " = " + &value.string(),
                 Expr::Logical {
                     left,
                     operator,
@@ -482,6 +482,7 @@ pub mod expr {
                         + ", "
                         + &result.string()
                 }
+                Expr::Throwaway { expr, .. } => format!("_ = {expr})"),
             }
         }
     }
@@ -500,7 +501,7 @@ pub mod expr {
                     ..
                 } => write!(f, "({operator} {left} {right})"),
                 Expr::Grouping(expr) => write!(f, "(group {expr})"),
-                Expr::Variable { name, .. } => write!(f, "(variable {name})"),
+                Expr::Variable { name, .. } => write!(f, "(variable {})", name),
                 Expr::Assign { name, value, .. } => write!(f, "(assign {name} {value})"),
                 Expr::Logical {
                     left,
@@ -565,6 +566,9 @@ pub mod expr {
                     },
                     result
                 ),
+                Expr::Throwaway {
+                    expr: initializer, ..
+                } => write!(f, "(throwaway {initializer})"),
             }
         }
     }

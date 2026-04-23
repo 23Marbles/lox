@@ -456,7 +456,7 @@ pub mod list {
                     "length" => Ok(LoxVar::Number(self.borrow().values.len() as f64)),
                     "push" => Ok(LoxVar::Callable(Rc::new(ListCall {
                         list: self.clone(),
-                        signature: "push(Any) -> nil",
+                        signature: "push(any) -> nil",
                         arity: 1,
                         func: |_, list, args| {
                             let val = args.first().ok_or(RuntimeError::InternalFunctionError {
@@ -470,7 +470,7 @@ pub mod list {
                     }))),
                     "pop" => Ok(LoxVar::Callable(Rc::new(ListCall {
                         list: self.clone(),
-                        signature: "pop() -> Any",
+                        signature: "pop() -> any",
                         arity: 0,
                         func: |_, list, _| {
                             let val = list.borrow_mut().values.pop();
@@ -487,7 +487,7 @@ pub mod list {
                     }))),
                     "join" => Ok(LoxVar::Callable(Rc::new(ListCall {
                         list: self.clone(),
-                        signature: "join(String) -> String",
+                        signature: "join(string) -> string",
                         arity: 1,
                         func: |_, list, args| {
                             let join_val =
@@ -507,7 +507,7 @@ pub mod list {
                                 ))
                             } else {
                                 Err(RuntimeError::InternalFunctionError {
-                                    msg: "Expected a String argument".to_owned(),
+                                    msg: "Expected a string argument".to_owned(),
                                     code: ErrorCode::IncorrectArgType,
                                     sev: Severity::Error,
                                 })
@@ -588,6 +588,7 @@ pub enum LoxVar {
     Instance(InstanceRef),
     /// Represents a Lox list.
     List(LoxListRef),
+    Result(Result<Box<LoxVar>, String>),
     /// Represents a nil value.
     Nil,
     /// Represents an uninitialized variable.
@@ -690,38 +691,11 @@ impl LoxVar {
     }
 }
 
-fn unescape(input: &str) -> String {
-    let mut result = String::new();
-    let mut chars = input.chars();
-
-    while let Some(c) = chars.next() {
-        if c == '\\' {
-            match chars.next() {
-                Some('n') => result.push('\n'),
-                Some('t') => result.push('\t'),
-                Some('r') => result.push('\r'),
-                Some('\\') => result.push('\\'),
-                Some('"') => result.push('"'),
-                Some(other) => {
-                    // unknown escape, keep as-is or handle error
-                    result.push('\\');
-                    result.push(other);
-                }
-                None => result.push('\\'),
-            }
-        } else {
-            result.push(c);
-        }
-    }
-
-    result
-}
-
 impl From<Literal> for LoxVar {
     fn from(value: Literal) -> Self {
         match value {
             Literal::Number(n) => Self::Number(n),
-            Literal::String(s) => Self::String(unescape(&s)),
+            Literal::String(s) => Self::String(s),
             Literal::True => Self::Bool(true),
             Literal::False => Self::Bool(false),
             Literal::Nil => Self::Nil,
@@ -826,21 +800,16 @@ impl<'input> Mul for &'input LoxVar {
     fn mul(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
             (LoxVar::Number(ln), LoxVar::Number(rn)) => Ok(LoxVar::Number(ln * rn)),
-            (LoxVar::String(s), LoxVar::Number(n)) => Ok(LoxVar::String(s.to_owned().repeat(
-                if n.is_sign_positive() && n.is_finite() && n.fract() == 0.0 {
-                    *n as usize
-                } else {
-                    return Err((self, rhs, BinErrReason::NotPositiveInteger));
-                },
-            ))),
-            (LoxVar::Number(n), LoxVar::String(s)) => Ok(LoxVar::String(s.to_owned().repeat(
-                if n.is_sign_positive() && n.is_finite() && n.fract() == 0.0 {
-                    *n as usize
-                } else {
-                    return Err((self, rhs, BinErrReason::NotPositiveInteger));
-                },
-            ))),
-            (LoxVar::List(l), LoxVar::Number(n)) => {
+            (LoxVar::Number(n), LoxVar::String(s)) | (LoxVar::String(s), LoxVar::Number(n)) => {
+                Ok(LoxVar::String(s.to_owned().repeat(
+                    if n.is_sign_positive() && n.is_finite() && n.fract() == 0.0 {
+                        *n as usize
+                    } else {
+                        return Err((self, rhs, BinErrReason::NotPositiveInteger));
+                    },
+                )))
+            }
+            (LoxVar::List(l), LoxVar::Number(n)) | (LoxVar::Number(n), LoxVar::List(l)) => {
                 Ok(LoxVar::List(Rc::new(RefCell::new(LoxList::new(
                     match if n.is_sign_positive() && n.is_finite() && n.fract() == 0.0 {
                         *n as usize

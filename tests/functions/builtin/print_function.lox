@@ -1,1 +1,1 @@
-print clock; // prints: [built-in function clock]
+print clock; // prints: "[built-in callable clock]"

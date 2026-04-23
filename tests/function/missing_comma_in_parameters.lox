@@ -1,2 +1,2 @@
-// error: 6
+// error: 5
 fun foo(a, b c, d, e, f) {}
