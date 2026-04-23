@@ -1,1 +1,1 @@
-true.foo = "value"; // error: 29
+true.foo = "value"; // error: 40

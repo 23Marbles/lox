@@ -131,12 +131,12 @@ impl<'source> Parser<'source> {
         if self.match_any([TokenKind::Var]) {
             self.var_declaration()
         } else if self.check(TokenKind::Fun)
-            && self
+            && (self
                 .peek_ahead()
                 .map_or(false, |token| token.kind == TokenKind::Identifier)
-            || self
-                .peek_ahead()
-                .map_or(false, |token| token.kind == TokenKind::UnderScore)
+                || self
+                    .peek_ahead()
+                    .map_or(false, |token| token.kind == TokenKind::UnderScore))
         {
             self.advance();
             self.fun_declaration(Named::Function)

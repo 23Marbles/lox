@@ -1,1 +1,1 @@
-"str".foo = "value"; // error: 29
+"str".foo = "value"; // error: 40

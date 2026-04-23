@@ -1,1 +1,1 @@
-nil.foo = "value"; // error: 29
+nil.foo = "value"; // error: 40

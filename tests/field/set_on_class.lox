@@ -1,2 +1,2 @@
 class Foo {}
-Foo.bar = "value"; // error: 29
+Foo.bar = "value"; // error: 40

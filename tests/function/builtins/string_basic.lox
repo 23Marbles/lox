@@ -5,4 +5,4 @@ assertEq(string(false), "false");
 assertEq(string(nil), "nil");
 
 var l = [1, 2];
-assertEq(type(string(l)), "String");
+assertEq(type(string(l)), "string");
