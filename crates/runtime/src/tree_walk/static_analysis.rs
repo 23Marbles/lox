@@ -130,7 +130,7 @@ impl Resolver {
 
     fn resolve_function(
         &mut self,
-        parameters: &[String],
+        parameters: &[Option<String>],
         span: Span,
         body: &mut [Stmt],
         kind: FunctionKind,
@@ -139,8 +139,10 @@ impl Resolver {
         self.begin_scope();
 
         for param in parameters {
-            self.decalare(param.clone(), span.clone());
-            self.define(param);
+            if let Some(name) = param {
+                self.decalare(name.clone(), span.clone());
+                self.define(name);
+            }
         }
         let _ = self.resolve_stmts(body);
         self.end_scope();
@@ -154,13 +156,13 @@ impl Resolver {
                 name,
                 parameters,
                 body,
-                span,
+                param_span,
             } => {
                 if let Some(name) = name {
-                    self.decalare(name.clone(), span.clone());
+                    self.decalare(name.clone(), param_span.clone());
                     self.define(name);
                 }
-                self.resolve_function(parameters, span.clone(), body, FunctionKind::Function);
+                self.resolve_function(parameters, param_span.clone(), body, FunctionKind::Function);
             }
             Stmt::Block(stmts) => {
                 self.begin_scope();
@@ -295,16 +297,16 @@ impl Resolver {
                     if let Stmt::Function {
                         parameters,
                         body,
-                        span,
+                        param_span,
                         name,
                     } = method
                     {
                         self.resolve_function(
                             parameters,
-                            span.clone(),
+                            param_span.clone(),
                             body,
                             if name.as_ref().map_or(false, |n| n == "init") {
-                                FunctionKind::Initializer(span.clone())
+                                FunctionKind::Initializer(param_span.clone())
                             } else {
                                 FunctionKind::Method
                             },
@@ -451,6 +453,18 @@ impl Resolver {
             }
             Expr::Throwaway { expr, .. } => {
                 self.resolve_expr(expr);
+                return;
+            }
+            Expr::Try { expr } => {
+                self.resolve_expr(expr);
+                return;
+            }
+            Expr::Function {
+                param_span,
+                parameters,
+                body,
+            } => {
+                self.resolve_function(parameters, param_span.clone(), body, FunctionKind::Function);
                 return;
             }
         };

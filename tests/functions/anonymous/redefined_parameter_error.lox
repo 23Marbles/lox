@@ -1,6 +1,5 @@
 fun(x) {
-  // error: 'x' has already been declared
-  // lint error: 'x' has already been declared
+  // error: 12
   var x = 1;
   _ = x;
 };

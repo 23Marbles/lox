@@ -1,6 +1,6 @@
 class Foo {
   init(x) {
-    // error: 45
+    // error: 12
     var x = 1;
     _ = x;
   }

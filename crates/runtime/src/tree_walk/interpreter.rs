@@ -10,6 +10,7 @@ use std::{
 use crate::{
     error::{
         ToCodespan as _,
+        access_error::PropertyAccessError,
         eval_err::{EvaluateError, EvaluateErrorKind},
         fn_err::FunctionError,
         runtime_err::RuntimeError,
@@ -274,16 +275,15 @@ impl Interpreter {
                 name,
                 parameters,
                 body,
-                span,
+                param_span,
             } => {
                 let callable = LoxVar::Callable(Rc::new(LoxFunc::new(
-                    parameters
-                        .len()
-                        .try_into()
-                        .map_err(|_| RuntimeError::Over255Arguments(parameters.len(), span))?,
+                    parameters.len().try_into().map_err(|_| {
+                        RuntimeError::Over255Arguments(parameters.len(), param_span)
+                    })?,
                     body,
                     parameters,
-                    name.as_ref().map_or("_", |n| n).to_owned(),
+                    name.clone(),
                     self.env.clone(),
                     false,
                 )));
@@ -331,14 +331,16 @@ impl Interpreter {
                         name: m_name,
                         parameters,
                         body,
-                        ..
+                        param_span,
                     } = method
                     {
                         let func = LoxFunc::new(
-                            parameters.len() as u8,
+                            parameters.len().try_into().map_err(|_| {
+                                RuntimeError::Over255Arguments(parameters.len(), param_span)
+                            })?,
                             body,
                             parameters,
-                            m_name.as_ref().map_or("_", |n| n).to_owned(),
+                            m_name.clone(),
                             method_env.clone(),
                             m_name.as_ref().map_or(false, |n| n == "init"),
                         );
@@ -653,6 +655,29 @@ impl Interpreter {
                             FieldAccess::Property(name) => ListAccessKind::Property(name),
                         })
                         .map_err(|e| RuntimeError::AccessError(e, span)),
+                    LoxVar::Result(result) => {
+                        let name = match get_type {
+                            FieldAccess::Property(name) => name,
+                            FieldAccess::Index(_) => {
+                                return Err(RuntimeError::EvaluateError(EvaluateError::new(
+                                    EvaluateErrorKind::CannotIndexInto(LoxVarKind::Result),
+                                    span,
+                                )));
+                            }
+                        };
+
+                        match name.as_str() {
+                            "ok" => Ok(LoxVar::Bool(result.is_ok())),
+                            "value" => Ok(match result {
+                                Ok(v) => *v,
+                                Err(e) => LoxVar::String(e.clone()),
+                            }),
+                            _ => Err(RuntimeError::AccessError(
+                                PropertyAccessError::NonExistentField { name },
+                                span,
+                            )),
+                        }
+                    }
                     v => Err(EvaluateError::new(
                         match get_type {
                             FieldAccess::Property(_) => {
@@ -784,6 +809,25 @@ impl Interpreter {
                 self.evaluate_expr(*result)
             }
             Expr::Throwaway { expr, .. } => self.evaluate_expr(*expr),
+            Expr::Try { expr } => Ok(LoxVar::Result(match self.evaluate_expr(*expr) {
+                Ok(v) => Ok(Box::new(v)),
+                Err(e) => Err(e.to_string()),
+            })),
+            Expr::Function {
+                param_span,
+                parameters,
+                body,
+            } => Ok(LoxVar::Callable(Rc::new(LoxFunc::new(
+                parameters
+                    .len()
+                    .try_into()
+                    .map_err(|_| RuntimeError::Over255Arguments(parameters.len(), param_span))?,
+                body,
+                parameters,
+                None,
+                self.env.clone(),
+                false,
+            )))),
         }
     }
 }
@@ -797,7 +841,7 @@ pub mod env {
     where
         Self: Sized,
     {
-        fn debug_print_env(&self);
+        fn debug_string_env(&self) -> String;
         fn new_env(enclosing: Option<Self>) -> Self;
         fn new_with_globals(globals: Vec<(&'static str, LoxVar)>) -> Self;
     }
@@ -813,8 +857,12 @@ pub mod env {
             Rc::new(RefCell::new(Environment::new_with_globals(globals)))
         }
 
-        fn debug_print_env(&self) {
-            println!("=== ENVIRONMENT DUMP ===");
+        fn debug_string_env(&self) -> String {
+            use std::fmt::Write as _;
+
+            let mut out = String::new();
+
+            let _ = writeln!(out, "=== ENVIRONMENT DUMP ===");
 
             let mut current = Some(self.clone());
             let mut depth = 0;
@@ -822,7 +870,8 @@ pub mod env {
             while let Some(env_rc) = current {
                 let env_ref = env_rc.borrow();
 
-                println!(
+                let _ = writeln!(
+                    out,
                     "\nScope {} {}:",
                     depth,
                     if depth == 0 {
@@ -835,14 +884,16 @@ pub mod env {
                 );
 
                 for (k, v) in &env_ref.values {
-                    println!("  {} = {:?}", k, v);
+                    let _ = writeln!(out, "  {} = {:?}", k, v);
                 }
 
                 current = env_ref.enclosing.clone();
                 depth += 1;
             }
 
-            println!("\n========================");
+            let _ = writeln!(out, "\n========================");
+
+            out
         }
     }
 

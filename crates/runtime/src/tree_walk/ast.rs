@@ -59,11 +59,11 @@ pub mod stmt {
         /// Represents a function declaration.
         Function {
             /// The span of the function declaration in the source code.
-            span: Span,
+            param_span: Span,
             /// The name of the function being declared.
             name: Option<String>,
             /// The parameters of the function.
-            parameters: Vec<String>,
+            parameters: Vec<Option<String>>,
             /// The body of the function.
             body: Vec<Stmt>,
         },
@@ -148,11 +148,11 @@ pub mod stmt {
                 } => {
                     write!(f, "(fun {}(", name.as_ref().map_or("_", |s| s.as_str()))?;
                     if !parameters.is_empty() {
-                        write!(f, "{}", parameters[0])?;
+                        write!(f, "{}", parameters[0].as_ref().map_or("_", |s| s.as_str()))?;
 
                         if parameters.len() >= 2 {
                             for arg in parameters.iter().skip(1) {
-                                write!(f, ", {arg}")?;
+                                write!(f, ", {}", arg.as_ref().map_or("_", |s| s.as_str()))?;
                             }
                         }
                     }
@@ -210,7 +210,7 @@ pub mod stmt {
 
 /// Module for expressions in the AST.
 pub mod expr {
-    use crate::Span;
+    use crate::{Span, tree_walk::ast::stmt::Stmt};
 
     #[derive(Debug, Clone, PartialEq)]
     /// Represents the type of access, either by property or index.
@@ -261,12 +261,17 @@ pub mod expr {
             /// The right-hand side expression of the unary expression.
             right: Box<Expr>,
         },
-
         Throwaway {
             span: Span,
             expr: Box<Expr>,
         },
-
+        Function {
+            param_span: Span,
+            /// The parameters of the function.
+            parameters: Vec<Option<String>>,
+            /// The body of the function.
+            body: Vec<Stmt>,
+        },
         /// Represents a binary expression in the AST. Contains a [`left`][`Expr`] expression, an [`operator`][`TokenKind`], and a [`right`][`Expr`] expression.
         Binary {
             /// The left-hand side expression of the binary expression.
@@ -325,6 +330,10 @@ pub mod expr {
             condition: Box<Expr>,
             left: Box<Expr>,
             right: Box<Expr>,
+        },
+
+        Try {
+            expr: Box<Expr>,
         },
 
         /// Represents a function call expression in the AST. Contains a [`callee`][`Expr`] expression and a list of [`args`][`Expr`] expressions.
@@ -482,7 +491,19 @@ pub mod expr {
                         + ", "
                         + &result.string()
                 }
-                Expr::Throwaway { expr, .. } => format!("_ = {expr})"),
+                Expr::Throwaway { expr, .. } => format!("_ = {}", expr.string()),
+                Expr::Try { expr } => format!("try {}", expr.string()),
+                Expr::Function {
+                    parameters, body, ..
+                } => format!(
+                    "({}) {{{}}}",
+                    parameters
+                        .iter()
+                        .map(|o| o.as_ref().map_or("_", |s| s.as_str()))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    todo!("Stmt string formatting")
+                ),
             }
         }
     }
@@ -553,22 +574,36 @@ pub mod expr {
                 } => write!(f, "(ternary ({condition} {left} {right}))"),
                 Expr::Comma { redundant, result } => write!(
                     f,
-                    "(comma {}{})",
+                    "(comma ({}{}))",
                     if !redundant.is_empty() {
                         redundant
                             .iter()
                             .map(|ex| ex.to_string())
                             .collect::<Vec<_>>()
                             .join(" ")
-                            + ", "
+                            + ") ("
                     } else {
                         "".to_string()
                     },
                     result
                 ),
-                Expr::Throwaway {
-                    expr: initializer, ..
-                } => write!(f, "(throwaway {initializer})"),
+                Expr::Throwaway { expr, .. } => write!(f, "(throwaway {expr})"),
+                Expr::Try { expr } => write!(f, "(try {expr})"),
+                Expr::Function {
+                    parameters, body, ..
+                } => write!(
+                    f,
+                    "(fun ({}) ({}))",
+                    parameters
+                        .iter()
+                        .map(|o| o.as_ref().map_or("_", |s| s.as_str()))
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                    body.iter()
+                        .map(|s| s.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                ),
             }
         }
     }

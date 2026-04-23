@@ -9,7 +9,7 @@ use std::{
 };
 
 use crate::{
-    error::access_error::AccessError,
+    error::access_error::PropertyAccessError,
     tree_walk::{
         ast::Literal,
         lox_var::{
@@ -25,9 +25,9 @@ pub trait PropertyAccess {
     /// The type of the key used for property access.
     type Key;
     /// Gets the value associated with the given key.
-    fn get(&self, key: &Self::Key) -> Result<LoxVar, AccessError>;
+    fn get(&self, key: &Self::Key) -> Result<LoxVar, PropertyAccessError>;
     /// Sets the value associated with the given key.
-    fn set(&mut self, key: Self::Key, value: LoxVar) -> Result<(), AccessError>;
+    fn set(&mut self, key: Self::Key, value: LoxVar) -> Result<(), PropertyAccessError>;
 }
 
 /// Contains the implementation of Lox functions.
@@ -65,9 +65,9 @@ pub mod functions {
     /// Represents a Lox function defined in the Lox code.
     pub struct LoxFunc {
         arity: u8,
-        name: String,
+        name: Option<String>,
         body: Vec<Stmt>,
-        parameters: Vec<String>,
+        parameters: Vec<Option<String>>,
         closure: Env,
         is_init: bool,
     }
@@ -79,6 +79,7 @@ pub mod functions {
                 && self.body == other.body
                 && self.parameters == other.parameters
                 && self.is_init == other.is_init
+                && Rc::ptr_eq(&self.closure, &other.closure)
         }
     }
 
@@ -89,7 +90,7 @@ pub mod functions {
                 .field("name", &self.name)
                 .field("body", &self.body)
                 .field("parameters", &self.parameters)
-                //.field("closure", &self.closure)
+                .field("closure", &self.closure.debug_string_env())
                 .field("is_init", &self.is_init)
                 .finish()
         }
@@ -102,8 +103,8 @@ pub mod functions {
         pub fn new(
             arity: u8,
             body: Vec<Stmt>,
-            parameters: Vec<String>,
-            name: String,
+            parameters: Vec<Option<String>>,
+            name: Option<String>,
             closure: Env,
             is_init: bool,
         ) -> Self {
@@ -149,7 +150,9 @@ pub mod functions {
             let new_env = Env::new_env(Some(self.closure.clone()));
 
             for (name, arg) in self.parameters.iter().zip(arguments) {
-                new_env.borrow_mut().define(name.to_owned(), arg.to_owned());
+                if let Some(name) = name {
+                    new_env.borrow_mut().define(name.to_owned(), arg.to_owned());
+                }
             }
 
             let previous = interpreter.env.clone();
@@ -190,17 +193,17 @@ pub mod functions {
         }
 
         fn signature(&self) -> String {
-            let mut sig = self.name.clone();
+            let mut sig = self.name.clone().unwrap_or_default();
 
             sig += "(";
 
             if !self.parameters.is_empty() {
-                sig += &self.parameters[0]
+                sig += &self.parameters[0].as_ref().map_or("_", |s| s.as_ref())
             }
 
             for p in self.parameters.iter().skip(1) {
                 sig += ", ";
-                sig += p;
+                sig += p.as_ref().map_or("_", |s| s.as_ref());
             }
 
             sig += ")";
@@ -251,13 +254,13 @@ pub mod class {
         }
 
         /// Finds a method with the given name in this class or its superclass.
-        pub fn find_method(&self, name: &str) -> Result<Rc<LoxFunc>, AccessError> {
+        pub fn find_method(&self, name: &str) -> Result<Rc<LoxFunc>, PropertyAccessError> {
             if let Some(m) = self.methods.get(name) {
                 Ok(m.clone())
             } else {
                 self.super_class
                     .as_ref()
-                    .ok_or(AccessError::NonExistentField {
+                    .ok_or(PropertyAccessError::NonExistentField {
                         name: name.to_owned(),
                     })?
                     .find_method(name)
@@ -317,7 +320,7 @@ pub mod class {
     impl PropertyAccess for InstanceRef {
         type Key = String;
 
-        fn get(&self, key: &Self::Key) -> Result<LoxVar, AccessError> {
+        fn get(&self, key: &Self::Key) -> Result<LoxVar, PropertyAccessError> {
             if let Some(v) = self.borrow().fields.get(key) {
                 return Ok(v.clone());
             }
@@ -332,7 +335,7 @@ pub mod class {
             &mut self,
             key: Self::Key,
             value: LoxVar,
-        ) -> core::result::Result<(), access_error::AccessError> {
+        ) -> core::result::Result<(), access_error::PropertyAccessError> {
             self.borrow_mut().fields.insert(key, value);
             Ok(())
         }
@@ -347,7 +350,7 @@ pub mod list {
 
     use crate::{
         error::{
-            access_error::{self, AccessError},
+            access_error::{self, PropertyAccessError},
             runtime_err::RuntimeError,
         },
         error_codes::ErrorCode,
@@ -422,7 +425,7 @@ pub mod list {
     impl PropertyAccess for LoxListRef {
         type Key = ListAccessKind;
 
-        fn get(&self, key: &Self::Key) -> Result<LoxVar, access_error::AccessError> {
+        fn get(&self, key: &Self::Key) -> Result<LoxVar, access_error::PropertyAccessError> {
             match key {
                 ListAccessKind::Index(index_var) => {
                     if let LoxVar::Number(idx) = *index_var {
@@ -430,24 +433,24 @@ pub mod list {
                             if idx >= 0.0 && idx <= usize::MAX as f64 {
                                 idx as usize
                             } else {
-                                return Err(AccessError::OutOfBounds {
+                                return Err(PropertyAccessError::OutOfBounds {
                                     tried: idx,
                                     len: self.borrow().values.len(),
                                 });
                             }
                         } else {
-                            return Err(AccessError::NonIntegerIndex { tried: idx });
+                            return Err(PropertyAccessError::NonIntegerIndex { tried: idx });
                         };
                         self.borrow()
                             .values
                             .get(index)
-                            .ok_or(access_error::AccessError::OutOfBounds {
+                            .ok_or(access_error::PropertyAccessError::OutOfBounds {
                                 tried: index as f64,
                                 len: self.borrow().values.len(),
                             })
                             .cloned()
                     } else {
-                        Err(AccessError::InccorrectIndexKind {
+                        Err(PropertyAccessError::InccorrectIndexKind {
                             tried_kind: index_var.kind(),
                         })
                     }
@@ -514,12 +517,16 @@ pub mod list {
                             }
                         },
                     }))),
-                    _ => Err(AccessError::NonExistentField { name: name.clone() }),
+                    _ => Err(PropertyAccessError::NonExistentField { name: name.clone() }),
                 },
             }
         }
 
-        fn set(&mut self, key: Self::Key, value: LoxVar) -> Result<(), access_error::AccessError> {
+        fn set(
+            &mut self,
+            key: Self::Key,
+            value: LoxVar,
+        ) -> Result<(), access_error::PropertyAccessError> {
             match key {
                 ListAccessKind::Index(index_var) => {
                     if let LoxVar::Number(idx) = index_var {
@@ -527,29 +534,29 @@ pub mod list {
                             if idx >= 0.0 && idx <= usize::MAX as f64 {
                                 idx as usize
                             } else {
-                                return Err(AccessError::OutOfBounds {
+                                return Err(PropertyAccessError::OutOfBounds {
                                     tried: idx,
                                     len: self.borrow().values.len(),
                                 });
                             }
                         } else {
-                            return Err(AccessError::NonIntegerIndex { tried: idx });
+                            return Err(PropertyAccessError::NonIntegerIndex { tried: idx });
                         };
                         let len = self.borrow().values.len();
                         *self.borrow_mut().values.get_mut(index).ok_or(
-                            access_error::AccessError::OutOfBounds {
+                            access_error::PropertyAccessError::OutOfBounds {
                                 tried: index as f64,
                                 len,
                             },
                         )? = value;
                         Ok(())
                     } else {
-                        Err(AccessError::InccorrectIndexKind {
+                        Err(PropertyAccessError::InccorrectIndexKind {
                             tried_kind: index_var.kind(),
                         })
                     }
                 }
-                ListAccessKind::Property(_) => Err(AccessError::CannotSetProperties {
+                ListAccessKind::Property(_) => Err(PropertyAccessError::CannotSetProperties {
                     kind: LoxVarKind::List,
                 }),
             }
@@ -616,6 +623,7 @@ pub enum LoxVarKind {
     Uninitialized,
     /// Represents a Lox list.
     List,
+    Result,
 }
 
 impl Display for LoxVarKind {
@@ -633,6 +641,7 @@ impl Display for LoxVarKind {
                 LoxVarKind::Nil => "nil",
                 LoxVarKind::Uninitialized => "<uninit>",
                 LoxVarKind::List => "list",
+                LoxVarKind::Result => "result",
             }
         )
     }
@@ -650,6 +659,7 @@ impl From<LoxVar> for LoxVarKind {
             LoxVar::Instance(..) => Self::Instance,
             LoxVar::Uninitialized => Self::Uninitialized,
             LoxVar::List(..) => Self::List,
+            LoxVar::Result(_) => Self::Result,
         }
     }
 }
@@ -666,6 +676,7 @@ impl From<&LoxVar> for LoxVarKind {
             LoxVar::Instance(..) => Self::Instance,
             LoxVar::Uninitialized => Self::Uninitialized,
             LoxVar::List(..) => Self::List,
+            LoxVar::Result(_) => Self::Result,
         }
     }
 }
@@ -717,6 +728,17 @@ impl Display for LoxVar {
             }
             LoxVar::Uninitialized => write!(f, "<uninitialized>"),
             LoxVar::List(lox_list) => write!(f, "{}", lox_list.borrow()),
+            LoxVar::Result(result_var) => {
+                write!(
+                    f,
+                    "result(ok={}, value={})",
+                    result_var.is_ok(),
+                    match result_var {
+                        Ok(v) => v.to_string(),
+                        Err(e) => e.clone(),
+                    }
+                )
+            }
         }
     }
 }
@@ -737,6 +759,8 @@ impl PartialEq for LoxVar {
             (Self::Nil, Self::Nil) => true,
 
             (Self::List(l), Self::List(r)) => l.borrow().values() == r.borrow().values(),
+
+            (Self::Result(l), Self::Result(r)) => l == r,
 
             _ => false,
         }

@@ -3,9 +3,9 @@
     if (n <= 1) {
       return n;
     }
-    // error: 'fib' has not been declared
     return fib(n - 1) + fib(n - 2);
   };
 
+  // prints: "55"
   print fib(10);
 }

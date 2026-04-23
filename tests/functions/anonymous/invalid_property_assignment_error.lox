@@ -1,1 +1,1 @@
-fun() {}.y = 1; // error: property assignment is not valid for 'callable' value
+fun() {}.y = 1; // error: 40

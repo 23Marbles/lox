@@ -1,3 +1,2 @@
-// error: property access is not valid for 'callable' value
-// lint warning: property 'y' has not been declared or assigned anywhere
+// error: 29
 fun() {}.y;

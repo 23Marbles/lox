@@ -2,7 +2,7 @@ class Foo {
   bar() {}
   static bar() {}
 
-  // error: 45
+  // error: 12
   bar() {}
 }
 

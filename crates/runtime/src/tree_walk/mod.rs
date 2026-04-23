@@ -79,7 +79,7 @@ pub fn run_prompt(globals: Vec<(&'static str, LoxVar)>) {
         if line_buf.trim() == "vars" {
             use crate::tree_walk::interpreter::env::EnvironmentImpl as _;
 
-            runner.interpreter.env.debug_print_env();
+            runner.interpreter.env.debug_string_env();
             line_buf.clear();
             continue;
         }
@@ -153,7 +153,7 @@ fn run(
             }
             Err(err) => {
                 #[cfg(debug_assertions)]
-                interpreter.env.debug_print_env();
+                interpreter.env.debug_string_env();
                 return Err(vec![err.to_codespan()]);
             }
         }

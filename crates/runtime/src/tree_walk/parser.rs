@@ -130,7 +130,15 @@ impl<'source> Parser<'source> {
     fn declaration(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
         if self.match_any([TokenKind::Var]) {
             self.var_declaration()
-        } else if self.match_any([TokenKind::Fun]) {
+        } else if self.check(TokenKind::Fun)
+            && self
+                .peek_ahead()
+                .map_or(false, |token| token.kind == TokenKind::Identifier)
+            || self
+                .peek_ahead()
+                .map_or(false, |token| token.kind == TokenKind::UnderScore)
+        {
+            self.advance();
             self.fun_declaration(Named::Function)
         } else if self.match_any([TokenKind::Class]) {
             self.class_declaration()
@@ -212,6 +220,7 @@ impl<'source> Parser<'source> {
     }
 
     fn fun_declaration(&mut self, kind: Named) -> Result<Stmt, Diagnostic<FileIdent>> {
+        let start_pos = self.peek().span.range.start;
         let name = match self.peek().kind {
             TokenKind::Identifier => {
                 let token = self.advance();
@@ -231,30 +240,51 @@ impl<'source> Parser<'source> {
             }
         };
 
-        let start_pos: usize = self.expect(TokenKind::LeftParen)?.span.range.start;
+        let parameters = self.params()?;
 
-        let mut parameters: Vec<&'source str> = Vec::new();
+        let end_pos: usize = self.previous().span.range.end;
+
+        self.expect(TokenKind::LeftBrace)?;
+
+        let body = self.block()?;
+
+        Ok(Stmt::Function {
+            name: name.to_owned(),
+            parameters,
+            body,
+            param_span: Span::new(start_pos..end_pos, self.file_id),
+        })
+    }
+
+    fn params(&mut self) -> Result<Vec<Option<String>>, Diagnostic<FileIdent>> {
+        self.expect(TokenKind::LeftParen)?;
+
+        let mut parameters: Vec<Option<&'source str>> = Vec::new();
 
         let mut offending_spans: Vec<Span> = Vec::new();
 
         if !self.check(TokenKind::RightParen) {
             'collect_arguments: loop {
-                parameters.push(
-                    self.consume(
-                        TokenKind::Identifier,
-                        ParseError::ExpectedName {
+                let name = match self.peek().kind {
+                    TokenKind::Identifier => {
+                        let token = self.advance();
+                        Some(token.lexeme)
+                    }
+                    TokenKind::UnderScore => {
+                        self.advance();
+                        None
+                    }
+                    _ => {
+                        return Err(self.error(ParseError::ExpectedName {
                             name: Named::Parameter,
                             after: self.previous().kind,
+                            span: self.peek().span.clone(),
                             prev_span: self.previous().span.clone(),
-                            span: self
-                                .peek_ahead()
-                                .expect("Parameter at end of token stream")
-                                .span
-                                .clone(),
-                        },
-                    )?
-                    .lexeme,
-                );
+                        }));
+                    }
+                };
+
+                parameters.push(name);
 
                 if parameters.len() > u8::MAX as usize {
                     offending_spans.push(self.previous().span.clone());
@@ -266,28 +296,18 @@ impl<'source> Parser<'source> {
             }
         }
 
-        let end_pos: usize = self.expect(TokenKind::RightParen)?.span.range.end;
-
         if !offending_spans.is_empty() {
             let _ = self.error(ParseError::TooManyArguments {
                 spans: offending_spans,
             });
         }
 
-        self.expect(TokenKind::LeftBrace)?;
+        self.expect(TokenKind::RightParen)?;
 
-        let body = self.block()?;
-
-        Ok(Stmt::Function {
-            name: name.to_owned(),
-            parameters: parameters
-                .iter()
-                .cloned()
-                .map(|param| param.to_owned())
-                .collect(),
-            body,
-            span: Span::new(start_pos..end_pos, self.file_id),
-        })
+        Ok(parameters
+            .into_iter()
+            .map(|param| param.map(|name| name.to_owned()))
+            .collect())
     }
 
     fn var_declaration(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
@@ -838,6 +858,26 @@ impl<'source> Parser<'source> {
                     expr: Box::new(expr),
                 })
             }
+            Try => {
+                self.advance();
+                Ok(Expr::Try {
+                    expr: Box::new(self.expression()?),
+                })
+            }
+            Fun => {
+                self.advance();
+
+                let start_pos = self.peek().span.range.start;
+                let parameters = self.params()?;
+                let end_pos = self.expect(TokenKind::LeftBrace)?.span.range.end;
+                let body = self.block()?;
+
+                Ok(Expr::Function {
+                    param_span: Span::new(start_pos..end_pos, self.file_id),
+                    parameters,
+                    body,
+                })
+            }
             k => Err(self.error(ParseError::UnexpectedTokenKind {
                 got: k,
                 expected: [
@@ -852,6 +892,8 @@ impl<'source> Parser<'source> {
                     Identifier,
                     LeftBracket,
                     UnderScore,
+                    Try,
+                    Fun,
                 ]
                 .to_vec(),
                 span: self.peek().span.clone(),

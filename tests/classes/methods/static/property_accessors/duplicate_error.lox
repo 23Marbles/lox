@@ -4,10 +4,10 @@ class Foo {
   get bar() {}
   set bar(_) {}
 
-  // error: 45
+  // error: 12
   static get bar() {}
 
-  // error: 45
+  // error: 12
   static set bar(_) {}
 }
 

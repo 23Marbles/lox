@@ -6,7 +6,7 @@ class Foo {
   // error: 12
   get bar() {}
 
-  // error: 45
+  // error: 12
   set bar(_) {}
 }
 

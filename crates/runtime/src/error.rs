@@ -443,7 +443,7 @@ pub mod runtime_err {
     use crate::{
         Span,
         error::{
-            ErrorLevel, ToCodespan, ToErrorCode, access_error::AccessError,
+            ErrorLevel, ToCodespan, ToErrorCode, access_error::PropertyAccessError,
             eval_err::EvaluateError, fn_err::FunctionError, to_codespan,
         },
         error_codes::ErrorCode,
@@ -457,7 +457,7 @@ pub mod runtime_err {
         FunctionError(FunctionError),
         Over255Arguments(usize, Span),
         SuperClassIsNotAClass(LoxVar, Span),
-        AccessError(AccessError, Span),
+        AccessError(PropertyAccessError, Span),
         StackOverflow,
         InternalFunctionError {
             msg: String,
@@ -782,7 +782,7 @@ pub mod eval_err {
                 EvaluateErrorKind::IncompatableConversion { from, to } => {
                     write!(f, "Cannot coerce `{from}` to `{to}`")
                 }
-                EvaluateErrorKind::DivisionByZero => write!(f, "Tried to divide by zero"),
+                EvaluateErrorKind::DivisionByZero => write!(f, "Cannot to divide by zero"),
                 EvaluateErrorKind::CannotGetProperties(kind) => {
                     write!(f, "Cannot get properties on variable of kind {kind}")
                 }
@@ -907,7 +907,7 @@ pub mod access_error {
     use super::*;
 
     #[derive(Debug, Clone)]
-    pub enum AccessError {
+    pub enum PropertyAccessError {
         OutOfBounds {
             tried: f64,
             len: usize,
@@ -930,36 +930,36 @@ pub mod access_error {
         },
     }
 
-    impl ErrorLevel for AccessError {
+    impl ErrorLevel for PropertyAccessError {
         fn severity(&self) -> Severity {
             match self {
-                AccessError::OutOfBounds { .. } => Severity::Error,
-                AccessError::NonIntegerIndex { .. } => Severity::Error,
-                AccessError::NonExistentField { .. } => Severity::Error,
-                AccessError::IncorrectType { .. } => Severity::Error,
-                AccessError::InccorrectIndexKind { .. } => Severity::Error,
-                AccessError::CannotSetProperties { .. } => Severity::Error,
+                PropertyAccessError::OutOfBounds { .. } => Severity::Error,
+                PropertyAccessError::NonIntegerIndex { .. } => Severity::Error,
+                PropertyAccessError::NonExistentField { .. } => Severity::Error,
+                PropertyAccessError::IncorrectType { .. } => Severity::Error,
+                PropertyAccessError::InccorrectIndexKind { .. } => Severity::Error,
+                PropertyAccessError::CannotSetProperties { .. } => Severity::Error,
             }
         }
     }
 
-    impl ToErrorCode for AccessError {
+    impl ToErrorCode for PropertyAccessError {
         fn error_code(&self) -> ErrorCode {
             match self {
-                AccessError::OutOfBounds { .. } => ErrorCode::OutOfBounds,
-                AccessError::NonIntegerIndex { .. } => ErrorCode::NonIntegerIndex,
-                AccessError::NonExistentField { .. } => ErrorCode::NonExistentField,
-                AccessError::IncorrectType { .. } => ErrorCode::IncorrectType,
-                AccessError::InccorrectIndexKind { .. } => ErrorCode::IncorrectIndexKind,
-                AccessError::CannotSetProperties { .. } => ErrorCode::CannotSetProperties,
+                PropertyAccessError::OutOfBounds { .. } => ErrorCode::OutOfBounds,
+                PropertyAccessError::NonIntegerIndex { .. } => ErrorCode::NonIntegerIndex,
+                PropertyAccessError::NonExistentField { .. } => ErrorCode::NonExistentField,
+                PropertyAccessError::IncorrectType { .. } => ErrorCode::IncorrectType,
+                PropertyAccessError::InccorrectIndexKind { .. } => ErrorCode::IncorrectIndexKind,
+                PropertyAccessError::CannotSetProperties { .. } => ErrorCode::CannotSetProperties,
             }
         }
     }
 
-    impl Display for AccessError {
+    impl Display for PropertyAccessError {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             match self {
-                AccessError::OutOfBounds { tried, len } => {
+                PropertyAccessError::OutOfBounds { tried, len } => {
                     write!(
                         f,
                         "{}",
@@ -971,23 +971,23 @@ pub mod access_error {
                         }
                     )
                 }
-                AccessError::NonIntegerIndex { tried } => {
+                PropertyAccessError::NonIntegerIndex { tried } => {
                     write!(f, "Index `{}` must be a non-negative integer", tried)
                 }
-                AccessError::NonExistentField { name } => {
+                PropertyAccessError::NonExistentField { name } => {
                     write!(f, "Field `{}` does not exist", name)
                 }
-                AccessError::IncorrectType { expected, got } => {
+                PropertyAccessError::IncorrectType { expected, got } => {
                     write!(
                         f,
                         "Incorrect type for property: expected `{expected}`, got `{got}`",
                     )
                 }
-                AccessError::InccorrectIndexKind { tried_kind } => write!(
+                PropertyAccessError::InccorrectIndexKind { tried_kind } => write!(
                     f,
                     "Cannot index into this object with a value of kind `{tried_kind}`"
                 ),
-                AccessError::CannotSetProperties { kind } => {
+                PropertyAccessError::CannotSetProperties { kind } => {
                     write!(f, "Cannot set properties on a vale of kind `{kind}`")
                 }
             }

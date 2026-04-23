@@ -3,7 +3,7 @@ class Foo {
   set bar(_) {}
   static bar() {}
 
-  // error: 45
+  // error: 12
   bar() {}
 }
 

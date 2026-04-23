@@ -1,1 +1,1 @@
-print clock; // prints: "[built-in callable clock]"
+print clock; // prints: "<fn clock() -> number>"
