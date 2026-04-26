@@ -6,5 +6,5 @@ class B < A {
   method() {
     // error: 5
     (super).method();
-  } // error: 5
+  }
 }

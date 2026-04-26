@@ -2,4 +2,4 @@ class Foo {
   bar() {}
 }
 
-print Foo().bar; // prints: "[bound method Foo.bar]"
+print Foo().bar; // prints: "<fn bar()>"

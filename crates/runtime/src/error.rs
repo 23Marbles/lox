@@ -466,6 +466,15 @@ pub mod runtime_err {
         },
     }
 
+    impl RuntimeError {
+        pub fn from_access_error(access_err: PropertyAccessError, span: Span) -> Self {
+            match access_err {
+                PropertyAccessError::Runtime { err } => *err,
+                other => RuntimeError::AccessError(other, span),
+            }
+        }
+    }
+
     impl From<EvaluateError> for RuntimeError {
         fn from(value: EvaluateError) -> Self {
             RuntimeError::EvaluateError(value)
@@ -610,8 +619,8 @@ pub mod eval_err {
 
     #[derive(Debug, Clone)]
     pub struct EvaluateError {
-        kind: EvaluateErrorKind,
-        pub(super) span: Span,
+        pub kind: EvaluateErrorKind,
+        pub span: Span,
     }
 
     impl EvaluateError {
@@ -902,7 +911,7 @@ pub mod fn_err {
 }
 
 pub mod access_error {
-    use crate::tree_walk::lox_var::LoxVarKind;
+    use crate::{error::runtime_err::RuntimeError, tree_walk::lox_var::LoxVarKind};
 
     use super::*;
 
@@ -928,6 +937,9 @@ pub mod access_error {
         CannotSetProperties {
             kind: LoxVarKind,
         },
+        Runtime {
+            err: Box<RuntimeError>,
+        },
     }
 
     impl ErrorLevel for PropertyAccessError {
@@ -939,6 +951,9 @@ pub mod access_error {
                 PropertyAccessError::IncorrectType { .. } => Severity::Error,
                 PropertyAccessError::InccorrectIndexKind { .. } => Severity::Error,
                 PropertyAccessError::CannotSetProperties { .. } => Severity::Error,
+                PropertyAccessError::Runtime { .. } => unreachable!(
+                    "PropertyAccessError::Runtime should be unwrapped to a runtime error"
+                ),
             }
         }
     }
@@ -952,6 +967,9 @@ pub mod access_error {
                 PropertyAccessError::IncorrectType { .. } => ErrorCode::IncorrectType,
                 PropertyAccessError::InccorrectIndexKind { .. } => ErrorCode::IncorrectIndexKind,
                 PropertyAccessError::CannotSetProperties { .. } => ErrorCode::CannotSetProperties,
+                PropertyAccessError::Runtime { .. } => unreachable!(
+                    "PropertyAccessError::Runtime should be unwrapped to a runtime error"
+                ),
             }
         }
     }
@@ -990,6 +1008,9 @@ pub mod access_error {
                 PropertyAccessError::CannotSetProperties { kind } => {
                     write!(f, "Cannot set properties on a vale of kind `{kind}`")
                 }
+                PropertyAccessError::Runtime { .. } => unreachable!(
+                    "PropertyAccessError::Runtime should be unwrapped to a runtime error"
+                ),
             }
         }
     }

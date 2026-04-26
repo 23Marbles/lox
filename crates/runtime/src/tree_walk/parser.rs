@@ -103,15 +103,24 @@ impl<'source> Parser<'source> {
         self.previous()
     }
 
-    fn match_any<T: IntoIterator<Item = TokenKind>>(&mut self, kinds: T) -> bool {
+    fn matches(&mut self, kind: TokenKind) -> bool {
+        if self.check(kind) {
+            self.advance();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn match_any<T: IntoIterator<Item = TokenKind>>(&mut self, kinds: T) -> Option<TokenKind> {
         for k in kinds {
             if self.check(k) {
                 self.advance();
-                return true;
+                return Some(k);
             }
         }
 
-        false
+        None
     }
 
     /// Parses the tokens into a stream of statements.
@@ -128,7 +137,7 @@ impl<'source> Parser<'source> {
     }
 
     fn declaration(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
-        if self.match_any([TokenKind::Var]) {
+        if self.matches(TokenKind::Var) {
             self.var_declaration()
         } else if self.check(TokenKind::Fun)
             && (self
@@ -140,7 +149,7 @@ impl<'source> Parser<'source> {
         {
             self.advance();
             self.fun_declaration(Named::Function)
-        } else if self.match_any([TokenKind::Class]) {
+        } else if self.matches(TokenKind::Class) {
             self.class_declaration()
         } else {
             self.statement()
@@ -167,7 +176,7 @@ impl<'source> Parser<'source> {
             }
         };
 
-        let super_class = if self.match_any([TokenKind::Less]) {
+        let super_class = if self.matches(TokenKind::Less) {
             let s_name_token = self.consume(
                 TokenKind::Identifier,
                 ParseError::ExpectedName {
@@ -290,7 +299,7 @@ impl<'source> Parser<'source> {
                     offending_spans.push(self.previous().span.clone());
                 }
 
-                if !self.match_any([TokenKind::Comma]) {
+                if !self.matches(TokenKind::Comma) {
                     break 'collect_arguments;
                 }
             }
@@ -329,7 +338,7 @@ impl<'source> Parser<'source> {
             }
         };
 
-        let initializer = if self.match_any([TokenKind::Equal]) {
+        let initializer = if self.matches(TokenKind::Equal) {
             Some(self.expression()?)
         } else {
             None
@@ -345,23 +354,21 @@ impl<'source> Parser<'source> {
     }
 
     fn statement(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
-        use TokenKind::*;
-
-        if self.match_any([Print]) {
+        if self.matches(TokenKind::Print) {
             self.print_statement()
-        } else if self.match_any([If]) {
+        } else if self.matches(TokenKind::If) {
             self.if_statement()
-        } else if self.match_any([LeftBrace]) {
+        } else if self.matches(TokenKind::LeftBrace) {
             Ok(Stmt::Block(self.block()?))
-        } else if self.match_any([While]) {
+        } else if self.matches(TokenKind::While) {
             self.while_statement()
-        } else if self.match_any([For]) {
+        } else if self.matches(TokenKind::For) {
             self.for_statement()
-        } else if self.match_any([Return]) {
+        } else if self.matches(TokenKind::Return) {
             self.return_statement()
-        } else if self.match_any([Break]) {
+        } else if self.matches(TokenKind::Break) {
             self.break_statement()
-        } else if self.match_any([Continue]) {
+        } else if self.matches(TokenKind::Continue) {
             self.continue_statement()
         } else {
             self.expression_statement()
@@ -402,9 +409,9 @@ impl<'source> Parser<'source> {
     fn for_statement(&mut self) -> Result<Stmt, Diagnostic<FileIdent>> {
         self.expect(TokenKind::LeftParen)?;
 
-        let initializer = if self.match_any([TokenKind::Semicolon]) {
+        let initializer = if self.matches(TokenKind::Semicolon) {
             None
-        } else if self.match_any([TokenKind::Var]) {
+        } else if self.matches(TokenKind::Var) {
             Some(self.var_declaration()?)
         } else {
             Some(self.expression_statement()?)
@@ -457,7 +464,7 @@ impl<'source> Parser<'source> {
         self.expect(TokenKind::RightParen)?;
 
         let then_branch = self.statement()?;
-        let else_branch = if self.match_any([TokenKind::Else]) {
+        let else_branch = if self.matches(TokenKind::Else) {
             Some(Box::new(self.statement()?))
         } else {
             None
@@ -474,7 +481,11 @@ impl<'source> Parser<'source> {
         let mut statements = Vec::new();
 
         while !self.check(TokenKind::RightBrace) && !self.is_at_end() {
-            statements.push(self.declaration()?);
+            if let Ok(s) = self.declaration() {
+                statements.push(s);
+            } else {
+                self.synchronize();
+            }
         }
 
         self.expect(TokenKind::RightBrace)?;
@@ -503,7 +514,7 @@ impl<'source> Parser<'source> {
     fn comma(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
         let mut exprs = vec![self.assignment()?];
 
-        while self.match_any([TokenKind::Comma]) {
+        while self.matches(TokenKind::Comma) {
             exprs.push(self.assignment()?);
         }
 
@@ -521,7 +532,7 @@ impl<'source> Parser<'source> {
     fn assignment(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
         let expr = self.ternary()?;
 
-        if self.match_any([TokenKind::Equal]) {
+        if self.matches(TokenKind::Equal) {
             let equals = self.previous().clone();
             let value = self.assignment()?;
 
@@ -564,7 +575,7 @@ impl<'source> Parser<'source> {
     fn ternary(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
         let expr = self.logic_or()?;
 
-        if self.match_any([TokenKind::Question]) {
+        if self.matches(TokenKind::Question) {
             let left = self.expression()?;
             self.expect(TokenKind::Colon)?;
             // Following the spec
@@ -583,7 +594,7 @@ impl<'source> Parser<'source> {
     fn logic_or(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
         let mut expr = self.logic_and()?;
 
-        while self.match_any([TokenKind::Or]) {
+        while self.matches(TokenKind::Or) {
             expr = Expr::Logical {
                 left: Box::new(expr),
                 operator: self.previous().kind,
@@ -597,7 +608,7 @@ impl<'source> Parser<'source> {
     fn logic_and(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
         let mut expr = self.equality()?;
 
-        while self.match_any([TokenKind::And]) {
+        while self.matches(TokenKind::And) {
             expr = Expr::Logical {
                 left: Box::new(expr),
                 operator: self.previous().kind,
@@ -612,7 +623,7 @@ impl<'source> Parser<'source> {
         let mut expr = self.comparison()?;
 
         use TokenKind::*;
-        while self.match_any([BangEqual, EqualEqual]) {
+        while self.match_any([BangEqual, EqualEqual]).is_some() {
             // Append each series of operators to the expr recursivley
             expr = Expr::binary(expr, self.previous().clone(), self.comparison()?)
         }
@@ -624,7 +635,10 @@ impl<'source> Parser<'source> {
         let mut expr = self.term()?;
 
         use TokenKind::*;
-        while self.match_any([Greater, GreaterEqual, Less, LessEqual]) {
+        while self
+            .match_any([Greater, GreaterEqual, Less, LessEqual])
+            .is_some()
+        {
             expr = Expr::binary(expr, self.previous().clone(), self.term()?)
         }
 
@@ -635,7 +649,7 @@ impl<'source> Parser<'source> {
         let mut expr = self.factor()?;
 
         use TokenKind::*;
-        while self.match_any([Minus, Plus]) {
+        while self.match_any([Minus, Plus]).is_some() {
             expr = Expr::binary(expr, self.previous().clone(), self.factor()?)
         }
 
@@ -646,7 +660,7 @@ impl<'source> Parser<'source> {
         let mut expr = self.unary()?;
 
         use TokenKind::*;
-        while self.match_any([Slash, Star, Percent]) {
+        while self.match_any([Slash, Star, Percent]).is_some() {
             expr = Expr::binary(expr, self.previous().clone(), self.unary()?)
         }
 
@@ -655,7 +669,7 @@ impl<'source> Parser<'source> {
 
     fn unary(&mut self) -> Result<Expr, Diagnostic<FileIdent>> {
         use TokenKind::*;
-        if self.match_any([Bang, Minus]) {
+        if self.match_any([Bang, Minus]).is_some() {
             Ok(Expr::unary(self.previous().clone(), self.unary()?))
         } else {
             self.call()
@@ -666,7 +680,7 @@ impl<'source> Parser<'source> {
         let mut expr = self.primary()?;
 
         loop {
-            if self.match_any([TokenKind::LeftParen]) {
+            if self.matches(TokenKind::LeftParen) {
                 expr = self.finish_call(
                     expr,
                     match &self.tokens[self.current - 2] {
@@ -675,17 +689,14 @@ impl<'source> Parser<'source> {
                         _ => self.previous().span.range.start,
                     },
                 )?;
-            } else if self.match_any([TokenKind::Dot]) {
+            } else if self.matches(TokenKind::Dot) {
                 let token = self.consume(
                     TokenKind::Identifier,
                     ParseError::ExpectedName {
                         name: Named::Property,
                         after: self.previous().kind,
                         prev_span: self.previous().span.clone(),
-                        span: match self.peek_ahead() {
-                            Some(t) => t.span.clone(),
-                            None => self.peek().span.clone(), // Error originating here for file tests\number\decimal_point_at_eof.lox
-                        },
+                        span: self.peek().span.clone(),
                     },
                 )?;
                 expr = Expr::Get {
@@ -693,7 +704,7 @@ impl<'source> Parser<'source> {
                     span: token.span,
                     get_type: FieldAccess::Property(token.lexeme.to_owned()),
                 };
-            } else if self.match_any([TokenKind::LeftBracket]) {
+            } else if self.matches(TokenKind::LeftBracket) {
                 let start_pos = self.previous().span.range.start;
                 let index = self.expression()?;
                 let end_pos = self.expect(TokenKind::RightBracket)?.span.range.end;
@@ -725,7 +736,7 @@ impl<'source> Parser<'source> {
                     offending_spans.push(self.previous().span.clone());
                 }
 
-                if !self.match_any([TokenKind::Comma]) {
+                if !self.matches(TokenKind::Comma) {
                     break;
                 }
             }
@@ -910,7 +921,7 @@ impl<'source> Parser<'source> {
             'collect_arguments: loop {
                 parts.push(self.assignment()?);
 
-                if !self.match_any([TokenKind::Comma]) {
+                if !self.matches(TokenKind::Comma) {
                     break 'collect_arguments;
                 }
             }
@@ -932,13 +943,19 @@ impl<'source> Parser<'source> {
         self.advance();
 
         while !self.is_at_end() {
-            if self.previous().kind == TokenKind::Semicolon {
+            if matches!(self.previous().kind, TokenKind::Semicolon) {
                 return;
             }
 
-            use TokenKind::*;
             match self.peek().kind {
-                Class | Fun | Var | For | If | While | Print | Return => return,
+                TokenKind::Class
+                | TokenKind::Fun
+                | TokenKind::Var
+                | TokenKind::For
+                | TokenKind::If
+                | TokenKind::While
+                | TokenKind::Print
+                | TokenKind::Return => return,
                 _ => (),
             }
 

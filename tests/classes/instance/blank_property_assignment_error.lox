@@ -1,6 +1,6 @@
 class Foo {
   init() {
-    // error: 42
+    // error: 9
     this._ = 2;
   }
 }

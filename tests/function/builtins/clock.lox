@@ -1,8 +1,8 @@
 var t1 = clock();
 var t2 = clock();
 
-assertEq(type(t1), "Number");
-assertEq(type(t2), "Number");
+assertEq(type(t1), "number");
+assertEq(type(t2), "number");
 
 // should be monotonic-ish
 assert(t2 >= t1);

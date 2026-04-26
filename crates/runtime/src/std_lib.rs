@@ -68,15 +68,14 @@ pub fn default_lib() -> Vec<(&'static str, LoxVar)> {
             "type",
             LoxVar::Callable(Rc::new(NativeFunc {
                 func: |_, args| {
-                    let ty = args
-                        .first()
-                        .ok_or(RuntimeError::InternalFunctionError {
-                            msg: "Expected an argument".to_owned(),
-                            code: ErrorCode::IncorrectArity,
-                            sev: Severity::Error,
-                        })?
-                        .kind()
-                        .to_string();
+                    let ty = match args.first().ok_or(RuntimeError::InternalFunctionError {
+                        msg: "Expected an argument".to_owned(),
+                        code: ErrorCode::IncorrectArity,
+                        sev: Severity::Error,
+                    })? {
+                        LoxVar::Instance(inst) => inst.borrow().class().name.clone(),
+                        other => other.kind().to_string(),
+                    };
                     Ok(LoxVar::String(ty))
                 },
                 signature: "type() -> string",

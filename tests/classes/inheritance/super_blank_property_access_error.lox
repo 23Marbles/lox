@@ -2,7 +2,7 @@ class Superclass {}
 
 class Subclass < Superclass {
   method() {
-    // error: 42
+    // error: 9
     super._;
   }
 }

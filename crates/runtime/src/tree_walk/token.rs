@@ -411,6 +411,8 @@ pub enum TokenKind {
     Continue,
     Static,
     Try,
+    Get,
+    Set,
 
     Eof,
 }
@@ -470,6 +472,8 @@ impl Display for TokenKind {
             Continue => write!(f, "continue"),
             Static => write!(f, "static"),
             Try => write!(f, "try"),
+            Get => write!(f, "get"),
+            Set => write!(f, "set"),
         }
     }
 }
@@ -499,6 +503,8 @@ impl TokenKind {
             "continue" => Some(Self::Continue),
             "static" => Some(Self::Static),
             "try" => Some(Self::Try),
+            "get" => Some(Self::Get),
+            "set" => Some(Self::Set),
             _ => None,
         }
     }
@@ -518,7 +524,13 @@ impl TokenKind {
             | TokenKind::Super
             | TokenKind::This
             | TokenKind::Var
-            | TokenKind::While => true,
+            | TokenKind::While
+            | TokenKind::Break
+            | TokenKind::Continue
+            | TokenKind::Static
+            | TokenKind::Try
+            | TokenKind::Get
+            | TokenKind::Set => true,
             _ => false,
         }
     }
@@ -530,7 +542,9 @@ impl TokenKind {
             | TokenKind::Number
             | TokenKind::False
             | TokenKind::Nil
-            | TokenKind::True => true,
+            | TokenKind::True
+            | TokenKind::NAN
+            | TokenKind::INF => true,
             _ => false,
         }
     }

@@ -3,5 +3,5 @@ class A {}
 class B < A {
   method() {
     super.; // error: 9
-  } // error: 5
+  }
 }
