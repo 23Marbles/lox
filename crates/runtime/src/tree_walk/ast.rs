@@ -494,16 +494,20 @@ pub mod expr {
                 Expr::Throwaway { expr, .. } => format!("_ = {}", expr.string()),
                 Expr::Try { expr } => format!("try {}", expr.string()),
                 Expr::Function {
-                    parameters, body, ..
-                } => format!(
-                    "({}) {{{}}}",
-                    parameters
-                        .iter()
-                        .map(|o| o.as_ref().map_or("_", |s| s.as_str()))
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    todo!("Stmt string formatting")
-                ),
+                    parameters,
+                    body: _,
+                    ..
+                } => {
+                    format!(
+                        "({}) {{{}}}",
+                        parameters
+                            .iter()
+                            .map(|o| o.as_ref().map_or("_", |s| s.as_str()))
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                        "Todo! Stmt string formatting"
+                    )
+                }
             }
         }
     }

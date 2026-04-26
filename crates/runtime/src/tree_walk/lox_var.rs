@@ -198,7 +198,7 @@ pub mod functions {
             sig += "(";
 
             if !self.parameters.is_empty() {
-                sig += &self.parameters[0].as_ref().map_or("_", |s| s.as_ref())
+                sig += self.parameters[0].as_ref().map_or("_", |s| s.as_ref())
             }
 
             for p in self.parameters.iter().skip(1) {

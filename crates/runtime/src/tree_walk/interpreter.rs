@@ -288,7 +288,7 @@ impl Interpreter {
                     false,
                 )));
                 if let Some(name) = name {
-                    self.env.borrow_mut().define(name.to_owned(), callable);
+                    self.env.borrow_mut().define(name, callable);
                 }
                 Ok(ControlFlow::None)
             }
@@ -342,7 +342,7 @@ impl Interpreter {
                             parameters,
                             m_name.clone(),
                             method_env.clone(),
-                            m_name.as_ref().map_or(false, |n| n == "init"),
+                            m_name.as_ref().is_some_and(|n| n == "init"),
                         );
 
                         if let Some(m_name) = m_name {
@@ -670,7 +670,7 @@ impl Interpreter {
                             "ok" => Ok(LoxVar::Bool(result.is_ok())),
                             "value" => Ok(match result {
                                 Ok(v) => *v,
-                                Err(e) => LoxVar::String(e.clone()),
+                                Err(e) => LoxVar::String(e),
                             }),
                             _ => Err(RuntimeError::AccessError(
                                 PropertyAccessError::NonExistentField { name },

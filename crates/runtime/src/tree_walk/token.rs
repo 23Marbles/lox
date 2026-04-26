@@ -511,42 +511,42 @@ impl TokenKind {
 
     /// Checks if the tokenkind is a keyword
     pub fn is_keyword(&self) -> bool {
-        match self {
+        matches!(
+            self,
             TokenKind::And
-            | TokenKind::Class
-            | TokenKind::Else
-            | TokenKind::Fun
-            | TokenKind::For
-            | TokenKind::If
-            | TokenKind::Or
-            | TokenKind::Print
-            | TokenKind::Return
-            | TokenKind::Super
-            | TokenKind::This
-            | TokenKind::Var
-            | TokenKind::While
-            | TokenKind::Break
-            | TokenKind::Continue
-            | TokenKind::Static
-            | TokenKind::Try
-            | TokenKind::Get
-            | TokenKind::Set => true,
-            _ => false,
-        }
+                | TokenKind::Class
+                | TokenKind::Else
+                | TokenKind::Fun
+                | TokenKind::For
+                | TokenKind::If
+                | TokenKind::Or
+                | TokenKind::Print
+                | TokenKind::Return
+                | TokenKind::Super
+                | TokenKind::This
+                | TokenKind::Var
+                | TokenKind::While
+                | TokenKind::Break
+                | TokenKind::Continue
+                | TokenKind::Static
+                | TokenKind::Try
+                | TokenKind::Get
+                | TokenKind::Set
+        )
     }
 
     /// Checks if the tokenkind is a literal
     pub fn is_literal(&self) -> bool {
-        match self {
+        matches!(
+            self,
             TokenKind::String
-            | TokenKind::Number
-            | TokenKind::False
-            | TokenKind::Nil
-            | TokenKind::True
-            | TokenKind::NAN
-            | TokenKind::INF => true,
-            _ => false,
-        }
+                | TokenKind::Number
+                | TokenKind::False
+                | TokenKind::Nil
+                | TokenKind::True
+                | TokenKind::NAN
+                | TokenKind::INF
+        )
     }
 }
 

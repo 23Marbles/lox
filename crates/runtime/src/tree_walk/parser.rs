@@ -142,10 +142,10 @@ impl<'source> Parser<'source> {
         } else if self.check(TokenKind::Fun)
             && (self
                 .peek_ahead()
-                .map_or(false, |token| token.kind == TokenKind::Identifier)
+                .is_some_and(|token| token.kind == TokenKind::Identifier)
                 || self
                     .peek_ahead()
-                    .map_or(false, |token| token.kind == TokenKind::UnderScore))
+                    .is_some_and(|token| token.kind == TokenKind::UnderScore))
         {
             self.advance();
             self.fun_declaration(Named::Function)
@@ -221,7 +221,7 @@ impl<'source> Parser<'source> {
         self.expect(TokenKind::RightBrace)?;
 
         Ok(Stmt::Class {
-            name: name,
+            name,
             methods,
             super_class,
             span: name_span,
@@ -258,7 +258,7 @@ impl<'source> Parser<'source> {
         let body = self.block()?;
 
         Ok(Stmt::Function {
-            name: name.to_owned(),
+            name,
             parameters,
             body,
             param_span: Span::new(start_pos..end_pos, self.file_id),
@@ -347,9 +347,9 @@ impl<'source> Parser<'source> {
         self.expect(TokenKind::Semicolon)?;
 
         Ok(Stmt::Var {
-            name: name,
+            name,
             initializer,
-            span: span,
+            span,
         })
     }
 
@@ -518,14 +518,13 @@ impl<'source> Parser<'source> {
             exprs.push(self.assignment()?);
         }
 
-        if exprs.len() == 1 {
-            Ok(exprs.pop().unwrap())
-        } else {
-            let last = exprs.pop().unwrap();
-            Ok(Expr::Comma {
-                redundant: exprs,
-                result: Box::new(last),
-            })
+        match exprs.split_first() {
+            Some((expr, &[])) => Ok(expr.clone()),
+            Some((result, redundant)) => Ok(Expr::Comma {
+                redundant: redundant.to_vec(),
+                result: Box::new(result.clone()),
+            }),
+            None => unreachable!("Initialized with at least one element"),
         }
     }
 
@@ -1025,9 +1024,7 @@ fn unescape(input: &str) -> Result<String, Vec<String>> {
                     if hex.len() != 4 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
                         erred = true;
                     }
-                    let character = u32::from_str_radix(&hex, 16)
-                        .ok()
-                        .and_then(|val| char::from_u32(val));
+                    let character = u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32);
                     if let Some(c) = character
                         && !erred
                     {

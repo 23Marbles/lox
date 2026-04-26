@@ -138,11 +138,9 @@ impl Resolver {
         self.func_path.push(kind);
         self.begin_scope();
 
-        for param in parameters {
-            if let Some(name) = param {
-                self.decalare(name.clone(), span.clone());
-                self.define(name);
-            }
+        for name in parameters.iter().flatten() {
+            self.decalare(name.clone(), span.clone());
+            self.define(name);
         }
         let _ = self.resolve_stmts(body);
         self.end_scope();
@@ -256,7 +254,7 @@ impl Resolver {
                     ..
                 }) = super_class.clone()
                 {
-                    if name.as_ref().map_or(false, |n| *n == s_name) {
+                    if name.as_ref().is_some_and(|n| *n == s_name) {
                         assert_eq!(
                             s_span.file_id, span.file_id,
                             "Superclass must be defined in the same file as the if there is a self-referential inheritance"
@@ -305,7 +303,7 @@ impl Resolver {
                             parameters,
                             param_span.clone(),
                             body,
-                            if name.as_ref().map_or(false, |n| n == "init") {
+                            if name.as_ref().is_some_and(|n| n == "init") {
                                 FunctionKind::Initializer(param_span.clone())
                             } else {
                                 FunctionKind::Method
@@ -323,12 +321,12 @@ impl Resolver {
                 self.class_path.pop();
             }
             Stmt::Continue { span } => {
-                if !(self.loop_depth > 0) {
+                if self.loop_depth < 1 {
                     self.error(ResolverErr::ContinueFromOutsideLoop(span.clone()));
                 }
             }
             Stmt::Break { span } => {
-                if !(self.loop_depth > 0) {
+                if self.loop_depth < 1 {
                     self.error(ResolverErr::BreakFromOutsideLoop(span.clone()));
                 }
             }
